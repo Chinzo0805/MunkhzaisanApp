@@ -1,11 +1,14 @@
-const admin = require('firebase-admin');
-const serviceAccount = require('./munkh-zaisan-firebase-adminsdk-x2hsg-be6a02cce4.json');
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+// Initialize Firebase Admin (if not already initialized)
+try {
+  initializeApp();
+} catch (e) {
+  // Already initialized
+}
 
-const db = admin.firestore();
+const db = getFirestore();
 
 async function checkDuplicates() {
   try {

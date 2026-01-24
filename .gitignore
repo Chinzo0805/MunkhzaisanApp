@@ -67,6 +67,7 @@ node_modules/
 
 # Secret files
 serviceAccountKey.json
+*-firebase-adminsdk-*.json
 
 # dataconnect generated files
 .dataconnect
