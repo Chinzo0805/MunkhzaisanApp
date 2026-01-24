@@ -49,7 +49,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
       const hasPendingRecords = !allPendingQuery.empty;
       const hasApprovedRecords = !allApprovedQuery.empty;
       
-      // For "Чөлөөтэй/Амралт" status - NO other requests allowed on same day
+      // For "Чөлөөтэй/Амралт" status - NO other requests allowed on same day (including тасалсан)
       if (requestData.Status === 'Чөлөөтэй/Амралт') {
         if (hasPendingRecords) {
           const existing = allPendingQuery.docs[0].data();
@@ -68,8 +68,27 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
       }
       
-      // If trying to work/assignment but there's already a leave request (pending or approved)
-      if (requestData.Status !== 'Чөлөөтэй/Амралт') {
+      // For "тасалсан" status - NO other requests allowed on same day (including leave)
+      if (requestData.Status === 'тасалсан') {
+        if (hasPendingRecords) {
+          const existing = allPendingQuery.docs[0].data();
+          return res.status(409).send({ 
+            error: 'Conflict with pending request',
+            message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" хүсэлт илгээсэн байна. "тасалсан" илгээх боломжгүй`
+          });
+        }
+        
+        if (hasApprovedRecords) {
+          const existing = allApprovedQuery.docs[0].data();
+          return res.status(409).send({ 
+            error: 'Conflict with approved record',
+            message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" зөвшөөрөгдсөн ирц байна. "тасалсан" илгээх боломжгүй`
+          });
+        }
+      }
+      
+      // If trying to work/assignment but there's already a leave or тасалсан request (pending or approved)
+      if (requestData.Status !== 'Чөлөөтэй/Амралт' && requestData.Status !== 'тасалсан') {
         // Check pending leave requests
         const pendingLeave = allPendingQuery.docs.find(doc => 
           doc.data().Status === 'Чөлөөтэй/Амралт'
@@ -89,6 +108,28 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
           return res.status(409).send({ 
             error: 'Leave record exists',
             message: `${requestData.Day} өдөр аль хэдийн "Чөлөөтэй/Амралт" зөвшөөрөгдсөн байна. Ажлын хүсэлт илгээх боломжгүй`
+          });
+        }
+        
+        // Check pending тасалсан requests
+        const pendingMissed = allPendingQuery.docs.find(doc => 
+          doc.data().Status === 'тасалсан'
+        );
+        if (pendingMissed) {
+          return res.status(409).send({ 
+            error: 'Missed work request exists',
+            message: `${requestData.Day} өдөр аль хэдийн "тасалсан" хүсэлт илгээсэн байна. Ажлын хүсэлт илгээх боломжгүй`
+          });
+        }
+        
+        // Check approved тасалсан records
+        const approvedMissed = allApprovedQuery.docs.find(doc => 
+          doc.data().Status === 'тасалсан'
+        );
+        if (approvedMissed) {
+          return res.status(409).send({ 
+            error: 'Missed work record exists',
+            message: `${requestData.Day} өдөр аль хэдийн "тасалсан" зөвшөөрөгдсөн байна. Ажлын хүсэлт илгээх боломжгүй`
           });
         }
         
