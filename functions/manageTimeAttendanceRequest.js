@@ -29,6 +29,97 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
     }
     
     if (action === 'add') {
+      // Validate required fields
+      if (!requestData.Day || !requestData.EmployeeID || !requestData.EmployeeLastName) {
+        return res.status(400).send({ error: 'Missing required fields: Day, EmployeeID, EmployeeLastName' });
+      }
+      
+      // Check for duplicate: same day + same project + same employee
+      const duplicateQuery = await db.collection('timeAttendanceRequests')
+        .where('Day', '==', requestData.Day)
+        .where('EmployeeID', '==', requestData.EmployeeID)
+        .where('status', '==', 'pending')
+        .get();
+      
+      if (!duplicateQuery.empty) {
+        // Check if exact project duplicate
+        const exactDuplicate = duplicateQuery.docs.find(doc => 
+          doc.data().ProjectID === requestData.ProjectID
+        );
+        if (exactDuplicate) {
+          return res.status(409).send({ 
+            error: 'Duplicate request',
+            message: `${requestData.Day} өдөр ${requestData.ProjectID} төсөлд аль хэдийн хүсэлт илгээсэн байна`
+          });
+        }
+      }
+      
+      // Check for time overlap on same day for same employee (across all projects)
+      if (requestData.startTime && requestData.endTime) {
+        const sameDayQueryAll = await db.collection('timeAttendanceRequests')
+          .where('Day', '==', requestData.Day)
+          .where('EmployeeID', '==', requestData.EmployeeID)
+          .where('status', '==', 'pending')
+          .get();
+        
+        const parseTime = (timeStr) => {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          return hours + minutes / 60;
+        };
+        
+        const newStart = parseTime(requestData.startTime);
+        const newEnd = parseTime(requestData.endTime);
+        const newEndAdjusted = newEnd < newStart ? newEnd + 24 : newEnd;
+        
+        for (const doc of sameDayQueryAll.docs) {
+          const existing = doc.data();
+          if (!existing.startTime || !existing.endTime) continue;
+          
+          const existStart = parseTime(existing.startTime);
+          const existEnd = parseTime(existing.endTime);
+          const existEndAdjusted = existEnd < existStart ? existEnd + 24 : existEnd;
+          
+          // Check for time overlap
+          if ((newStart < existEndAdjusted && newEndAdjusted > existStart)) {
+            return res.status(409).send({
+              error: 'Time overlap',
+              message: `${requestData.Day} өдөр ${existing.startTime}-${existing.endTime} цагт аль хэдийн хүсэлт илгээсэн байна (${existing.ProjectID} төсөл)`
+            });
+          }
+        }
+        
+        // Also check against approved records in timeAttendance collection
+        const approvedQuery = await db.collection('timeAttendance')
+          .where('Day', '==', requestData.Day)
+          .where('EmployeeID', '==', requestData.EmployeeID)
+          .get();
+        
+        for (const doc of approvedQuery.docs) {
+          const existing = doc.data();
+          if (!existing.startTime || !existing.endTime) continue;
+          
+          // Check exact duplicate first
+          if (existing.ProjectID === requestData.ProjectID) {
+            return res.status(409).send({ 
+              error: 'Duplicate approved record',
+              message: `${requestData.Day} өдөр ${requestData.ProjectID} төсөлд аль хэдийн зөвшөөрөгдсөн ирц байна`
+            });
+          }
+          
+          const existStart = parseTime(existing.startTime);
+          const existEnd = parseTime(existing.endTime);
+          const existEndAdjusted = existEnd < existStart ? existEnd + 24 : existEnd;
+          
+          // Check for time overlap
+          if ((newStart < existEndAdjusted && newEndAdjusted > existStart)) {
+            return res.status(409).send({
+              error: 'Time overlap with approved',
+              message: `${requestData.Day} өдөр ${existing.startTime}-${existing.endTime} цагт аль хэдийн зөвшөөрөгдсөн ирц байна (${existing.ProjectID} төсөл)`
+            });
+          }
+        }
+      }
+      
       // Add new request with pending status
       const docRef = await db.collection('timeAttendanceRequests').add({
         ...requestData,

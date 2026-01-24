@@ -362,6 +362,11 @@ async function submitAllRequests() {
     return;
   }
   
+  // Prevent double submission
+  if (submitting.value) {
+    return;
+  }
+  
   // Check for duplicate day + project combinations
   const dayProjectPairs = requests.value.map(r => `${r.Day}-${r.ProjectID}`);
   const duplicates = dayProjectPairs.filter((pair, index) => dayProjectPairs.indexOf(pair) !== index && pair !== '-');
@@ -535,9 +540,20 @@ async function submitAllRequests() {
       }
       
       console.log('Submitting request:', request);
-      const response = await manageTimeAttendanceRequest('add', request);
-      console.log('Response:', response);
-      successCount++;
+      try {
+        const response = await manageTimeAttendanceRequest('add', request);
+        console.log('Response:', response);
+        successCount++;
+      } catch (error) {
+        // Handle backend validation errors
+        if (error.response && error.response.status === 409) {
+          const errorMsg = error.response.data.message || error.response.data.error;
+          showMessage(errorMsg, 'error');
+          submitting.value = false;
+          return;
+        }
+        throw error; // Re-throw other errors
+      }
     }
     
     if (successCount > 0 && skippedCount > 0) {
