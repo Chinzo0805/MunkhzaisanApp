@@ -34,7 +34,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         return res.status(400).send({ error: 'Missing required fields: Day, EmployeeID, EmployeeLastName' });
       }
       
-      // Check for duplicate: same day + same project + same employee
+      // Check for duplicate: same day + same employee
       const duplicateQuery = await db.collection('timeAttendanceRequests')
         .where('Day', '==', requestData.Day)
         .where('EmployeeID', '==', requestData.EmployeeID)
@@ -42,14 +42,54 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         .get();
       
       if (!duplicateQuery.empty) {
-        // Check if exact project duplicate
+        // For "Чөлөөтэй/Амралт" status - only ONE request per day allowed
+        if (requestData.Status === 'Чөлөөтэй/Амралт') {
+          // Check if any request exists for this day (regardless of status type)
+          const existingLeaveOrWork = duplicateQuery.docs.find(doc => true); // Any existing request
+          if (existingLeaveOrWork) {
+            const existingStatus = existingLeaveOrWork.data().Status;
+            return res.status(409).send({ 
+              error: 'Duplicate request',
+              message: `${requestData.Day} өдөр аль хэдийн "${existingStatus}" хүсэлт илгээсэн байна`
+            });
+          }
+        }
+        
+        // Check if exact project duplicate (for work requests)
         const exactDuplicate = duplicateQuery.docs.find(doc => 
-          doc.data().ProjectID === requestData.ProjectID
+          doc.data().ProjectID === requestData.ProjectID && requestData.ProjectID
         );
         if (exactDuplicate) {
           return res.status(409).send({ 
             error: 'Duplicate request',
             message: `${requestData.Day} өдөр ${requestData.ProjectID} төсөлд аль хэдийн хүсэлт илгээсэн байна`
+          });
+        }
+        
+        // If trying to work but there's already a leave request
+        const existingLeave = duplicateQuery.docs.find(doc => 
+          doc.data().Status === 'Чөлөөтэй/Амралт'
+        );
+        if (existingLeave && requestData.Status !== 'Чөлөөтэй/Амралт') {
+          return res.status(409).send({ 
+            error: 'Leave request exists',
+            message: `${requestData.Day} өдөр аль хэдийн "Чөлөөтэй/Амралт" хүсэлт илгээсэн байна`
+          });
+        }
+      }
+      
+      // Also check against approved records for leave status
+      if (requestData.Status === 'Чөлөөтэй/Амралт') {
+        const approvedQuery = await db.collection('timeAttendance')
+          .where('Day', '==', requestData.Day)
+          .where('EmployeeID', '==', requestData.EmployeeID)
+          .get();
+        
+        if (!approvedQuery.empty) {
+          const existing = approvedQuery.docs[0].data();
+          return res.status(409).send({ 
+            error: 'Duplicate approved record',
+            message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" зөвшөөрөгдсөн ирц байна`
           });
         }
       }
