@@ -41,6 +41,10 @@
             <span class="label">Нийт ажилласан цаг:</span>
             <span class="value">{{ salaryData.totalHours.toFixed(2) }} цаг</span>
           </div>
+          <div v-if="salaryData.missedHours > 0" class="hour-item missed">
+            <span class="label">Тасалсан цаг:</span>
+            <span class="value penalty">{{ salaryData.missedHours.toFixed(2) }} цаг</span>
+          </div>
         </div>
 
         <div class="projects-section" v-if="salaryData.projectBreakdown.length > 0">
@@ -181,13 +185,28 @@ async function loadSalaryData() {
     console.log('Records in date range:', recordsInRange.length);
     
     let totalHours = 0;
+    let missedHours = 0;
     const projectMap = new Map();
     const uniqueDays = new Set();
     
     recordsInRange.forEach(record => {
+      const status = record.Status;
       const working = parseFloat(record.WorkingHour) || 0;
       const overtime = parseFloat(record.overtimeHour) || 0;
-      const recordTotal = working + overtime;
+      
+      // Skip leave/rest days - don't count them
+      if (status === 'Чөлөөтэй/Амралт') {
+        return;
+      }
+      
+      let recordTotal = working + overtime;
+      
+      // Apply penalty for missed work: -2 * workingHour
+      if (status === 'тасалсан') {
+        const penalty = working * 2;
+        missedHours += penalty;
+        recordTotal = -penalty; // Deduct from total
+      }
       
       totalHours += recordTotal;
       
@@ -235,12 +254,14 @@ async function loadSalaryData() {
     
     console.log('Calculated salary data:', {
       totalHours,
+      missedHours,
       daysWorked: uniqueDays.size,
       projectCount: projectBreakdown.length
     });
     
     salaryData.value = {
       totalHours,
+      missedHours,
       daysWorked: uniqueDays.size,
       projectBreakdown
     };
@@ -407,6 +428,17 @@ onMounted(() => {
 
 .hour-item .value.overtime {
   color: #fbbf24;
+}
+
+.hour-item.missed {
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.hour-item .value.penalty {
+  color: #fca5a5;
+  font-weight: 700;
 }
 
 .projects-section {
