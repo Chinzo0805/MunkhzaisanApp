@@ -653,14 +653,30 @@ async function saveApprovedEdit(request) {
     
     // Update the approved record directly in timeAttendance collection
     const { docId, ...updateData } = request;
+    
+    if (!docId) {
+      showSyncMessage('Алдаа: Document ID олдсонгүй', 'error');
+      processing.value = false;
+      return;
+    }
+    
     // Mark as not synced so it will be updated in Excel on next sync
     updateData.syncedToExcel = false;
+    updateData.lastEditedAt = new Date().toISOString();
     
     const docRef = doc(db, 'timeAttendance', docId);
-    await updateDoc(docRef, updateData);
     
-    showSyncMessage('Өгөгдөл амжилттай хадгалагдлаа. Excel-рүү синхрон хийхийг санаарай.', 'success');
-    await refreshRequests();
+    // Check if document exists before updating
+    try {
+      await updateDoc(docRef, updateData);
+      showSyncMessage('Өгөгдөл амжилттай хадгалагдлаа. Excel-рүү синхрон хийхийг санаарай.', 'success');
+      await refreshRequests();
+    } catch (docError) {
+      console.error('Document update error:', docError);
+      console.log('Trying to update docId:', docId);
+      console.log('Update data:', updateData);
+      showSyncMessage('Алдаа: ' + docError.message + ' (docId: ' + docId + ')', 'error');
+    }
   } catch (error) {
     showSyncMessage('Алдаа гарлаа: ' + error.message, 'error');
   } finally {
