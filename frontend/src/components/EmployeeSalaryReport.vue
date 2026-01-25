@@ -37,16 +37,8 @@
         </div>
         
         <div class="hours-breakdown">
-          <div class="hour-item">
-            <span class="label">Ажилласан цаг:</span>
-            <span class="value">{{ salaryData.workingHours.toFixed(2) }} цаг</span>
-          </div>
-          <div class="hour-item">
-            <span class="label">Илүү цаг:</span>
-            <span class="value overtime">{{ salaryData.overtimeHours.toFixed(2) }} цаг</span>
-          </div>
           <div class="hour-item total">
-            <span class="label">Нийт цаг:</span>
+            <span class="label">Нийт ажилласан цаг:</span>
             <span class="value">{{ salaryData.totalHours.toFixed(2) }} цаг</span>
           </div>
         </div>
@@ -187,19 +179,17 @@ async function loadSalaryData() {
       });
     
     console.log('Records in date range:', recordsInRange.length);
-    console.log('Records in date range:', recordsInRange.length);
     
-    let workingHours = 0;
-    let overtimeHours = 0;
+    let totalHours = 0;
     const projectMap = new Map();
     const uniqueDays = new Set();
     
     recordsInRange.forEach(record => {
       const working = parseFloat(record.WorkingHour) || 0;
       const overtime = parseFloat(record.overtimeHour) || 0;
+      const recordTotal = working + overtime;
       
-      workingHours += working;
-      overtimeHours += overtime;
+      totalHours += recordTotal;
       
       // Track unique days
       if (record.Day) {
@@ -222,22 +212,18 @@ async function loadSalaryData() {
         }
         
         const proj = projectMap.get(projectId);
-        proj.totalHours += working + overtime;
+        proj.totalHours += recordTotal;
         
         // Track hours by role within project
         if (!proj.roles.has(role)) {
           proj.roles.set(role, {
             role,
-            workingHours: 0,
-            overtimeHours: 0,
             totalHours: 0
           });
         }
         
         const roleData = proj.roles.get(role);
-        roleData.workingHours += working;
-        roleData.overtimeHours += overtime;
-        roleData.totalHours += working + overtime;
+        roleData.totalHours += recordTotal;
       }
     });
     
@@ -248,17 +234,13 @@ async function loadSalaryData() {
     })).sort((a, b) => b.totalHours - a.totalHours);
     
     console.log('Calculated salary data:', {
-      workingHours,
-      overtimeHours,
-      totalHours: workingHours + overtimeHours,
+      totalHours,
       daysWorked: uniqueDays.size,
       projectCount: projectBreakdown.length
     });
     
     salaryData.value = {
-      workingHours,
-      overtimeHours,
-      totalHours: workingHours + overtimeHours,
+      totalHours,
       daysWorked: uniqueDays.size,
       projectBreakdown
     };
