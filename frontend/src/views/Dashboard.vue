@@ -80,6 +80,14 @@
         <CustomerManagement @saved="handleSaved" />
         <ProjectManagement @saved="handleSaved" />
         
+        <!-- Time Attendance Report (Supervisor only) -->
+        <div v-if="authStore.userData?.isSupervisor" class="ta-report-section">
+          <button @click="showTAReport = !showTAReport" class="expand-btn">
+            {{ showTAReport ? '▼' : '▶' }} Ирцийн тайлан
+          </button>
+          <SupervisorTAReport v-if="showTAReport" />
+        </div>
+        
         <!-- Time Attendance Approval (Supervisor only) - Collapsed by default -->
         <div v-if="authStore.userData?.isSupervisor" class="time-attendance-section">
           <button @click="showTimeAttendance = !showTimeAttendance" class="expand-btn">
@@ -130,6 +138,7 @@ import EmployeeManagement from '../components/EmployeeManagement.vue';
 import CustomerManagement from '../components/CustomerManagement.vue';
 import ProjectManagement from '../components/ProjectManagement.vue';
 import TimeAttendanceApproval from '../components/TimeAttendanceApproval.vue';
+import SupervisorTAReport from '../components/SupervisorTAReport.vue';
 import EmployeeTimeAttendanceHistory from '../components/EmployeeTimeAttendanceHistory.vue';
 
 const router = useRouter();
@@ -144,6 +153,7 @@ const loading = ref(false);
 const showSyncDialog = ref(false);
 const syncType = ref('employee'); // 'employee', 'customer', or 'project'
 const showTimeAttendance = ref(false);
+const showTAReport = ref(false);
 let dismissTimer = null;
 
 // Auto-dismiss success messages after 8 seconds
@@ -730,5 +740,29 @@ function handleSaved(event) {
 .sync-option-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.ta-report-section {
+  margin-top: 30px;
+}
+
+.ta-report-section .expand-btn {
+  width: 100%;
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  transition: all 0.3s;
+  margin-bottom: 15px;
+}
+
+.ta-report-section .expand-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 </style>
