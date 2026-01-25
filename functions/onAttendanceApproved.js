@@ -52,7 +52,7 @@ async function appendToExcel(record) {
 async function updateProjectMetrics(projectId) {
   try {
     // Get all approved time attendance records for this project
-    const taSnapshot = await db.collection('time_attendance')
+    const taSnapshot = await db.collection('timeAttendance')
       .where('projectId', '==', parseInt(projectId))
       .where('approvalStatus', '==', 'approved')
       .get();
@@ -152,7 +152,7 @@ async function updateProjectMetrics(projectId) {
  */
 exports.onAttendanceApproved = onDocumentUpdated(
   {
-    document: "time_attendance/{docId}",
+    document: "timeAttendance/{docId}",
     region: "asia-east2",
   },
   async (event) => {
@@ -173,7 +173,7 @@ exports.onAttendanceApproved = onDocumentUpdated(
       
       console.log(`✓ Processed newly approved TA record, project ${after.projectId} metrics updated`);
     }
-    // Case 2: Already approved record was edited (recalculate metrics and mark for Excel sync)
+    // Case 2: Already approved record was edited (recalculate metrics)
     else if (
       before.approvalStatus === "approved" &&
       after.approvalStatus === "approved"
@@ -187,12 +187,6 @@ exports.onAttendanceApproved = onDocumentUpdated(
         before.date !== after.date;
       
       if (dataChanged) {
-        // Mark for re-sync to Excel
-        await event.data.after.ref.update({
-          syncedToExcel: false,
-          lastEditedAt: new Date().toISOString()
-        });
-        
         // Update project metrics for both old and new project (in case projectId changed)
         if (before.projectId) {
           await updateProjectMetrics(before.projectId);
@@ -201,7 +195,7 @@ exports.onAttendanceApproved = onDocumentUpdated(
           await updateProjectMetrics(after.projectId);
         }
         
-        console.log(`✓ Approved TA record edited - marked for Excel sync, project ${after.projectId} metrics updated`);
+        console.log(`✓ Approved TA record edited - project ${after.projectId} metrics updated`);
       }
     }
   }
