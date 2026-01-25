@@ -58,9 +58,9 @@
               <span class="stat-label">Төлөв:</span>
               <span class="stat-value status">{{ project.status }}</span>
             </div>
-            <div class="stat-row">
+            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null">
               <span class="stat-label">Инженерийн урамшуулал:</span>
-              <span class="stat-value bounty">{{ formatNumber((project.engineerHand != null ? project.engineerHand : (project.WosHour ? project.WosHour * 7500 : 0))) }} ₮</span>
+              <span class="stat-value bounty">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Төлөвийн прогресс:</span>
@@ -69,14 +69,14 @@
                 <span class="progress-text">{{ project.progress }}%</span>
               </div>
             </div>
-            <div class="stat-row">
+            <div class="stat-row" v-if="project.HourPerformance != null">
               <span class="stat-label">Цагийн гүйцэтгэл:</span>
               <div class="progress-bar">
                 <div class="progress-fill" :style="{ 
-                  width: Math.min(100, Math.round((project.realHour / (project.plannedHour || 1)) * 100)) + '%', 
-                  backgroundColor: (project.realHour / (project.plannedHour || 1)) > 1 ? '#ef4444' : '#10b981' 
+                  width: Math.min(100, project.HourPerformance) + '%', 
+                  backgroundColor: getPerformanceColor(project.HourPerformance)
                 }"></div>
-                <span class="progress-text">{{ Math.round((project.realHour / (project.plannedHour || 1)) * 100) }}%</span>
+                <span class="progress-text" :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
               </div>
             </div>
           </div>
@@ -464,6 +464,12 @@ function getProgressColor(status) {
 function formatNumber(value) {
   if (!value) return '0';
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function getPerformanceColor(performance) {
+  if (performance < 100) return '#10b981'; // Green - better performance
+  if (performance === 100) return '#3b82f6'; // Blue - perfect
+  return '#ef4444'; // Red - worse performance
 }
 
 async function viewProjectDetails(project) {

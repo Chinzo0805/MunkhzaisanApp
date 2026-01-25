@@ -63,17 +63,6 @@
                 </div>
               </div>
               
-              <div v-if="project.performanceData" class="project-performance">
-                <div class="perf-item">
-                  <span class="perf-label">Цагийн гүйцэтгэл:</span>
-                  <span class="perf-value" :class="getPerformanceClass(project.performanceData.HourPerformance)">{{ project.performanceData.HourPerformance.toFixed(1) }}%</span>
-                </div>
-                <div v-if="project.performanceData.AdjustedEngineerBounty > 0" class="bounty-item">
-                  <span class="bounty-label">Инженерийн урамшуулал:</span>
-                  <span class="bounty-value">{{ project.performanceData.AdjustedEngineerBounty.toLocaleString() }} ₮</span>
-                </div>
-              </div>
-              
               <div class="role-breakdown">
                 <div v-for="roleData in project.roles" :key="roleData.role" class="role-item">
                   <div class="role-info">
@@ -109,12 +98,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
-import { useProjectsStore } from '../stores/projects';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 
 const authStore = useAuthStore();
 const employeesStore = useEmployeesStore();
-const projectsStore = useProjectsStore();
 const db = getFirestore();
 
 const currentEmployeeType = ref(null);
@@ -297,25 +284,15 @@ async function loadSalaryData() {
       }
     });
     
-    // Fetch project data from Firestore to get performance metrics
-    await projectsStore.fetchProjects();
-    
     // Convert project roles Map to array and calculate project salaries
     const projectBreakdown = Array.from(projectMap.values()).map(proj => {
       const roles = Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours);
       const totalSalary = roles.reduce((sum, r) => sum + r.salary, 0);
       
-      // Find project data from store to get HourPerformance and AdjustedEngineerBounty
-      const projectData = projectsStore.projects.find(p => p.id == proj.projectId);
-      
       return {
         ...proj,
         roles,
-        totalSalary,
-        performanceData: projectData ? {
-          HourPerformance: projectData.HourPerformance || 0,
-          AdjustedEngineerBounty: projectData.AdjustedEngineerBounty || 0
-        } : null
+        totalSalary
       };
     }).sort((a, b) => b.totalHours - a.totalHours);
     
@@ -344,12 +321,6 @@ async function loadSalaryData() {
   } finally {
     loading.value = false;
   }
-}
-
-function getPerformanceClass(performance) {
-  if (performance < 100) return 'perf-good';
-  if (performance === 100) return 'perf-perfect';
-  return 'perf-bad';
 }
 
 onMounted(() => {
@@ -589,60 +560,6 @@ onMounted(() => {
   font-size: 16px;
   color: #86efac;
   font-weight: 700;
-}
-
-.project-performance {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 13px;
-}
-
-.perf-item {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.perf-label {
-  opacity: 0.9;
-}
-
-.perf-value {
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.perf-value.perf-good {
-  color: #86efac;
-}
-
-.perf-value.perf-perfect {
-  color: #93c5fd;
-}
-
-.perf-value.perf-bad {
-  color: #fca5a5;
-}
-
-.bounty-item {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.bounty-label {
-  opacity: 0.9;
-}
-
-.bounty-value {
-  font-weight: 700;
-  font-size: 14px;
-  color: #86efac;
 }
 
 .role-breakdown {
