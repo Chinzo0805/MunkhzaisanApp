@@ -271,7 +271,7 @@ import { useTimeAttendanceRequestsStore } from '../stores/timeAttendanceRequests
 import { useTimeAttendanceStore } from '../stores/timeAttendance';
 import { useAuthStore } from '../stores/auth';
 import { useProjectsStore } from '../stores/projects';
-import { approveTimeAttendanceRequest, manageTimeAttendanceRequest, syncTimeAttendanceToExcel, syncFromExcelToTimeAttendance } from '../services/api';
+import { approveTimeAttendanceRequest, manageTimeAttendanceRequest, syncTimeAttendanceToExcel, syncFromExcelToTimeAttendance, updateProjectRealHours } from '../services/api';
 import { db } from '../config/firebase';
 import { doc, updateDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 
@@ -702,7 +702,18 @@ async function saveApprovedEdit(request) {
       const correctDocRef = doc(db, 'timeAttendance', actualDocId);
       await updateDoc(correctDocRef, updateData);
       
-      showSyncMessage('Өгөгдөл амжилттай хадгалагдлаа. Excel-рүү синхрон хийхийг санаарай.', 'success');
+      // Manually trigger project metrics recalculation
+      // (The trigger should do this, but we ensure it happens)
+      try {
+        await updateProjectRealHours();
+        // Refresh projects to show updated calculations
+        await projectsStore.fetchProjects();
+        showSyncMessage('Өгөгдөл амжилттай хадгалагдлаа. Төслийн тооцоо шинэчлэгдлээ.', 'success');
+      } catch (calcError) {
+        console.error('Project calculation error:', calcError);
+        showSyncMessage('Өгөгдөл хадгалагдсан боловч төслийн тооцоолол шинэчлэгдсэнгүй. Дахин оролдоно уу.', 'warning');
+      }
+      
       await refreshRequests();
     } catch (docError) {
       console.error('Document update error:', docError);

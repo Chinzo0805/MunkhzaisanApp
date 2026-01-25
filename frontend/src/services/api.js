@@ -203,4 +203,14 @@ export async function syncFromExcelToTimeAttendance(accessToken) {
   }
 }
 
+export async function updateProjectRealHours() {
+  try {
+    const response = await api.get('/updateProjectRealHours');
+    return response.data;
+  } catch (error) {
+    console.error('Error updating project real hours:', error);
+    throw error;
+  }
+}
+
 export default api;
