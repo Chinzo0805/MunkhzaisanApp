@@ -5,6 +5,7 @@ import Register from '../views/Register.vue';
 import SupervisorRegister from '../views/SupervisorRegister.vue';
 import Dashboard from '../views/Dashboard.vue';
 import TimeAttendanceRequestForm from '../components/TimeAttendanceRequestForm.vue';
+import SalaryReport from '../views/SalaryReport.vue';
 
 const routes = [
   {
@@ -38,6 +39,12 @@ const routes = [
     path: '/time-attendance-request',
     name: 'TimeAttendanceRequest',
     component: TimeAttendanceRequestForm,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/salary-report',
+    name: 'SalaryReport',
+    component: SalaryReport,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

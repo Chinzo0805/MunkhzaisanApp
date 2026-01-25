@@ -23,12 +23,14 @@
           <button @click="$router.push('/time-attendance-request')" class="btn-action">
             📋 Ажиллах цагийн хүсэлт
           </button>
+          <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
+            💰 Цалингийн мэдээлэл
+          </button>
         </div>
       </div>
 
       <!-- Employee sections (for non-supervisors) -->
       <div v-if="!authStore.userData?.isSupervisor">
-        <EmployeeSalaryReport />
         <EmployeeTimeAttendanceHistory />
       </div>
 
@@ -129,7 +131,6 @@ import CustomerManagement from '../components/CustomerManagement.vue';
 import ProjectManagement from '../components/ProjectManagement.vue';
 import TimeAttendanceApproval from '../components/TimeAttendanceApproval.vue';
 import EmployeeTimeAttendanceHistory from '../components/EmployeeTimeAttendanceHistory.vue';
-import EmployeeSalaryReport from '../components/EmployeeSalaryReport.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -437,6 +438,9 @@ function handleSaved(event) {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .btn-action {
@@ -452,9 +456,18 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
 }
 
+.btn-action.salary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
 .btn-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.btn-action.salary:hover {
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
 }
 
 .time-attendance-section {
