@@ -38,7 +38,7 @@ exports.fixMissingEmployeeID = functions.region('asia-east2').runWith({
     employeesSnapshot.forEach(doc => {
       const emp = doc.data();
       const key = `${emp.FirstName}-${emp.LastName}`.toLowerCase();
-      employeeMap.set(key, emp.NumID || emp.Id);
+      employeeMap.set(key, emp.Id);
     });
     
     console.log(`Loaded ${employeeMap.size} employees for lookup`);
