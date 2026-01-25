@@ -32,19 +32,26 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
     // Get all time attendance records
     const taSnapshot = await db.collection('timeAttendance').get();
     
-    // Group by ProjectID and sum WorkingHour
+    // Group by ProjectID and sum WorkingHour and OvertimeHour
     const projectHours = {};
     
     taSnapshot.forEach(doc => {
       const record = doc.data();
       const projectId = record.ProjectID;
       const workingHour = parseFloat(record.WorkingHour) || 0;
+      const overtimeHour = parseFloat(record.overtimeHour) || 0;
       
       if (projectId) {
         if (!projectHours[projectId]) {
-          projectHours[projectId] = 0;
+          projectHours[projectId] = {
+            totalHours: 0,
+            workingHours: 0,
+            overtimeHours: 0
+          };
         }
-        projectHours[projectId] += workingHour;
+        projectHours[projectId].workingHours += workingHour;
+        projectHours[projectId].overtimeHours += overtimeHour;
+        projectHours[projectId].totalHours += workingHour + overtimeHour;
       }
     });
     
@@ -54,7 +61,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
     const updates = [];
     const errors = [];
     
-    for (const [projectId, totalHours] of Object.entries(projectHours)) {
+    for (const [projectId, hours] of Object.entries(projectHours)) {
       try {
         // Find project by id field (matches Excel ProjectID)
         // Convert projectId to number for comparison since Excel IDs are numeric
@@ -67,11 +74,18 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
         if (!projectQuery.empty) {
           const projectDoc = projectQuery.docs[0];
           await projectDoc.ref.update({
-            RealHour: totalHours,
+            RealHour: hours.totalHours,
+            WorkingHours: hours.workingHours,
+            OvertimeHours: hours.overtimeHours,
             lastRealHourUpdate: new Date().toISOString()
           });
-          updates.push({ projectId, realHour: totalHours });
-          console.log(`✓ Updated ${projectId}: Real Hour = ${totalHours}`);
+          updates.push({ 
+            projectId, 
+            totalHours: hours.totalHours,
+            workingHours: hours.workingHours,
+            overtimeHours: hours.overtimeHours
+          });
+          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Working=${hours.workingHours}, Overtime=${hours.overtimeHours}`);
         } else {
           errors.push(`Project ${projectId} not found in projects collection`);
         }
@@ -89,6 +103,8 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
       if (!projectHours[projectId]) {
         await doc.ref.update({
           RealHour: 0,
+          WorkingHours: 0,
+          OvertimeHours: 0,
           lastRealHourUpdate: new Date().toISOString()
         });
         zeroUpdates++;

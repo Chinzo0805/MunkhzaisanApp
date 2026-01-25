@@ -330,17 +330,24 @@ exports.syncTimeAttendanceToExcel = functions.region('asia-east2').https.onReque
         const record = doc.data();
         const projectId = record.ProjectID;
         const workingHour = parseFloat(record.WorkingHour) || 0;
+        const overtimeHour = parseFloat(record.overtimeHour) || 0;
         
         if (projectId) {
           if (!projectHours[projectId]) {
-            projectHours[projectId] = 0;
+            projectHours[projectId] = {
+              totalHours: 0,
+              workingHours: 0,
+              overtimeHours: 0
+            };
           }
-          projectHours[projectId] += workingHour;
+          projectHours[projectId].workingHours += workingHour;
+          projectHours[projectId].overtimeHours += overtimeHour;
+          projectHours[projectId].totalHours += workingHour + overtimeHour;
         }
       });
       
       // Update each project's Real Hour using id field
-      for (const [projectId, totalHours] of Object.entries(projectHours)) {
+      for (const [projectId, hours] of Object.entries(projectHours)) {
         const projectIdNum = parseInt(projectId, 10);
         const projectQuery = await db.collection('projects')
           .where('id', '==', projectIdNum)
@@ -349,7 +356,9 @@ exports.syncTimeAttendanceToExcel = functions.region('asia-east2').https.onReque
         
         if (!projectQuery.empty) {
           await projectQuery.docs[0].ref.update({
-            RealHour: totalHours,
+            RealHour: hours.totalHours,
+            WorkingHours: hours.workingHours,
+            OvertimeHours: hours.overtimeHours,
             lastRealHourUpdate: new Date().toISOString()
           });
         }
@@ -362,6 +371,8 @@ exports.syncTimeAttendanceToExcel = functions.region('asia-east2').https.onReque
         if (projectID && !projectHours[projectID.toString()]) {
           await doc.ref.update({
             RealHour: 0,
+            WorkingHours: 0,
+            OvertimeHours: 0,
             lastRealHourUpdate: new Date().toISOString()
           });
         }
