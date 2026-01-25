@@ -67,7 +67,7 @@
         <label>Төсөл:</label>
         <select v-model="filters.project" class="filter-input">
           <option value="">Бүгд</option>
-          <option v-for="proj in uniqueProjects" :key="proj" :value="proj">{{ proj }}</option>
+          <option v-for="proj in uniqueProjects" :key="proj.id" :value="proj.id">{{ proj.name }}</option>
         </select>
       </div>
       <div class="filter-group">
@@ -362,10 +362,20 @@ const uniqueProjects = computed(() => {
     sourceRecords = notSyncedRecords.value;
   }
   
-  const projects = sourceRecords
-    .map(r => r.ProjectName)
-    .filter(Boolean);
-  return [...new Set(projects)].sort();
+  // Group by ProjectID and get unique project IDs with their names
+  const projectMap = new Map();
+  sourceRecords.forEach(r => {
+    if (r.ProjectID && r.ProjectName) {
+      if (!projectMap.has(r.ProjectID)) {
+        projectMap.set(r.ProjectID, r.ProjectName.split(' - ')[0]); // Get project name without location
+      }
+    }
+  });
+  
+  // Convert to array and sort
+  return Array.from(projectMap.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 });
 
 // Filtered and sorted requests for all tabs
@@ -396,9 +406,9 @@ const filteredRequests = computed(() => {
     results = results.filter(r => (r.EmployeeFirstName || r.EmployeeLastName || r.FirstName || r.LastName) === filters.value.employee);
   }
   
-  // Apply project filter
+  // Apply project filter (by ProjectID instead of ProjectName)
   if (filters.value.project) {
-    results = results.filter(r => r.ProjectName === filters.value.project);
+    results = results.filter(r => r.ProjectID === filters.value.project);
   }
   
   // Apply status filter (for approved tab)
