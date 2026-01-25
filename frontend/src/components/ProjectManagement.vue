@@ -92,6 +92,10 @@
             <span class="team-bounty-label">Багийн урамшуулал:</span>
             <span class="team-bounty-value">{{ formatNumber(project.TeamBounty) }}₮</span>
           </div>
+          <div class="non-engineer-bounty" v-if="project.NonEngineerBounty && project.NonEngineerBounty > 0">
+            <span class="non-engineer-bounty-label">Инженер бус урамшуулал:</span>
+            <span class="non-engineer-bounty-value">{{ formatNumber(project.NonEngineerBounty) }}₮</span>
+          </div>
           <div class="profit-display" :class="{ 'profit-positive': (project.TotalProfit || 0) > 0, 'profit-negative': (project.TotalProfit || 0) < 0 }">
             <span class="profit-label">Total Profit:</span>
             <span class="profit-value">{{ formatNumber(project.TotalProfit || 0) }}₮</span>
@@ -257,6 +261,14 @@
               <label>Non-Engineer Work Hour</label>
               <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #e9d5ff;" />
               <small style="color: #6b7280;">Hours by Non-Engineers</small>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Инженер бус урамшуулал</label>
+              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #fde68a;" />
+              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
             </div>
           </div>
           
@@ -586,9 +598,15 @@ function editItem(project) {
     referenceIdfromCustomer: project.referenceIdfromCustomer || '',
     Status: project.Status || 'Төлөвлсөн',
     WosHour: project.WosHour || 0,
-    EngineerHand: project.EngineerHand || ((project.WosHour || 0) * 7500),
+    EngineerHand: project.EngineerHand || 0,
+    TeamBounty: project.TeamBounty || 0,
     PlannedHour: project.PlannedHour || 0,
     RealHour: project.RealHour || 0,
+    EngineerWorkHour: project.EngineerWorkHour || 0,
+    NonEngineerWorkHour: project.NonEngineerWorkHour || 0,
+    NonEngineerBounty: project.NonEngineerBounty || 0,
+    HourPerformance: project.HourPerformance || 0,
+    AdjustedEngineerBounty: project.AdjustedEngineerBounty || 0,
     IncomeHR: project.IncomeHR || 0,
     ExpenceHR: project.ExpenceHR || 0,
     IncomeCar: project.IncomeCar || 0,
@@ -985,6 +1003,28 @@ async function handleSave() {
 }
 
 .team-bounty-value {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.non-engineer-bounty {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: white;
+}
+
+.non-engineer-bounty-label {
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.non-engineer-bounty-value {
   font-weight: 700;
   font-size: 15px;
 }

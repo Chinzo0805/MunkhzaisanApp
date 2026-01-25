@@ -110,6 +110,10 @@ function calculateProjectMetrics(projectData) {
   // Calculate TeamBounty
   data.TeamBounty = wosHour * 22500;
   
+  // Calculate NonEngineerBounty
+  const nonEngineerWorkHour = parseFloat(data.NonEngineerWorkHour) || 0;
+  data.NonEngineerBounty = nonEngineerWorkHour * 5000;
+  
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
     data.HourPerformance = (realHour / plannedHour) * 100;

@@ -106,6 +106,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           // Calculate EngineerHand and TeamBounty
           const engineerHand = wosHour * 12500;
           const teamBounty = wosHour * 22500;
+          const nonEngineerBounty = hours.nonEngineerHours * 5000;
           
           let hourPerformance = 0;
           let adjustedEngineerBounty = 0;
@@ -127,6 +128,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             NonEngineerWorkHour: hours.nonEngineerHours,
             EngineerHand: engineerHand,
             TeamBounty: teamBounty,
+            NonEngineerBounty: nonEngineerBounty,
             HourPerformance: hourPerformance,
             AdjustedEngineerBounty: adjustedEngineerBounty,
             lastRealHourUpdate: new Date().toISOString()
