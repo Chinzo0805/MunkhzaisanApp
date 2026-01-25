@@ -206,7 +206,7 @@
           <h5 style="grid-column: 1 / -1; margin-top: 20px; color: #f59e0b; border-bottom: 2px solid #f59e0b; padding-bottom: 5px;">Financial Information</h5>
           
           <!-- HR Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #3b82f6; font-weight: 600;">HR Information</h6>
+          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #3b82f6; font-weight: 600; border-bottom: 1px solid #3b82f6; padding-bottom: 3px;">HR Information</h6>
           
           <div class="form-row">
             <div class="form-group">
@@ -224,39 +224,57 @@
           <div class="form-row">
             <div class="form-group">
               <label>Инженерийн урамшуулал</label>
-              <input :value="formatNumber(form.EngineerHand)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">WosHour × 7,500 MNT</small>
+              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #fef3c7;" />
+              <small style="color: #6b7280;">WosHour × 12,500 MNT</small>
             </div>
             <div class="form-group">
-              <label>Planned Hour (calculated)</label>
-              <input :value="formatNumber(form.PlannedHour)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">WosHour × 3</small>
+              <label>Багийн урамшуулал</label>
+              <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #e9d5ff;" />
+              <small style="color: #6b7280;">WosHour × 22,500 MNT</small>
             </div>
           </div>
           
           <div class="form-row">
             <div class="form-group">
+              <label>Planned Hour (calculated)</label>
+              <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
+              <small style="color: #6b7280;">WosHour × 3</small>
+            </div>
+            <div class="form-group">
               <label>Real Hour</label>
-              <input :value="formatNumber(form.RealHour)" type="text" readonly style="background-color: #f5f5f5;" />
+              <input :value="formatNumber(form.RealHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">Sum from TimeAttendance</small>
             </div>
-            <div class="form-group" v-if="form.PlannedHour > 0">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Engineer Work Hour</label>
+              <input :value="formatNumber(form.EngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
+              <small style="color: #6b7280;">Hours by Engineers</small>
+            </div>
+            <div class="form-group">
+              <label>Non-Engineer Work Hour</label>
+              <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #e9d5ff;" />
+              <small style="color: #6b7280;">Hours by Non-Engineers</small>
+            </div>
+          </div>
+          
+          <div class="form-row" v-if="form.PlannedHour > 0">
+            <div class="form-group">
               <label>Цагийн гүйцэтгэл</label>
               <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">RealHour / PlannedHour × 100</small>
             </div>
-          </div>
-          
-          <div class="form-row" v-if="form.PlannedHour > 0 && form.EngineerHand > 0">
-            <div class="form-group">
+            <div class="form-group" v-if="form.EngineerHand > 0">
               <label>Гарт олгох инженерийн урамшуулал</label>
-              <input :value="formatNumber(calculateAdjustedBounty(form.RealHour, form.PlannedHour, form.EngineerHand))" type="text" readonly style="background-color: #f5f5f5; font-weight: 600; color: #10b981;" />
+              <input :value="formatNumber(form.AdjustedEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
               <small style="color: #6b7280;">100%= EngineerHand, <100%= higher, >100%= lower</small>
             </div>
           </div>
           
           <!-- Income Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #10b981; font-weight: 600;">Income Information</h6>
+          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #10b981; font-weight: 600; border-bottom: 1px solid #10b981; padding-bottom: 3px;">Income Information</h6>
           
           <div class="form-row">
             <div class="form-group">
@@ -278,7 +296,7 @@
           </div>
           
           <!-- Expense Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #ef4444; font-weight: 600;">Expense Information</h6>
+          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #ef4444; font-weight: 600; border-bottom: 1px solid #ef4444; padding-bottom: 3px;">Expense Information</h6>
           
           <div class="form-row">
             <div class="form-group">
@@ -303,7 +321,7 @@
           </div>
           
           <!-- Profit Summary Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #8b5cf6; font-weight: 600;">Profit Summary</h6>
+          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #8b5cf6; font-weight: 600; border-bottom: 1px solid #8b5cf6; padding-bottom: 3px;">Profit Summary</h6>
           
           <div class="form-row">
             <div class="form-group">
