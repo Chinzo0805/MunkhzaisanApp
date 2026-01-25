@@ -2,6 +2,10 @@
   <div class="salary-report-section">
     <h3>💰 Цалингийн мэдээлэл</h3>
     
+    <div class="warning-banner">
+      ⚠️ Хөгжүүлэлт бүрэн дуусаагүй байгаа учир алдаатай мэдээлэл байж болно
+    </div>
+    
     <div class="period-selector">
       <label>Хугацаа сонгох:</label>
       <div class="period-buttons">
@@ -341,6 +345,18 @@ onMounted(() => {
   margin: 0 0 20px 0;
   color: #1f2937;
   font-size: 20px;
+}
+
+.warning-banner {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  color: #92400e;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
 }
 
 .period-selector {
