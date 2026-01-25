@@ -567,7 +567,9 @@ async function loadProjectSummary() {
           plannedHour: Math.round(plannedHour * 10) / 10,
           realHour: Math.round(realHour * 10) / 10,
           engineerHand: Math.round(engineerHand),
-          progress
+          progress,
+          HourPerformance: projectData.HourPerformance,
+          AdjustedEngineerBounty: projectData.AdjustedEngineerBounty
         });
       }
     });
