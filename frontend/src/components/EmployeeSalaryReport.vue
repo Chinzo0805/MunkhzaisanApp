@@ -136,7 +136,13 @@ function selectPeriod(period) {
 }
 
 async function loadSalaryData() {
-  if (!selectedMonth.value || !authStore.userData?.employeeId) {
+  const employeeLastName = authStore.userData?.employeeLastName;
+  
+  if (!selectedMonth.value || !employeeLastName) {
+    console.log('Missing required data:', {
+      month: selectedMonth.value,
+      employeeLastName
+    });
     return;
   }
 
@@ -157,23 +163,38 @@ async function loadSalaryData() {
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
     const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
     
-    // Query timeAttendance collection for this employee
+    console.log('Querying timeAttendance:', {
+      employeeLastName,
+      startDate,
+      endDate
+    });
+    
+    // Query timeAttendance collection for this employee by EmployeeLastName
     const q = query(
       collection(db, 'timeAttendance'),
-      where('EmployeeID', '==', authStore.userData.employeeId),
-      where('Day', '>=', startDate),
-      where('Day', '<=', endDate)
+      where('EmployeeLastName', '==', employeeLastName)
     );
     
     const snapshot = await getDocs(q);
+    console.log('Total records found:', snapshot.size);
+    
+    // Filter by date range in JavaScript
+    const recordsInRange = snapshot.docs
+      .map(doc => doc.data())
+      .filter(record => {
+        const day = record.Day || record.Date;
+        return day >= startDate && day <= endDate;
+      });
+    
+    console.log('Records in date range:', recordsInRange.length);
+    console.log('Records in date range:', recordsInRange.length);
     
     let workingHours = 0;
     let overtimeHours = 0;
     const projectMap = new Map();
     const uniqueDays = new Set();
     
-    snapshot.forEach(doc => {
-      const record = doc.data();
+    recordsInRange.forEach(record => {
       const working = parseFloat(record.WorkingHour) || 0;
       const overtime = parseFloat(record.overtimeHour) || 0;
       
@@ -225,6 +246,14 @@ async function loadSalaryData() {
       ...proj,
       roles: Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours)
     })).sort((a, b) => b.totalHours - a.totalHours);
+    
+    console.log('Calculated salary data:', {
+      workingHours,
+      overtimeHours,
+      totalHours: workingHours + overtimeHours,
+      daysWorked: uniqueDays.size,
+      projectCount: projectBreakdown.length
+    });
     
     salaryData.value = {
       workingHours,
