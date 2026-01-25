@@ -362,21 +362,32 @@ const uniqueProjects = computed(() => {
     sourceRecords = notSyncedRecords.value;
   }
   
-  // Group by ProjectID and get unique project IDs with their display names
-  const projectMap = new Map();
+  // Group by ProjectID and collect all unique ProjectID values
+  const projectIds = new Set();
   sourceRecords.forEach(r => {
-    if (r.ProjectID && r.SiteLocation) {
-      const displayName = `${r.ProjectID} - ${r.SiteLocation}`;
-      if (!projectMap.has(r.ProjectID)) {
-        projectMap.set(r.ProjectID, displayName);
-      }
+    if (r.ProjectID) {
+      projectIds.add(r.ProjectID);
     }
   });
   
-  // Convert to array and sort
-  return Array.from(projectMap.entries())
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Match with projects store to get display names
+  const projects = [];
+  projectIds.forEach(id => {
+    const project = projectsStore.projects.find(p => p.id === id);
+    if (project) {
+      projects.push({
+        id: id,
+        name: `${id} - ${project.siteLocation || ''}`
+      });
+    } else {
+      projects.push({
+        id: id,
+        name: id
+      });
+    }
+  });
+  
+  return projects.sort((a, b) => a.name.localeCompare(b.name));
 });
 
 // Filtered and sorted requests for all tabs
