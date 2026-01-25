@@ -177,6 +177,7 @@ export const useAuthStore = defineStore('auth', () => {
       email: user.value.email || msalAccount.value?.username,
       displayName: user.value.displayName || msalAccount.value?.name,
       photoURL: user.value.photoURL,
+      employeeId: employeeData.Id, // Link to employee.Id
       employeeFirstName: employeeData.FirstName,
       employeeLastName: employeeData.EmployeeLastName || employeeData.LastName,
       position: employeeData.Position,

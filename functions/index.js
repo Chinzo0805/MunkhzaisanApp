@@ -80,6 +80,9 @@ exports.fixTimeAttendanceNames = require("./fixTimeAttendanceNames").fixTimeAtte
 // Fix function to add missing EmployeeID to timeAttendance records
 exports.fixMissingEmployeeID = require("./fixMissingEmployeeID").fixMissingEmployeeID;
 
+// Fix function to add employeeId to users collection
+exports.fixUserEmployeeIds = require("./fixUserEmployeeIds").fixUserEmployeeIds;
+
 // Fix function for Баатархүү records (EmployeeID 40)
 exports.fixBaatarkhuu = require("./fixBaatarkhuu").fixBaatarkhuu;
 
