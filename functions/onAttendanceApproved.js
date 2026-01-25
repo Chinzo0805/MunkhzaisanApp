@@ -146,7 +146,9 @@ async function updateProjectMetrics(projectId) {
 }
 
 /**
- * Cloud Function: Appends approved attendance records to Excel in OneDrive
+ * Cloud Function: Handles approved attendance records
+ * - Appends newly approved records to Excel
+ * - Updates project metrics when approved records are edited
  */
 exports.onAttendanceApproved = onDocumentUpdated(
   {
@@ -156,6 +158,8 @@ exports.onAttendanceApproved = onDocumentUpdated(
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
+    
+    // Case 1: Record just got approved (newly approved)
     if (
       before.approvalStatus !== "approved" &&
       after.approvalStatus === "approved"
@@ -165,6 +169,39 @@ exports.onAttendanceApproved = onDocumentUpdated(
       // Update project metrics if projectId exists
       if (after.projectId) {
         await updateProjectMetrics(after.projectId);
+      }
+      
+      console.log(`✓ Processed newly approved TA record, project ${after.projectId} metrics updated`);
+    }
+    // Case 2: Already approved record was edited (recalculate metrics and mark for Excel sync)
+    else if (
+      before.approvalStatus === "approved" &&
+      after.approvalStatus === "approved"
+    ) {
+      // Check if any data actually changed (ignore metadata changes)
+      const dataChanged = 
+        before.workingHour !== after.workingHour ||
+        before.overtimeHour !== after.overtimeHour ||
+        before.projectId !== after.projectId ||
+        before.employeeId !== after.employeeId ||
+        before.date !== after.date;
+      
+      if (dataChanged) {
+        // Mark for re-sync to Excel
+        await event.data.after.ref.update({
+          syncedToExcel: false,
+          lastEditedAt: new Date().toISOString()
+        });
+        
+        // Update project metrics for both old and new project (in case projectId changed)
+        if (before.projectId) {
+          await updateProjectMetrics(before.projectId);
+        }
+        if (after.projectId && after.projectId !== before.projectId) {
+          await updateProjectMetrics(after.projectId);
+        }
+        
+        console.log(`✓ Approved TA record edited - marked for Excel sync, project ${after.projectId} metrics updated`);
       }
     }
   }
