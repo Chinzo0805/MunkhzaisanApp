@@ -40,7 +40,11 @@ exports.migrateProjectPerformance = functions.region('asia-east2').https.onReque
       
       const realHour = parseFloat(projectData.RealHour) || 0;
       const plannedHour = parseFloat(projectData.PlannedHour) || parseFloat(projectData['Planned Hour']) || 0;
-      const engineerHand = parseFloat(projectData.EngineerHand) || 0;
+      const wosHour = parseFloat(projectData.WosHour) || 0;
+      
+      // Calculate EngineerHand and TeamBounty (updated formulas)
+      const engineerHand = wosHour * 12500;
+      const teamBounty = wosHour * 22500;
       
       // Calculate HourPerformance
       let hourPerformance = 0;
@@ -57,6 +61,8 @@ exports.migrateProjectPerformance = functions.region('asia-east2').https.onReque
       
       // Update the document
       await doc.ref.update({
+        EngineerHand: engineerHand,
+        TeamBounty: teamBounty,
         HourPerformance: hourPerformance,
         AdjustedEngineerBounty: adjustedEngineerBounty,
         migratedAt: new Date().toISOString()
@@ -67,12 +73,14 @@ exports.migrateProjectPerformance = functions.region('asia-east2').https.onReque
         projectId: projectData.id,
         plannedHour,
         realHour,
-        engineerHand,
+        wosHour,
+        engineerHand: engineerHand.toFixed(2),
+        teamBounty: teamBounty.toFixed(2),
         hourPerformance: hourPerformance.toFixed(2),
         adjustedEngineerBounty: adjustedEngineerBounty.toFixed(2)
       });
       
-      console.log(`Updated project ${projectData.id}: Performance=${hourPerformance.toFixed(2)}%, Bounty=${adjustedEngineerBounty.toFixed(2)}`);
+      console.log(`Updated project ${projectData.id}: EngineerHand=${engineerHand.toFixed(2)}, TeamBounty=${teamBounty.toFixed(2)}, Performance=${hourPerformance.toFixed(2)}%, AdjBounty=${adjustedEngineerBounty.toFixed(2)}`);
     }
     
     res.status(200).send({

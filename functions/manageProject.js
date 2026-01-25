@@ -102,7 +102,13 @@ function calculateProjectMetrics(projectData) {
   
   const realHour = parseFloat(data.RealHour) || 0;
   const plannedHour = parseFloat(data.PlannedHour) || 0;
-  const engineerHand = parseFloat(data.EngineerHand) || 0;
+  const wosHour = parseFloat(data.WosHour) || 0;
+  
+  // Calculate EngineerHand (changed from 7500 to 12500)
+  data.EngineerHand = wosHour * 12500;
+  
+  // Calculate TeamBounty
+  data.TeamBounty = wosHour * 22500;
   
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
@@ -116,9 +122,9 @@ function calculateProjectMetrics(projectData) {
   // At 100% performance: 200 - 100 = 100% bounty
   // At 60% performance: 200 - 60 = 140% bounty
   // At 120% performance: 200 - 120 = 80% bounty
-  if (plannedHour > 0 && engineerHand > 0) {
+  if (plannedHour > 0 && data.EngineerHand > 0) {
     const bountyPercentage = 200 - data.HourPerformance;
-    data.AdjustedEngineerBounty = (engineerHand * bountyPercentage) / 100;
+    data.AdjustedEngineerBounty = (data.EngineerHand * bountyPercentage) / 100;
   } else {
     data.AdjustedEngineerBounty = 0;
   }

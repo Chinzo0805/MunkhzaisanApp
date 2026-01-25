@@ -32,6 +32,16 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
     // Get all time attendance records
     const taSnapshot = await db.collection('timeAttendance').get();
     
+    // Get all employees to map positions
+    const employeesSnapshot = await db.collection('employees').get();
+    const employeePositions = {};
+    employeesSnapshot.forEach(doc => {
+      const emp = doc.data();
+      if (emp.FirstName) {
+        employeePositions[emp.FirstName] = emp.Position;
+      }
+    });
+    
     // Group by ProjectID and sum WorkingHour and OvertimeHour
     const projectHours = {};
     
@@ -40,18 +50,31 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
       const projectId = record.ProjectID;
       const workingHour = parseFloat(record.WorkingHour) || 0;
       const overtimeHour = parseFloat(record.overtimeHour) || 0;
+      const employeeName = record.EmployeeFirstName;
+      const position = employeePositions[employeeName] || '';
       
       if (projectId) {
         if (!projectHours[projectId]) {
           projectHours[projectId] = {
             totalHours: 0,
             workingHours: 0,
-            overtimeHours: 0
+            overtimeHours: 0,
+            engineerHours: 0,
+            nonEngineerHours: 0
           };
         }
+        
+        const totalHour = workingHour + overtimeHour;
         projectHours[projectId].workingHours += workingHour;
         projectHours[projectId].overtimeHours += overtimeHour;
-        projectHours[projectId].totalHours += workingHour + overtimeHour;
+        projectHours[projectId].totalHours += totalHour;
+        
+        // Split by engineer vs non-engineer
+        if (position === 'Инженер') {
+          projectHours[projectId].engineerHours += totalHour;
+        } else {
+          projectHours[projectId].nonEngineerHours += totalHour;
+        }
       }
     });
     
@@ -78,7 +101,11 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           // Calculate HourPerformance and AdjustedEngineerBounty
           const realHour = hours.totalHours;
           const plannedHour = parseFloat(projectData.PlannedHour) || 0;
-          const engineerHand = parseFloat(projectData.EngineerHand) || 0;
+          const wosHour = parseFloat(projectData.WosHour) || 0;
+          
+          // Calculate EngineerHand and TeamBounty
+          const engineerHand = wosHour * 12500;
+          const teamBounty = wosHour * 22500;
           
           let hourPerformance = 0;
           let adjustedEngineerBounty = 0;
@@ -96,6 +123,10 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             RealHour: hours.totalHours,
             WorkingHours: hours.workingHours,
             OvertimeHours: hours.overtimeHours,
+            EngineerWorkHour: hours.engineerHours,
+            NonEngineerWorkHour: hours.nonEngineerHours,
+            EngineerHand: engineerHand,
+            TeamBounty: teamBounty,
             HourPerformance: hourPerformance,
             AdjustedEngineerBounty: adjustedEngineerBounty,
             lastRealHourUpdate: new Date().toISOString()
@@ -104,9 +135,11 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             projectId, 
             totalHours: hours.totalHours,
             workingHours: hours.workingHours,
-            overtimeHours: hours.overtimeHours
+            overtimeHours: hours.overtimeHours,
+            engineerHours: hours.engineerHours,
+            nonEngineerHours: hours.nonEngineerHours
           });
-          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Working=${hours.workingHours}, Overtime=${hours.overtimeHours}, Perf=${hourPerformance.toFixed(2)}%`);
+          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Eng=${hours.engineerHours}, NonEng=${hours.nonEngineerHours}, Perf=${hourPerformance.toFixed(2)}%`);
         } else {
           errors.push(`Project ${projectId} not found in projects collection`);
         }

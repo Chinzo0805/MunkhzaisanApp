@@ -61,6 +61,14 @@
               <span class="stat-label">Real:</span>
               <span class="stat-value real">{{ formatNumber(project.RealHour) }}ц</span>
             </div>
+            <div class="stat-item" v-if="project.EngineerWorkHour > 0">
+              <span class="stat-label">Engineer:</span>
+              <span class="stat-value engineer">{{ formatNumber(project.EngineerWorkHour) }}ц</span>
+            </div>
+            <div class="stat-item" v-if="project.NonEngineerWorkHour > 0">
+              <span class="stat-label">Non-Engineer:</span>
+              <span class="stat-value non-engineer">{{ formatNumber(project.NonEngineerWorkHour) }}ц</span>
+            </div>
           </div>
           <div class="progress-section">
             <div class="progress-bar">
@@ -73,8 +81,16 @@
             <span class="perf-value" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ formatNumber(calculateTimePerformance(project.RealHour, project.PlannedHour)) }}%</span>
           </div>
           <div class="engineer-bounty" v-if="project.PlannedHour > 0 && project.EngineerHand > 0">
+            <span class="bounty-label">Инженерийн урамшуулал:</span>
+            <span class="bounty-value-base">{{ formatNumber(project.EngineerHand) }}₮</span>
+          </div>
+          <div class="engineer-bounty" v-if="project.PlannedHour > 0 && project.AdjustedEngineerBounty > 0">
             <span class="bounty-label">Гарт олгох инженерийн урамшуулал:</span>
-            <span class="bounty-value">{{ formatNumber(calculateAdjustedBounty(project.RealHour, project.PlannedHour, project.EngineerHand)) }}₮</span>
+            <span class="bounty-value">{{ formatNumber(project.AdjustedEngineerBounty) }}₮</span>
+          </div>
+          <div class="team-bounty" v-if="project.TeamBounty > 0">
+            <span class="team-bounty-label">Багийн урамшуулал:</span>
+            <span class="team-bounty-value">{{ formatNumber(project.TeamBounty) }}₮</span>
           </div>
           <div class="profit-display" :class="{ 'profit-positive': (project.TotalProfit || 0) > 0, 'profit-negative': (project.TotalProfit || 0) < 0 }">
             <span class="profit-label">Total Profit:</span>
@@ -905,7 +921,7 @@ async function handleSave() {
 .engineer-bounty {
   margin-top: 8px;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   border-radius: 6px;
   display: flex;
   justify-content: space-between;
@@ -919,9 +935,46 @@ async function handleSave() {
   opacity: 0.95;
 }
 
+.bounty-value-base {
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .bounty-value {
   font-weight: 700;
   font-size: 15px;
+}
+
+.team-bounty {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: white;
+}
+
+.team-bounty-label {
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.team-bounty-value {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.stat-value.engineer {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.stat-value.non-engineer {
+  color: #8b5cf6;
+  font-weight: 700;
 }
 
 .modal-overlay {
