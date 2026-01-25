@@ -121,7 +121,10 @@
           {{ allSelected ? 'Бүгдийг хасах' : 'Бүгдийг сонгох' }}
         </button>
         <button @click="bulkApprove" class="btn-bulk-approve" :disabled="selectedRequests.length === 0 || processing">
-          Сонгосныг зөвшөөрөх ({{ selectedRequests.length }})
+          ✓ Сонгосныг зөвшөөрөх ({{ selectedRequests.length }})
+        </button>
+        <button @click="bulkReject" class="btn-bulk-reject" :disabled="selectedRequests.length === 0 || processing">
+          ✗ Сонгосныг татгалзах ({{ selectedRequests.length }})
         </button>
       </div>
       <div v-if="activeTab === 'approved' && editMode" class="info-message">
@@ -540,6 +543,28 @@ async function bulkApprove() {
   }
 }
 
+async function bulkReject() {
+  if (selectedRequests.value.length === 0) return;
+  
+  if (!confirm(`${selectedRequests.value.length} хүсэлтийг татгалзах уу?`)) return;
+  
+  processing.value = true;
+  try {
+    let successCount = 0;
+    for (const requestId of selectedRequests.value) {
+      await approveTimeAttendanceRequest(requestId, 'reject');
+      successCount++;
+    }
+    showSyncMessage(`${successCount} хүсэлт амжилттай татгалзагдлаа`, 'success');
+    selectedRequests.value = [];
+    await refreshRequests();
+  } catch (error) {
+    showSyncMessage('Алдаа гарлаа: ' + error.message, 'error');
+  } finally {
+    processing.value = false;
+  }
+}
+
 async function approveRequest(requestId) {
   if (!confirm('Энэ хүсэлтийг зөвшөөрөх үү?')) return;
   
@@ -916,6 +941,28 @@ function showSyncMessage(text, type) {
 }
 
 .btn-bulk-approve:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-bulk-reject {
+  padding: 8px 20px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 10px;
+}
+
+.btn-bulk-reject:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-bulk-reject:disabled {
   background: #6c757d;
   cursor: not-allowed;
   opacity: 0.6;
