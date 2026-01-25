@@ -120,6 +120,8 @@ async function updateProjectMetrics(projectId) {
           const bountyPercentage = 200 - hourPerformance;
           adjustedEngineerBounty = Math.round((engineerHand * bountyPercentage) / 100);
         }
+      } else {
+        adjustedEngineerBounty = 0;
       }
       
       await projectDoc.ref.update({

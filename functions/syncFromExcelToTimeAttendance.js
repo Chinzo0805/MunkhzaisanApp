@@ -178,8 +178,16 @@ exports.syncFromExcelToTimeAttendance = functions.region('asia-east2').https.onR
           created.push({ recordId, fields: Object.keys(recordData).length });
           console.log(`✓ Created new time attendance record ID ${recordId} in Firestore with ${Object.keys(recordData).length} fields`);
         } else {
-          // Update existing record
+          // Check if record is approved or rejected - skip these to prevent overwriting manual edits
           const recordDoc = recordQuery.docs[0];
+          const existingData = recordDoc.data();
+          
+          if (existingData.approvalStatus === 'approved' || existingData.approvalStatus === 'rejected') {
+            console.log(`⊘ Skipped time attendance record ID ${recordId} - already ${existingData.approvalStatus} (managed in Firestore)`);
+            continue;
+          }
+          
+          // Update existing record (only pending records)
           await recordDoc.ref.update(recordData);
           updates.push({ recordId, fields: Object.keys(recordData).length });
           console.log(`✓ Updated time attendance record ID ${recordId} in Firestore with ${Object.keys(recordData).length} fields`);
