@@ -273,7 +273,7 @@ import { useAuthStore } from '../stores/auth';
 import { useProjectsStore } from '../stores/projects';
 import { approveTimeAttendanceRequest, manageTimeAttendanceRequest, syncTimeAttendanceToExcel, syncFromExcelToTimeAttendance } from '../services/api';
 import { db } from '../config/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 
 const requestsStore = useTimeAttendanceRequestsStore();
 const attendanceStore = useTimeAttendanceStore();
@@ -664,11 +664,44 @@ async function saveApprovedEdit(request) {
     updateData.syncedToExcel = false;
     updateData.lastEditedAt = new Date().toISOString();
     
-    const docRef = doc(db, 'timeAttendance', docId);
-    
-    // Check if document exists before updating
+    // First, verify the document exists by trying to find it by ID field
+    // Sometimes the docId in the list is wrong, so we need to find the actual Firestore doc
     try {
-      await updateDoc(docRef, updateData);
+      let actualDocId = docId;
+      
+      // Check if document exists with the given docId
+      const docRef = doc(db, 'timeAttendance', docId);
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        // Document doesn't exist with this ID, try to find it by other unique fields
+        console.log('Document not found with docId:', docId);
+        console.log('Trying to find by ID field:', request.ID);
+        
+        // Try to find by ID field (the unique identifier in the data)
+        if (request.ID) {
+          const q = query(collection(db, 'timeAttendance'), where('ID', '==', request.ID));
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            actualDocId = querySnapshot.docs[0].id;
+            console.log('Found document with different docId:', actualDocId);
+          } else {
+            showSyncMessage('Алдаа: Энэ өгөгдөл Firestore-д олдсонгүй. Хуудсыг шинэчилнэ үү.', 'error');
+            processing.value = false;
+            return;
+          }
+        } else {
+          showSyncMessage('Алдаа: Энэ өгөгдөл Firestore-д олдсонгүй (ID: ' + docId + ')', 'error');
+          processing.value = false;
+          return;
+        }
+      }
+      
+      // Now update with the correct docId
+      const correctDocRef = doc(db, 'timeAttendance', actualDocId);
+      await updateDoc(correctDocRef, updateData);
+      
       showSyncMessage('Өгөгдөл амжилттай хадгалагдлаа. Excel-рүү синхрон хийхийг санаарай.', 'success');
       await refreshRequests();
     } catch (docError) {
