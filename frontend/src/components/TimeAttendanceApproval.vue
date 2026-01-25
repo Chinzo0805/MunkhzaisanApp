@@ -362,12 +362,13 @@ const uniqueProjects = computed(() => {
     sourceRecords = notSyncedRecords.value;
   }
   
-  // Group by ProjectID and get unique project IDs with their names
+  // Group by ProjectID and get unique project IDs with their display names
   const projectMap = new Map();
   sourceRecords.forEach(r => {
-    if (r.ProjectID && r.ProjectName) {
+    if (r.ProjectID && r.SiteLocation) {
+      const displayName = `${r.ProjectID} - ${r.SiteLocation}`;
       if (!projectMap.has(r.ProjectID)) {
-        projectMap.set(r.ProjectID, r.ProjectName.split(' - ')[0]); // Get project name without location
+        projectMap.set(r.ProjectID, displayName);
       }
     }
   });
