@@ -28,9 +28,12 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
       return res.status(400).send({ error: 'Missing required fields' });
     }
     
+    // Calculate HourPerformance and AdjustedEngineerBounty
+    const enrichedData = calculateProjectMetrics(projectData);
+    
     if (action === 'add') {
       const docRef = await db.collection('projects').add({
-        ...projectData,
+        ...enrichedData,
         createdAt: new Date().toISOString(),
       });
       
@@ -50,26 +53,26 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
       // If projectId (Firestore doc ID) is provided, use it directly
       if (projectId) {
         await db.collection('projects').doc(projectId).update({
-          ...projectData,
+          ...enrichedData,
           updatedAt: new Date().toISOString(),
         });
         
         console.log(`Updated project with Firestore ID: ${projectId}`);
       } else {
         // Otherwise, find the document by the numeric id field
-        const projectQuery = await db.collection('projects').where('id', '==', projectData.id).limit(1).get();
+        const projectQuery = await db.collection('projects').where('id', '==', enrichedData.id).limit(1).get();
         
         if (projectQuery.empty) {
-          return res.status(404).send({ error: `Project with id ${projectData.id} not found` });
+          return res.status(404).send({ error: `Project with id ${enrichedData.id} not found` });
         }
         
         const projectDoc = projectQuery.docs[0];
         await projectDoc.ref.update({
-          ...projectData,
+          ...enrichedData,
           updatedAt: new Date().toISOString(),
         });
         
-        console.log(`Updated project with numeric id: ${projectData.id}, Firestore ID: ${projectDoc.id}`);
+        console.log(`Updated project with numeric id: ${enrichedData.id}, Firestore ID: ${projectDoc.id}`);
       }
       
       res.status(200).send({
@@ -90,3 +93,35 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
     });
   }
 });
+
+/**
+ * Calculate HourPerformance and AdjustedEngineerBounty for a project
+ */
+function calculateProjectMetrics(projectData) {
+  const data = { ...projectData };
+  
+  const realHour = parseFloat(data.RealHour) || 0;
+  const plannedHour = parseFloat(data.PlannedHour) || 0;
+  const engineerHand = parseFloat(data.EngineerHand) || 0;
+  
+  // Calculate HourPerformance (RealHour / PlannedHour * 100)
+  if (plannedHour > 0) {
+    data.HourPerformance = (realHour / plannedHour) * 100;
+  } else {
+    data.HourPerformance = 0;
+  }
+  
+  // Calculate AdjustedEngineerBounty
+  // Formula: Bounty % = 200% - Performance %
+  // At 100% performance: 200 - 100 = 100% bounty
+  // At 60% performance: 200 - 60 = 140% bounty
+  // At 120% performance: 200 - 120 = 80% bounty
+  if (plannedHour > 0 && engineerHand > 0) {
+    const bountyPercentage = 200 - data.HourPerformance;
+    data.AdjustedEngineerBounty = (engineerHand * bountyPercentage) / 100;
+  } else {
+    data.AdjustedEngineerBounty = 0;
+  }
+  
+  return data;
+}

@@ -73,10 +73,31 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
         
         if (!projectQuery.empty) {
           const projectDoc = projectQuery.docs[0];
+          const projectData = projectDoc.data();
+          
+          // Calculate HourPerformance and AdjustedEngineerBounty
+          const realHour = hours.totalHours;
+          const plannedHour = parseFloat(projectData.PlannedHour) || 0;
+          const engineerHand = parseFloat(projectData.EngineerHand) || 0;
+          
+          let hourPerformance = 0;
+          let adjustedEngineerBounty = 0;
+          
+          if (plannedHour > 0) {
+            hourPerformance = (realHour / plannedHour) * 100;
+            
+            if (engineerHand > 0) {
+              const bountyPercentage = 200 - hourPerformance;
+              adjustedEngineerBounty = (engineerHand * bountyPercentage) / 100;
+            }
+          }
+          
           await projectDoc.ref.update({
             RealHour: hours.totalHours,
             WorkingHours: hours.workingHours,
             OvertimeHours: hours.overtimeHours,
+            HourPerformance: hourPerformance,
+            AdjustedEngineerBounty: adjustedEngineerBounty,
             lastRealHourUpdate: new Date().toISOString()
           });
           updates.push({ 
@@ -85,7 +106,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             workingHours: hours.workingHours,
             overtimeHours: hours.overtimeHours
           });
-          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Working=${hours.workingHours}, Overtime=${hours.overtimeHours}`);
+          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Working=${hours.workingHours}, Overtime=${hours.overtimeHours}, Perf=${hourPerformance.toFixed(2)}%`);
         } else {
           errors.push(`Project ${projectId} not found in projects collection`);
         }
@@ -105,6 +126,8 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           RealHour: 0,
           WorkingHours: 0,
           OvertimeHours: 0,
+          HourPerformance: 0,
+          AdjustedEngineerBounty: 0,
           lastRealHourUpdate: new Date().toISOString()
         });
         zeroUpdates++;
