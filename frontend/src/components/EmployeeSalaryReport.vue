@@ -97,10 +97,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { useEmployeesStore } from '../stores/employees';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 
 const authStore = useAuthStore();
+const employeesStore = useEmployeesStore();
 const db = getFirestore();
+
+const currentEmployeeType = ref(null);
 
 // Hourly rates by role (in MNT)
 const HOURLY_RATES = {
@@ -110,6 +114,11 @@ const HOURLY_RATES = {
 };
 
 function calculateSalary(role, hours) {
+  // No payment for trainees (Дадлагжигч)
+  if (currentEmployeeType.value === 'Дадлагжигч') {
+    return 0;
+  }
+  
   const rate = HOURLY_RATES[role] || 0;
   return hours * rate;
 }
@@ -165,6 +174,13 @@ async function loadSalaryData() {
   loading.value = true;
   
   try {
+    // Load employee data to get Type
+    await employeesStore.fetchEmployees();
+    const currentEmployee = employeesStore.employees.find(emp => emp.Id === employeeId);
+    currentEmployeeType.value = currentEmployee?.Type || null;
+    
+    console.log('Employee type:', currentEmployeeType.value);
+    
     const [year, month] = selectedMonth.value.split('-');
     let startDay, endDay;
     
