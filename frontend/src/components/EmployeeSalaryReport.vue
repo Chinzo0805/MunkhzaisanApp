@@ -136,12 +136,12 @@ function selectPeriod(period) {
 }
 
 async function loadSalaryData() {
-  const employeeLastName = authStore.userData?.employeeLastName;
+  const employeeId = authStore.userData?.employeeId;
   
-  if (!selectedMonth.value || !employeeLastName) {
+  if (!selectedMonth.value || !employeeId) {
     console.log('Missing required data:', {
       month: selectedMonth.value,
-      employeeLastName
+      employeeId
     });
     return;
   }
@@ -164,15 +164,15 @@ async function loadSalaryData() {
     const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
     
     console.log('Querying timeAttendance:', {
-      employeeLastName,
+      employeeId,
       startDate,
       endDate
     });
     
-    // Query timeAttendance collection for this employee by EmployeeLastName
+    // Query timeAttendance collection for this employee by EmployeeID
     const q = query(
       collection(db, 'timeAttendance'),
-      where('EmployeeLastName', '==', employeeLastName)
+      where('EmployeeID', '==', employeeId)
     );
     
     const snapshot = await getDocs(q);
