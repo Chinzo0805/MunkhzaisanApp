@@ -62,10 +62,6 @@
               <span class="stat-label">Инженерийн урамшуулал:</span>
               <span class="stat-value bounty">{{ formatNumber(project.engineerHand) }} ₮</span>
             </div>
-            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null && project.AdjustedEngineerBounty > 0">
-              <span class="stat-label">Гарт олгох инженерийн урамшуулал:</span>
-              <span class="stat-value bounty-adjusted">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
-            </div>
             <div class="stat-row">
               <span class="stat-label">Төлөвийн прогресс:</span>
               <div class="progress-bar">
@@ -82,6 +78,10 @@
                 }"></div>
                 <span class="progress-text" :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
               </div>
+            </div>
+            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null && project.AdjustedEngineerBounty > 0">
+              <span class="stat-label">Гарт олгох инженерийн урамшуулал:</span>
+              <span class="stat-value bounty-adjusted">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
             </div>
           </div>
         </div>
