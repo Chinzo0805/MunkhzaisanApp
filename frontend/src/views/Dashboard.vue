@@ -26,8 +26,11 @@
         </div>
       </div>
 
-      <!-- Employee Time Attendance History (for non-supervisors) -->
-      <EmployeeTimeAttendanceHistory v-if="!authStore.userData?.isSupervisor" />
+      <!-- Employee sections (for non-supervisors) -->
+      <div v-if="!authStore.userData?.isSupervisor">
+        <EmployeeSalaryReport />
+        <EmployeeTimeAttendanceHistory />
+      </div>
 
       <!-- Supervisor features -->
       <div v-if="authStore.userData?.isSupervisor" class="supervisor-section">
@@ -126,6 +129,7 @@ import CustomerManagement from '../components/CustomerManagement.vue';
 import ProjectManagement from '../components/ProjectManagement.vue';
 import TimeAttendanceApproval from '../components/TimeAttendanceApproval.vue';
 import EmployeeTimeAttendanceHistory from '../components/EmployeeTimeAttendanceHistory.vue';
+import EmployeeSalaryReport from '../components/EmployeeSalaryReport.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
