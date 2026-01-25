@@ -45,6 +45,10 @@
             <span class="label">Тасалсан цаг:</span>
             <span class="value penalty">{{ salaryData.missedHours.toFixed(2) }} цаг</span>
           </div>
+          <div v-if="salaryData.totalSalary > 0" class="hour-item salary-total">
+            <span class="label">Нийт цалингийн дүн:</span>
+            <span class="value salary">{{ salaryData.totalSalary.toLocaleString() }} ₮</span>
+          </div>
         </div>
 
         <div class="projects-section" v-if="salaryData.projectBreakdown.length > 0">
@@ -53,7 +57,10 @@
             <div v-for="project in salaryData.projectBreakdown" :key="project.projectId" class="project-card">
               <div class="project-header">
                 <span class="project-name">{{ project.projectName }}</span>
-                <span class="project-total">{{ project.totalHours.toFixed(2) }} цаг</span>
+                <div class="project-summary">
+                  <span class="project-total">{{ project.totalHours.toFixed(2) }} цаг</span>
+                  <span v-if="project.totalSalary > 0" class="project-salary">{{ project.totalSalary.toLocaleString() }} ₮</span>
+                </div>
               </div>
               
               <div class="role-breakdown">
@@ -66,6 +73,7 @@
                   </div>
                   <div class="role-hours">
                     <span class="hours-detail">{{ roleData.totalHours.toFixed(2) }} цаг</span>
+                    <span v-if="roleData.salary > 0" class="role-salary">{{ roleData.salary.toLocaleString() }} ₮</span>
                   </div>
                 </div>
               </div>
@@ -93,6 +101,18 @@ import { getFirestore, collection, query, where, getDocs } from 'firebase/firest
 
 const authStore = useAuthStore();
 const db = getFirestore();
+
+// Hourly rates by role (in MNT)
+const HOURLY_RATES = {
+  'Техникч': 5000,
+  'Инженер': 0, // To be defined
+  'Ажилтан': 0  // To be defined
+};
+
+function calculateSalary(role, hours) {
+  const rate = HOURLY_RATES[role] || 0;
+  return hours * rate;
+}
 
 const selectedPeriod = ref('first-half');
 const selectedMonth = ref('');
@@ -237,24 +257,35 @@ async function loadSalaryData() {
         if (!proj.roles.has(role)) {
           proj.roles.set(role, {
             role,
-            totalHours: 0
+            totalHours: 0,
+            salary: 0
           });
         }
         
         const roleData = proj.roles.get(role);
         roleData.totalHours += recordTotal;
+        roleData.salary += calculateSalary(role, recordTotal);
       }
     });
     
-    // Convert project roles Map to array
-    const projectBreakdown = Array.from(projectMap.values()).map(proj => ({
-      ...proj,
-      roles: Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours)
-    })).sort((a, b) => b.totalHours - a.totalHours);
+    // Convert project roles Map to array and calculate project salaries
+    const projectBreakdown = Array.from(projectMap.values()).map(proj => {
+      const roles = Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours);
+      const totalSalary = roles.reduce((sum, r) => sum + r.salary, 0);
+      return {
+        ...proj,
+        roles,
+        totalSalary
+      };
+    }).sort((a, b) => b.totalHours - a.totalHours);
+    
+    // Calculate overall total salary
+    const totalSalary = projectBreakdown.reduce((sum, proj) => sum + proj.totalSalary, 0);
     
     console.log('Calculated salary data:', {
       totalHours,
       missedHours,
+      totalSalary,
       daysWorked: uniqueDays.size,
       projectCount: projectBreakdown.length
     });
@@ -262,6 +293,7 @@ async function loadSalaryData() {
     salaryData.value = {
       totalHours,
       missedHours,
+      totalSalary,
       daysWorked: uniqueDays.size,
       projectBreakdown
     };
@@ -441,6 +473,19 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.hour-item.salary-total {
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  margin-top: 12px;
+  padding-top: 16px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.hour-item .value.salary {
+  color: #86efac;
+  font-weight: 700;
+}
+
 .projects-section {
   margin-top: 20px;
   background: rgba(255, 255, 255, 0.1);
@@ -482,9 +527,22 @@ onMounted(() => {
   font-size: 15px;
 }
 
+.project-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
 .project-total {
-  font-size: 16px;
+  font-size: 14px;
   color: #fbbf24;
+}
+
+.project-salary {
+  font-size: 16px;
+  color: #86efac;
+  font-weight: 700;
 }
 
 .role-breakdown {
@@ -521,11 +579,19 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
 }
 
 .hours-detail {
   font-weight: 600;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.role-salary {
   font-size: 14px;
+  color: #86efac;
+  font-weight: 600;
 }
 
 .days-worked {
