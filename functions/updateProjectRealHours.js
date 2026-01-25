@@ -103,10 +103,10 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           const plannedHour = parseFloat(projectData.PlannedHour) || 0;
           const wosHour = parseFloat(projectData.WosHour) || 0;
           
-          // Calculate EngineerHand and TeamBounty
-          const engineerHand = wosHour * 12500;
-          const teamBounty = wosHour * 22500;
-          const nonEngineerBounty = hours.nonEngineerHours * 5000;
+          // Calculate EngineerHand and TeamBounty - rounded to whole numbers
+          const engineerHand = Math.round(wosHour * 12500);
+          const teamBounty = Math.round(wosHour * 22500);
+          const nonEngineerBounty = Math.round(hours.nonEngineerHours * 5000);
           
           let hourPerformance = 0;
           let adjustedEngineerBounty = 0;
@@ -116,7 +116,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             
             if (engineerHand > 0) {
               const bountyPercentage = 200 - hourPerformance;
-              adjustedEngineerBounty = (engineerHand * bountyPercentage) / 100;
+              adjustedEngineerBounty = Math.round((engineerHand * bountyPercentage) / 100);
             }
           }
           
