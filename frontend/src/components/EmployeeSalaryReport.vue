@@ -54,9 +54,25 @@
         <div class="projects-section" v-if="salaryData.projectBreakdown.length > 0">
           <h5>Төслүүдээр:</h5>
           <div class="project-list">
-            <div v-for="project in salaryData.projectBreakdown" :key="project.projectId" class="project-item">
-              <span class="project-name">{{ project.projectName }}</span>
-              <span class="project-hours">{{ project.totalHours.toFixed(2) }} цаг</span>
+            <div v-for="project in salaryData.projectBreakdown" :key="project.projectId" class="project-card">
+              <div class="project-header">
+                <span class="project-name">{{ project.projectName }}</span>
+                <span class="project-total">{{ project.totalHours.toFixed(2) }} цаг</span>
+              </div>
+              
+              <div class="role-breakdown">
+                <div v-for="roleData in project.roles" :key="roleData.role" class="role-item">
+                  <div class="role-info">
+                    <span class="role-icon">
+                      {{ roleData.role === 'Инженер' ? '👷' : roleData.role === 'Техникч' ? '🔧' : '👨‍💼' }}
+                    </span>
+                    <span class="role-name">{{ roleData.role }}</span>
+                  </div>
+                  <div class="role-hours">
+                    <span class="hours-detail">{{ roleData.totalHours.toFixed(2) }} цаг</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -169,32 +185,53 @@ async function loadSalaryData() {
         uniqueDays.add(record.Day);
       }
       
-      // Group by project
+      // Group by project and role
       const projectId = record.ProjectID;
       const projectName = record.ProjectName || projectId;
+      const role = record.Role || 'Тодорхойгүй';
+      
       if (projectId) {
         if (!projectMap.has(projectId)) {
           projectMap.set(projectId, {
             projectId,
             projectName,
+            totalHours: 0,
+            roles: new Map()
+          });
+        }
+        
+        const proj = projectMap.get(projectId);
+        proj.totalHours += working + overtime;
+        
+        // Track hours by role within project
+        if (!proj.roles.has(role)) {
+          proj.roles.set(role, {
+            role,
             workingHours: 0,
             overtimeHours: 0,
             totalHours: 0
           });
         }
-        const proj = projectMap.get(projectId);
-        proj.workingHours += working;
-        proj.overtimeHours += overtime;
-        proj.totalHours += working + overtime;
+        
+        const roleData = proj.roles.get(role);
+        roleData.workingHours += working;
+        roleData.overtimeHours += overtime;
+        roleData.totalHours += working + overtime;
       }
     });
+    
+    // Convert project roles Map to array
+    const projectBreakdown = Array.from(projectMap.values()).map(proj => ({
+      ...proj,
+      roles: Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours)
+    })).sort((a, b) => b.totalHours - a.totalHours);
     
     salaryData.value = {
       workingHours,
       overtimeHours,
       totalHours: workingHours + overtimeHours,
       daysWorked: uniqueDays.size,
-      projectBreakdown: Array.from(projectMap.values()).sort((a, b) => b.totalHours - a.totalHours)
+      projectBreakdown
     };
     
   } catch (error) {
@@ -378,24 +415,74 @@ onMounted(() => {
 .project-list {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.project-card {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+}
+
+.project-name {
+  font-size: 15px;
+}
+
+.project-total {
+  font-size: 16px;
+  color: #fbbf24;
+}
+
+.role-breakdown {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.project-item {
+.role-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   font-size: 14px;
 }
 
-.project-name {
+.role-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-icon {
+  font-size: 16px;
+}
+
+.role-name {
   opacity: 0.9;
 }
 
-.project-hours {
+.role-hours {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.hours-detail {
   font-weight: 600;
+  font-size: 14px;
 }
 
 .days-worked {
