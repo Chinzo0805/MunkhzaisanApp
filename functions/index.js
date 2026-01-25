@@ -77,6 +77,9 @@ exports.fixMissingIdsInTimeAttendance = require("./fixMissingIdsInTimeAttendance
 // Fix function to add missing FirstName/LastName or IDs by matching with employees
 exports.fixTimeAttendanceNames = require("./fixTimeAttendanceNames").fixTimeAttendanceNames;
 
+// Fix function to add missing EmployeeID to timeAttendance records
+exports.fixMissingEmployeeID = require("./fixMissingEmployeeID").fixMissingEmployeeID;
+
 // Fix function for Баатархүү records (EmployeeID 40)
 exports.fixBaatarkhuu = require("./fixBaatarkhuu").fixBaatarkhuu;
 
