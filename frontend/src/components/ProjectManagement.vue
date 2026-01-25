@@ -68,6 +68,14 @@
               <span class="progress-text">{{ getStatusProgress(project.Status) }}%</span>
             </div>
           </div>
+          <div class="time-performance" v-if="project.PlannedHour > 0">
+            <span class="perf-label">Цагийн гүйцэтгэл:</span>
+            <span class="perf-value" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ formatNumber(calculateTimePerformance(project.RealHour, project.PlannedHour)) }}%</span>
+          </div>
+          <div class="engineer-bounty" v-if="project.PlannedHour > 0 && project.EngineerHand > 0">
+            <span class="bounty-label">Гарт олгох инженерийн урамшуулал:</span>
+            <span class="bounty-value">{{ formatNumber(calculateAdjustedBounty(project.RealHour, project.PlannedHour, project.EngineerHand)) }}₮</span>
+          </div>
           <div class="profit-display" :class="{ 'profit-positive': (project.TotalProfit || 0) > 0, 'profit-negative': (project.TotalProfit || 0) < 0 }">
             <span class="profit-label">Total Profit:</span>
             <span class="profit-value">{{ formatNumber(project.TotalProfit || 0) }}₮</span>
@@ -215,6 +223,19 @@
               <label>Real Hour</label>
               <input :value="formatNumber(form.RealHour)" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">Sum from TimeAttendance</small>
+            </div>
+            <div class="form-group" v-if="form.PlannedHour > 0">
+              <label>Цагийн гүйцэтгэл</label>
+              <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
+              <small style="color: #6b7280;">RealHour / PlannedHour × 100</small>
+            </div>
+          </div>
+          
+          <div class="form-row" v-if="form.PlannedHour > 0 && form.EngineerHand > 0">
+            <div class="form-group">
+              <label>Гарт олгох инженерийн урамшуулал</label>
+              <input :value="formatNumber(calculateAdjustedBounty(form.RealHour, form.PlannedHour, form.EngineerHand))" type="text" readonly style="background-color: #f5f5f5; font-weight: 600; color: #10b981;" />
+              <small style="color: #6b7280;">100%= EngineerHand, <100%= higher, >100%= lower</small>
             </div>
           </div>
           
@@ -421,6 +442,31 @@ function formatNumber(num) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   }).format(num);
+}
+
+function calculateTimePerformance(realHour, plannedHour) {
+  if (!plannedHour || plannedHour === 0) return 0;
+  return (realHour / plannedHour) * 100;
+}
+
+function calculateAdjustedBounty(realHour, plannedHour, engineerHand) {
+  if (!plannedHour || plannedHour === 0 || !engineerHand) return 0;
+  
+  const performance = (realHour / plannedHour) * 100;
+  // Formula: Bounty % = 200% - Performance %
+  // At 100% performance: 200 - 100 = 100% bounty
+  // At 60% performance: 200 - 60 = 140% bounty (better performance, higher bounty)
+  // At 120% performance: 200 - 120 = 80% bounty (worse performance, lower bounty)
+  const bountyPercentage = 200 - performance;
+  
+  return (engineerHand * bountyPercentage) / 100;
+}
+
+function getPerformanceClass(realHour, plannedHour) {
+  const perf = calculateTimePerformance(realHour, plannedHour);
+  if (perf < 100) return 'perf-good';
+  if (perf === 100) return 'perf-perfect';
+  return 'perf-bad';
 }
 
 function getStatusProgress(status) {
@@ -821,6 +867,61 @@ async function handleSave() {
   font-weight: 600;
   color: #1f2937;
   text-shadow: 0 0 2px white;
+}
+
+.time-performance {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.perf-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.perf-value {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.perf-value.perf-good {
+  color: #10b981;
+}
+
+.perf-value.perf-perfect {
+  color: #3b82f6;
+}
+
+.perf-value.perf-bad {
+  color: #ef4444;
+}
+
+.engineer-bounty {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: white;
+}
+
+.bounty-label {
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.bounty-value {
+  font-weight: 700;
+  font-size: 15px;
 }
 
 .modal-overlay {
