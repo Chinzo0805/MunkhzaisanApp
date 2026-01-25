@@ -58,9 +58,13 @@
               <span class="stat-label">Төлөв:</span>
               <span class="stat-value status">{{ project.status }}</span>
             </div>
-            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null">
+            <div class="stat-row" v-if="project.engineerHand > 0">
               <span class="stat-label">Инженерийн урамшуулал:</span>
-              <span class="stat-value bounty">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
+              <span class="stat-value bounty">{{ formatNumber(project.engineerHand) }} ₮</span>
+            </div>
+            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null && project.AdjustedEngineerBounty > 0">
+              <span class="stat-label">Гарт олгох инженерийн урамшуулал:</span>
+              <span class="stat-value bounty-adjusted">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Төлөвийн прогресс:</span>
@@ -1047,6 +1051,12 @@ h3 {
 .stat-value.bounty {
   color: #f59e0b;
   font-weight: 700;
+}
+
+.stat-value.bounty-adjusted {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 15px;
 }
 
 .progress-bar {
