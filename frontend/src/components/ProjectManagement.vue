@@ -80,15 +80,15 @@
             <span class="perf-label">Цагийн гүйцэтгэл:</span>
             <span class="perf-value" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ formatNumber(calculateTimePerformance(project.RealHour, project.PlannedHour)) }}%</span>
           </div>
-          <div class="engineer-bounty" v-if="project.PlannedHour > 0 && project.EngineerHand > 0">
+          <div class="engineer-bounty" v-if="project.EngineerHand && project.EngineerHand > 0">
             <span class="bounty-label">Инженерийн урамшуулал:</span>
             <span class="bounty-value-base">{{ formatNumber(project.EngineerHand) }}₮</span>
           </div>
-          <div class="engineer-bounty" v-if="project.PlannedHour > 0 && project.AdjustedEngineerBounty > 0">
+          <div class="engineer-bounty adjusted" v-if="project.AdjustedEngineerBounty && project.AdjustedEngineerBounty > 0">
             <span class="bounty-label">Гарт олгох инженерийн урамшуулал:</span>
             <span class="bounty-value">{{ formatNumber(project.AdjustedEngineerBounty) }}₮</span>
           </div>
-          <div class="team-bounty" v-if="project.TeamBounty > 0">
+          <div class="team-bounty" v-if="project.TeamBounty && project.TeamBounty > 0">
             <span class="team-bounty-label">Багийн урамшуулал:</span>
             <span class="team-bounty-value">{{ formatNumber(project.TeamBounty) }}₮</span>
           </div>
@@ -928,6 +928,10 @@ async function handleSave() {
   align-items: center;
   font-size: 12px;
   color: white;
+}
+
+.engineer-bounty.adjusted {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
 }
 
 .bounty-label {
