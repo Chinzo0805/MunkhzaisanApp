@@ -5,53 +5,53 @@
     <!-- Filters Section -->
     <div class="filters-section">
       <div class="filter-group">
-        <label>Он сар:</label>
-        <input type="month" v-model="selectedMonth" @change="loadSummary" />
-      </div>
-      
-      <div class="filter-group">
-        <label>Төсөл:</label>
-        <select v-model="selectedProject" @change="loadSummary">
+        <label>Статус:</label>
+        <select v-model="selectedStatus" @change="applyFilters">
           <option value="">Бүгд</option>
-          <option v-for="project in projects" :key="project.id" :value="project.id">
-            {{ project.id }} - {{ project.name }}
-          </option>
+          <option value="Идэвхтэй">Идэвхтэй</option>
+          <option value="Хаагдсан">Хаагдсан</option>
+          <option value="Түр зогссон">Түр зогссон</option>
         </select>
       </div>
       
-      <button @click="loadSummary" class="btn-refresh" :disabled="loading">
+      <div class="filter-group">
+        <label>Хайх:</label>
+        <input type="text" v-model="searchQuery" @input="applyFilters" placeholder="Төслийн нэр эсвэл код..." />
+      </div>
+      
+      <button @click="loadProjects" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
     </div>
 
     <!-- Summary Statistics -->
-    <div v-if="!loading && summaryData.length > 0" class="stats-section">
+    <div v-if="!loading && filteredProjects.length > 0" class="stats-section">
       <div class="stat-card">
         <div class="stat-icon">📋</div>
         <div class="stat-content">
           <div class="stat-label">Нийт төсөл</div>
-          <div class="stat-value">{{ uniqueProjects }}</div>
+          <div class="stat-value">{{ filteredProjects.length }}</div>
+        </div>
+      </div>
+      <div class="stat-card active">
+        <div class="stat-icon">✅</div>
+        <div class="stat-content">
+          <div class="stat-label">Идэвхтэй</div>
+          <div class="stat-value">{{ activeProjects }}</div>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">👥</div>
+        <div class="stat-icon">⏸️</div>
         <div class="stat-content">
-          <div class="stat-label">Ажилласан хүмүүс</div>
-          <div class="stat-value">{{ uniqueEmployees }}</div>
+          <div class="stat-label">Түр зогссон</div>
+          <div class="stat-value">{{ pausedProjects }}</div>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">💼</div>
+        <div class="stat-icon">🔒</div>
         <div class="stat-content">
-          <div class="stat-label">Нийт цаг</div>
-          <div class="stat-value">{{ totalHours.toFixed(2) }}ц</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">📅</div>
-        <div class="stat-content">
-          <div class="stat-label">Нийт өдөр</div>
-          <div class="stat-value">{{ totalDays }}</div>
+          <div class="stat-label">Хаагдсан</div>
+          <div class="stat-value">{{ closedProjects }}</div>
         </div>
       </div>
     </div>
@@ -62,54 +62,53 @@
     </div>
 
     <!-- Summary Table -->
-    <div v-else-if="summaryData.length > 0" class="table-container">
+    <div v-else-if="filteredProjects.length > 0" class="table-container">
       <div class="table-header">
-        <span>{{ getDateRangeText() }}</span>
+        <span>Төслүүдийн жагсаалт ({{ filteredProjects.length }})</span>
         <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
       </div>
       
       <table class="summary-table">
         <thead>
           <tr>
-            <th @click="sortBy('projectId')" class="sortable">
-              Төслийн код {{ sortColumn === 'projectId' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('id')" class="sortable">
+              Төслийн код {{ sortColumn === 'id' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('projectName')" class="sortable">
-              Төслийн нэр {{ sortColumn === 'projectName' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('name')" class="sortable">
+              Төслийн нэр {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('employeeCount')" class="sortable number-col">
-              Ажилтан {{ sortColumn === 'employeeCount' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('customerName')" class="sortable">
+              Харилцагч {{ sortColumn === 'customerName' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('totalHours')" class="sortable number-col">
-              Нийт цаг {{ sortColumn === 'totalHours' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('location')" class="sortable">
+              Байршил {{ sortColumn === 'location' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('totalDays')" class="sortable number-col">
-              Өдрийн тоо {{ sortColumn === 'totalDays' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('status')" class="sortable status-col">
+              Статус {{ sortColumn === 'status' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('avgHoursPerDay')" class="sortable number-col">
-              Дундаж цаг/өдөр {{ sortColumn === 'avgHoursPerDay' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('startDate')" class="sortable">
+              Эхэлсэн {{ sortColumn === 'startDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th @click="sortBy('endDate')" class="sortable">
+              Дуусах {{ sortColumn === 'endDate' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="project in sortedData" :key="project.projectId">
-            <td class="project-id-cell">{{ project.projectId }}</td>
-            <td class="project-name-cell">{{ project.projectName }}</td>
-            <td class="number-cell">{{ project.employeeCount }}</td>
-            <td class="number-cell hours">{{ project.totalHours.toFixed(2) }}ц</td>
-            <td class="number-cell">{{ project.totalDays }}</td>
-            <td class="number-cell avg">{{ project.avgHoursPerDay.toFixed(2) }}ц</td>
+          <tr v-for="project in sortedProjects" :key="project.id">
+            <td class="project-id-cell">{{ project.id }}</td>
+            <td class="project-name-cell">{{ project.name }}</td>
+            <td>{{ project.customerName || '-' }}</td>
+            <td>{{ project.location || '-' }}</td>
+            <td class="status-cell">
+              <span :class="['status-badge', getStatusClass(project.status)]">
+                {{ project.status || 'Идэвхтэй' }}
+              </span>
+            </td>
+            <td>{{ formatDate(project.startDate) }}</td>
+            <td>{{ formatDate(project.endDate) }}</td>
           </tr>
         </tbody>
-        <tfoot>
-          <tr class="total-row">
-            <td colspan="2"><strong>НИЙТ:</strong></td>
-            <td class="number-cell"><strong>{{ uniqueEmployees }}</strong></td>
-            <td class="number-cell hours"><strong>{{ totalHours.toFixed(2) }}ц</strong></td>
-            <td class="number-cell"><strong>{{ totalDays }}</strong></td>
-            <td class="number-cell avg"><strong>{{ (totalHours / totalDays || 0).toFixed(2) }}ц</strong></td>
-          </tr>
-        </tfoot>
       </table>
     </div>
 
@@ -122,35 +121,47 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
 import * as XLSX from 'xlsx';
 
 const projectsStore = useProjectsStore();
 const loading = ref(false);
-const summaryData = ref([]);
-
-// Date filter
-const today = new Date();
-const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-const selectedMonth = ref(currentMonth);
-const selectedProject = ref('');
+const allProjects = ref([]);
+const selectedStatus = ref('');
+const searchQuery = ref('');
 
 // Sorting
-const sortColumn = ref('totalHours');
-const sortAsc = ref(false);
+const sortColumn = ref('id');
+const sortAsc = ref(true);
 
-// Projects list
-const projects = computed(() => projectsStore.projects);
+// Filtered projects
+const filteredProjects = computed(() => {
+  let filtered = [...allProjects.value];
+  
+  if (selectedStatus.value) {
+    filtered = filtered.filter(p => (p.status || 'Идэвхтэй') === selectedStatus.value);
+  }
+  
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase();
+    filtered = filtered.filter(p => 
+      p.id?.toLowerCase().includes(query) ||
+      p.name?.toLowerCase().includes(query) ||
+      p.customerName?.toLowerCase().includes(query)
+    );
+  }
+  
+  return filtered;
+});
 
-// Computed sorted data
-const sortedData = computed(() => {
-  const data = [...summaryData.value];
+// Sorted projects
+const sortedProjects = computed(() => {
+  const data = [...filteredProjects.value];
   
   data.sort((a, b) => {
-    const aVal = a[sortColumn.value];
-    const bVal = b[sortColumn.value];
+    const aVal = a[sortColumn.value] || '';
+    const bVal = b[sortColumn.value] || '';
     
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortAsc.value ? aVal - bVal : bVal - aVal;
@@ -164,102 +175,34 @@ const sortedData = computed(() => {
   return data;
 });
 
-// Summary totals
-const totalHours = computed(() => {
-  return summaryData.value.reduce((sum, proj) => sum + proj.totalHours, 0);
+// Status statistics
+const activeProjects = computed(() => {
+  return filteredProjects.value.filter(p => (p.status || 'Идэвхтэй') === 'Идэвхтэй').length;
 });
 
-const totalDays = computed(() => {
-  return summaryData.value.reduce((sum, proj) => sum + proj.totalDays, 0);
+const pausedProjects = computed(() => {
+  return filteredProjects.value.filter(p => p.status === 'Түр зогссон').length;
 });
 
-const uniqueProjects = computed(() => {
-  return summaryData.value.length;
+const closedProjects = computed(() => {
+  return filteredProjects.value.filter(p => p.status === 'Хаагдсан').length;
 });
 
-const uniqueEmployees = computed(() => {
-  const allEmployees = new Set();
-  summaryData.value.forEach(proj => {
-    proj.employees.forEach(emp => allEmployees.add(emp));
-  });
-  return allEmployees.size;
-});
-
-async function loadSummary() {
+async function loadProjects() {
   loading.value = true;
   try {
-    const [year, month] = selectedMonth.value.split('-');
-    const startDate = `${year}-${month}-01`;
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
-    
-    console.log('Loading project summary for:', startDate, 'to', endDate);
-    
-    let taQuery = query(
-      collection(db, 'timeAttendance'),
-      where('Day', '>=', startDate),
-      where('Day', '<=', endDate)
-    );
-    
-    const snapshot = await getDocs(taQuery);
-    const records = snapshot.docs.map(doc => doc.data());
-    
-    console.log(`Loaded ${records.length} records`);
-    
-    // Filter by selected project if any
-    const filteredRecords = selectedProject.value 
-      ? records.filter(r => r.ProjectID === selectedProject.value)
-      : records;
-    
-    // Group by project
-    const projectMap = new Map();
-    
-    filteredRecords.forEach(record => {
-      const projId = record.ProjectID || 'Unknown';
-      const projName = record.ProjectName || 'Unknown';
-      
-      if (!projectMap.has(projId)) {
-        projectMap.set(projId, {
-          projectId: projId,
-          projectName: projName,
-          totalHours: 0,
-          totalDays: 0,
-          employees: new Set(),
-          days: new Set()
-        });
-      }
-      
-      const project = projectMap.get(projId);
-      const hours = parseFloat(record.WorkingHour) || 0;
-      
-      project.totalHours += hours;
-      
-      if (record.EmployeeFirstName) {
-        project.employees.add(record.EmployeeFirstName);
-      }
-      
-      if (record.Day) {
-        project.days.add(record.Day);
-      }
-    });
-    
-    summaryData.value = Array.from(projectMap.values()).map(proj => ({
-      projectId: proj.projectId,
-      projectName: proj.projectName,
-      totalHours: proj.totalHours,
-      totalDays: proj.days.size,
-      employeeCount: proj.employees.size,
-      employees: Array.from(proj.employees),
-      avgHoursPerDay: proj.days.size > 0 ? proj.totalHours / proj.days.size : 0
-    }));
-    
-    console.log(`Processed ${summaryData.value.length} projects`);
-    
+    await projectsStore.fetchProjects();
+    allProjects.value = projectsStore.projects;
+    console.log(`Loaded ${allProjects.value.length} projects`);
   } catch (error) {
-    console.error('Error loading project summary:', error);
+    console.error('Error loading projects:', error);
   } finally {
     loading.value = false;
   }
+}
+
+function applyFilters() {
+  // Filters are applied through computed property
 }
 
 function sortBy(column) {
@@ -267,13 +210,22 @@ function sortBy(column) {
     sortAsc.value = !sortAsc.value;
   } else {
     sortColumn.value = column;
-    sortAsc.value = false;
+    sortAsc.value = true;
   }
 }
 
-function getDateRangeText() {
-  const [year, month] = selectedMonth.value.split('-');
-  return `${year}/${month}`;
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  return dateStr;
+}
+
+function getStatusClass(status) {
+  const statusMap = {
+    'Идэвхтэй': 'status-active',
+    'Түр зогссон': 'status-paused',
+    'Хаагдсан': 'status-closed'
+  };
+  return statusMap[status] || 'status-active';
 }
 
 function exportToExcel() {
@@ -282,27 +234,19 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = ['Төслийн код', 'Төслийн нэр', 'Ажилтан', 'Нийт цаг', 'Өдрийн тоо', 'Дундаж цаг/өдөр'];
+  const headers = ['Төслийн код', 'Төслийн нэр', 'Харилцагч', 'Байршил', 'Статус', 'Эхэлсэн', 'Дуусах'];
   
   const data = [
     headers,
-    ...sortedData.value.map(proj => [
-      proj.projectId,
-      proj.projectName,
-      proj.employeeCount,
-      proj.totalHours.toFixed(2),
-      proj.totalDays,
-      proj.avgHoursPerDay.toFixed(2)
-    ]),
-    // Add total row
-    [
-      'НИЙТ',
-      '',
-      uniqueEmployees.value,
-      totalHours.value.toFixed(2),
-      totalDays.value,
-      (totalHours.value / totalDays.value || 0).toFixed(2)
-    ]
+    ...sortedProjects.value.map(proj => [
+      proj.id,
+      proj.name,
+      proj.customerName || '-',
+      proj.location || '-',
+      proj.status || 'Идэвхтэй',
+      proj.startDate || '-',
+      proj.endDate || '-'
+    ])
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -310,10 +254,11 @@ function exportToExcel() {
   ws['!cols'] = [
     { wch: 15 },
     { wch: 30 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 15 },
     { wch: 12 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 18 }
+    { wch: 12 }
   ];
   
   workbook.Sheets['Projects'] = ws;
@@ -322,13 +267,13 @@ function exportToExcel() {
   const blob = new Blob([wbout], { type: 'application/octet-stream' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `Project_Summary_${getDateRangeText().replace(/\//g, '-')}.xlsx`;
+  const today = new Date().toISOString().split('T')[0];
+  link.download = `Projects_${today}.xlsx`;
   link.click();
 }
 
 onMounted(async () => {
-  await projectsStore.fetchProjects();
-  loadSummary();
+  await loadProjects();
 });
 </script>
 
@@ -564,5 +509,28 @@ onMounted(async () => {
   padding: 60px;
   color: #6b7280;
   font-size: 16px;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.status-active {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-paused {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-closed {
+  background: #f8d7da;
+  color: #721c24;
 }
 </style>
