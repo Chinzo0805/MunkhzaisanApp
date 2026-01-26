@@ -29,6 +29,9 @@
           <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/supervisor-ta-summary')" class="btn-action summary">
             📊 Ирцийн нэгтгэл
           </button>
+          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/project-summary')" class="btn-action project">
+            📋 Төслийн нэгтгэл
+          </button>
         </div>
       </div>
 
@@ -469,6 +472,11 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
+.btn-action.project {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
+}
+
 .btn-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
@@ -480,6 +488,10 @@ function handleSaved(event) {
 
 .btn-action.summary:hover {
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+}
+
+.btn-action.project:hover {
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
 }
 
 .time-attendance-section {

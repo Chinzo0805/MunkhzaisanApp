@@ -7,6 +7,7 @@ import Dashboard from '../views/Dashboard.vue';
 import TimeAttendanceRequestForm from '../components/TimeAttendanceRequestForm.vue';
 import SalaryReport from '../views/SalaryReport.vue';
 import SupervisorTASummary from '../views/SupervisorTASummary.vue';
+import ProjectSummary from '../views/ProjectSummary.vue';
 
 const routes = [
   {
@@ -52,6 +53,12 @@ const routes = [
     path: '/supervisor-ta-summary',
     name: 'SupervisorTASummary',
     component: SupervisorTASummary,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/project-summary',
+    name: 'ProjectSummary',
+    component: ProjectSummary,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];
