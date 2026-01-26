@@ -24,6 +24,14 @@
 
     <!-- Summary Statistics -->
     <div v-if="!loading && summaryData.length > 0" class="stats-section">
+      <div class="stat-card reference">
+        <div class="stat-icon">📅</div>
+<div class="stat-content">
+          <div class="stat-label">Ажлын өдөр (хугацаанд)</div>
+          <div class="stat-value">{{ workingDaysInRange }} өдөр</div>
+          <div class="stat-detail">{{ expectedWorkingHours.toFixed(0) }} цаг</div>
+        </div>
+      </div>
       <div class="stat-card">
         <div class="stat-icon">👥</div>
         <div class="stat-content">
@@ -146,6 +154,90 @@ const selectedRange = ref('1-15');
 // Sorting
 const sortColumn = ref('employeeName');
 const sortAsc = ref(true);
+
+// Mongolian Public Holidays (2024-2027)
+const mongolianHolidays = [
+  // 2024
+  '2024-01-01', // New Year's Day
+  '2024-02-12', // Lunar New Year (Tsagaan Sar) - Day 1
+  '2024-02-13', // Lunar New Year (Tsagaan Sar) - Day 2
+  '2024-02-14', // Lunar New Year (Tsagaan Sar) - Day 3
+  '2024-03-08', // International Women's Day
+  '2024-06-01', // Mother and Children's Day
+  '2024-07-11', // Naadam Festival - Day 1
+  '2024-07-12', // Naadam Festival - Day 2
+  '2024-07-13', // Naadam Festival - Day 3
+  '2024-11-26', // Independence Day
+  
+  // 2025
+  '2025-01-01', // New Year's Day
+  '2025-01-29', // Lunar New Year (Tsagaan Sar) - Day 1
+  '2025-01-30', // Lunar New Year (Tsagaan Sar) - Day 2
+  '2025-01-31', // Lunar New Year (Tsagaan Sar) - Day 3
+  '2025-03-08', // International Women's Day
+  '2025-06-01', // Mother and Children's Day
+  '2025-07-11', // Naadam Festival - Day 1
+  '2025-07-12', // Naadam Festival - Day 2
+  '2025-07-13', // Naadam Festival - Day 3
+  '2025-11-26', // Independence Day
+  
+  // 2026
+  '2026-01-01', // New Year's Day
+  '2026-02-17', // Lunar New Year (Tsagaan Sar) - Day 1
+  '2026-02-18', // Lunar New Year (Tsagaan Sar) - Day 2
+  '2026-02-19', // Lunar New Year (Tsagaan Sar) - Day 3
+  '2026-03-08', // International Women's Day
+  '2026-06-01', // Mother and Children's Day
+  '2026-07-11', // Naadam Festival - Day 1
+  '2026-07-12', // Naadam Festival - Day 2
+  '2026-07-13', // Naadam Festival - Day 3
+  '2026-11-26', // Independence Day
+  
+  // 2027
+  '2027-01-01', // New Year's Day
+  '2027-02-06', // Lunar New Year (Tsagaan Sar) - Day 1
+  '2027-02-07', // Lunar New Year (Tsagaan Sar) - Day 2
+  '2027-02-08', // Lunar New Year (Tsagaan Sar) - Day 3
+  '2027-03-08', // International Women's Day
+  '2027-06-01', // Mother and Children's Day
+  '2027-07-11', // Naadam Festival - Day 1
+  '2027-07-12', // Naadam Festival - Day 2
+  '2027-07-13', // Naadam Festival - Day 3
+  '2027-11-26', // Independence Day
+];
+
+// Calculate working days in range
+const workingDaysInRange = computed(() => {
+  const [year, month] = selectedMonth.value.split('-');
+  const [startDay, endDay] = selectedRange.value.split('-').map(Number);
+  
+  let workingDays = 0;
+  
+  for (let day = startDay; day <= endDay; day++) {
+    const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
+    const date = new Date(dateStr);
+    const dayOfWeek = date.getDay();
+    
+    // Skip weekends (0 = Sunday, 6 = Saturday)
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      continue;
+    }
+    
+    // Skip public holidays
+    if (mongolianHolidays.includes(dateStr)) {
+      continue;
+    }
+    
+    workingDays++;
+  }
+  
+  return workingDays;
+});
+
+// Expected working hours (working days * 8 hours)
+const expectedWorkingHours = computed(() => {
+  return workingDaysInRange.value * 8;
+});
 
 // Computed sorted data
 const sortedData = computed(() => {
@@ -427,6 +519,23 @@ onMounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.stat-card.reference {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+}
+
+.stat-card.reference .stat-icon {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.stat-card.reference .stat-label,
+.stat-card.reference .stat-value,
+.stat-card.reference .stat-detail {
+  color: white;
+}
+
 .stat-icon {
   font-size: 36px;
   width: 56px;
@@ -452,6 +561,13 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 700;
   color: #1f2937;
+}
+
+.stat-detail {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 2px;
+  font-weight: 500;
 }
 
 .loading {
