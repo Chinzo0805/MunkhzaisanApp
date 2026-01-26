@@ -19,10 +19,10 @@
       </button>
       
       <button 
-        @click="filterByStatus('Төлөвлөсөн')" 
-        :class="['filter-btn', 'filter-planned', { active: selectedStatus === 'Төлөвлөсөн' }]">
-        <span class="filter-label">Төлөвлөсөн</span>
-        <span class="filter-count">{{ getStatusCount('Төлөвлөсөн') }}</span>
+        @click="filterByStatus('Төлөвлсөн')" 
+        :class="['filter-btn', 'filter-planned', { active: selectedStatus === 'Төлөвлсөн' }]">
+        <span class="filter-label">Төлөвлсөн</span>
+        <span class="filter-count">{{ getStatusCount('Төлөвлсөн') }}</span>
       </button>
       
       <button 
@@ -40,10 +40,10 @@
       </button>
       
       <button 
-        @click="filterByStatus('Үрамшуулал олгох')" 
-        :class="['filter-btn', 'filter-award', { active: selectedStatus === 'Үрамшуулал олгох' }]">
-        <span class="filter-label">Үрамшуулал олгох</span>
-        <span class="filter-count">{{ getStatusCount('Үрамшуулал олгох') }}</span>
+        @click="filterByStatus('Урамшуулал олгох')" 
+        :class="['filter-btn', 'filter-award', { active: selectedStatus === 'Урамшуулал олгох' }]">
+        <span class="filter-label">Урамшуулал олгох</span>
+        <span class="filter-count">{{ getStatusCount('Урамшуулал олгох') }}</span>
       </button>
       
       <button 
@@ -84,39 +84,39 @@
             <th @click="sortBy('id')" class="sortable">
               Төслийн код {{ sortColumn === 'id' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('name')" class="sortable">
-              Төслийн нэр {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('Detail')" class="sortable">
+              Төслийн нэр {{ sortColumn === 'Detail' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('customerName')" class="sortable">
-              Харилцагч {{ sortColumn === 'customerName' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('customer')" class="sortable">
+              Харилцагч {{ sortColumn === 'customer' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('location')" class="sortable">
-              Байршил {{ sortColumn === 'location' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('siteLocation')" class="sortable">
+              Байршил {{ sortColumn === 'siteLocation' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('status')" class="sortable status-col">
-              Статус {{ sortColumn === 'status' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('Status')" class="sortable status-col">
+              Статус {{ sortColumn === 'Status' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('startDate')" class="sortable">
-              Эхэлсэн {{ sortColumn === 'startDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('StartDate')" class="sortable">
+              Эхэлсэн {{ sortColumn === 'StartDate' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('endDate')" class="sortable">
-              Дуусах {{ sortColumn === 'endDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('EndDate')" class="sortable">
+              Дуусах {{ sortColumn === 'EndDate' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="project in sortedProjects" :key="project.id">
             <td class="project-id-cell">{{ project.id }}</td>
-            <td class="project-name-cell">{{ project.name }}</td>
-            <td>{{ project.customerName || '-' }}</td>
-            <td>{{ project.location || '-' }}</td>
+            <td class="project-name-cell">{{ project.Detail || '-' }}</td>
+            <td>{{ project.customer || '-' }}</td>
+            <td>{{ project.siteLocation || '-' }}</td>
             <td class="status-cell">
-              <span :class="['status-badge', getStatusClass(project.status)]">
-                {{ project.status || 'Идэвхтэй' }}
+              <span :class="['status-badge', getStatusClass(project.Status)]">
+                {{ project.Status || '-' }}
               </span>
             </td>
-            <td>{{ formatDate(project.startDate) }}</td>
-            <td>{{ formatDate(project.endDate) }}</td>
+            <td>{{ formatDate(project.StartDate) }}</td>
+            <td>{{ formatDate(project.EndDate) }}</td>
           </tr>
         </tbody>
       </table>
@@ -151,7 +151,7 @@ const filteredProjects = computed(() => {
   
   if (selectedStatus.value) {
     filtered = filtered.filter(p => {
-      const projectStatus = (p.status || '').trim();
+      const projectStatus = (p.Status || '').trim();
       return projectStatus === selectedStatus.value;
     });
   }
@@ -159,9 +159,9 @@ const filteredProjects = computed(() => {
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
     filtered = filtered.filter(p => 
-      p.id?.toLowerCase().includes(query) ||
+      p.id?.toString().toLowerCase().includes(query) ||
       p.name?.toLowerCase().includes(query) ||
-      p.customerName?.toLowerCase().includes(query)
+      p.customer?.toLowerCase().includes(query)
     );
   }
   
@@ -191,7 +191,7 @@ const sortedProjects = computed(() => {
 // Get count for a specific status
 function getStatusCount(status) {
   return allProjects.value.filter(p => {
-    const projectStatus = (p.status || '').trim();
+    const projectStatus = (p.Status || '').trim();
     return projectStatus === status;
   }).length;
 }
@@ -209,7 +209,7 @@ async function loadProjects() {
     console.log(`Loaded ${allProjects.value.length} projects`);
     
     // Log unique status values for debugging
-    const uniqueStatuses = [...new Set(allProjects.value.map(p => p.status))];
+    const uniqueStatuses = [...new Set(allProjects.value.map(p => p.Status))];
     console.log('Unique statuses in database:', uniqueStatuses);
   } catch (error) {
     console.error('Error loading projects:', error);
@@ -235,10 +235,10 @@ function formatDate(dateStr) {
 function getStatusClass(status) {
   const statusMap = {
     'Ажиллаж байгаа': 'status-working',
-    'Төлөвлөсөн': 'status-planned',
+    'Төлөвлсөн': 'status-planned',
     'Ажил хүлээлгэн өгөх': 'status-handover',
     'Нэхэмжлэх өгөх ба Шалгах': 'status-invoice',
-    'Үрамшуулал олгох': 'status-award',
+    'Урамшуулал олгох': 'status-award',
     'Дууссан': 'status-finished'
   };
   return statusMap[status] || 'status-working';
@@ -256,12 +256,12 @@ function exportToExcel() {
     headers,
     ...sortedProjects.value.map(proj => [
       proj.id,
-      proj.name,
-      proj.customerName || '-',
-      proj.location || '-',
-      proj.status || 'Идэвхтэй',
-      proj.startDate || '-',
-      proj.endDate || '-'
+      proj.Detail || '-',
+      proj.customer || '-',
+      proj.siteLocation || '-',
+      proj.Status || '-',
+      proj.StartDate || '-',
+      proj.EndDate || '-'
     ])
   ];
   
