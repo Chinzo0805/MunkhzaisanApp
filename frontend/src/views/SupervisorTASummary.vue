@@ -12,6 +12,7 @@
       <div class="filter-group">
         <label>Хугацаа:</label>
         <select v-model="selectedRange" @change="loadSummary">
+          <option value="full">Бүтэн сар</option>
           <option value="1-15">1-15</option>
           <option value="16-31">16-31</option>
         </select>
@@ -149,7 +150,7 @@ const summaryData = ref([]);
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const selectedMonth = ref(currentMonth);
-const selectedRange = ref('1-15');
+const selectedRange = ref('full');
 
 // Sorting
 const sortColumn = ref('employeeName');
@@ -209,7 +210,16 @@ const mongolianHolidays = [
 // Calculate working days in range
 const workingDaysInRange = computed(() => {
   const [year, month] = selectedMonth.value.split('-');
-  const [startDay, endDay] = selectedRange.value.split('-').map(Number);
+  let startDay, endDay;
+  
+  if (selectedRange.value === 'full') {
+    startDay = 1;
+    // Get last day of month
+    const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+    endDay = lastDayOfMonth;
+  } else {
+    [startDay, endDay] = selectedRange.value.split('-').map(Number);
+  }
   
   let workingDays = 0;
   
@@ -280,7 +290,16 @@ async function loadSummary() {
   loading.value = true;
   try {
     const [year, month] = selectedMonth.value.split('-');
-    const [startDay, endDay] = selectedRange.value.split('-').map(Number);
+    let startDay, endDay;
+    
+    if (selectedRange.value === 'full') {
+      startDay = 1;
+      // Get last day of month
+      const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+      endDay = lastDayOfMonth;
+    } else {
+      [startDay, endDay] = selectedRange.value.split('-').map(Number);
+    }
     
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
     const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
@@ -359,6 +378,11 @@ function sortBy(column) {
 
 function getDateRangeText() {
   const [year, month] = selectedMonth.value.split('-');
+  
+  if (selectedRange.value === 'full') {
+    return `${year}/${month}`;
+  }
+  
   const [start, end] = selectedRange.value.split('-');
   return `${year}/${month}/${start} - ${year}/${month}/${end}`;
 }
