@@ -98,9 +98,13 @@
             <td class="hours-cell missed">{{ employee.missedHours.toFixed(2) }}ц</td>
             <td class="hours-cell total">{{ employee.totalHours.toFixed(2) }}ц</td>
             <td class="days-cell">
-              <span class="day-badge worked" v-if="employee.workedDays > 0">{{ employee.workedDays }} өдөр</span>
-              <span class="day-badge rest" v-if="employee.restDays > 0">{{ employee.restDays }} амралт</span>
-              <span class="day-badge missed" v-if="employee.missedDays > 0">{{ employee.missedDays }} тасалсан</span>
+              <div class="day-badges">
+                <span class="day-badge worked" v-if="employee.workedDays > 0">{{ employee.workedDays }} өдөр</span>
+                <span class="day-separator" v-if="employee.workedDays > 0 && (employee.restDays > 0 || employee.missedDays > 0)"> / </span>
+                <span class="day-badge rest" v-if="employee.restDays > 0">{{ employee.restDays }} амралт</span>
+                <span class="day-separator" v-if="employee.restDays > 0 && employee.missedDays > 0"> / </span>
+                <span class="day-badge missed" v-if="employee.missedDays > 0">{{ employee.missedDays }} тасалсан</span>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -128,6 +132,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import * as XLSX from 'xlsx';
 
 const loading = ref(false);
 const summaryData = ref([]);
@@ -267,42 +272,65 @@ function getDateRangeText() {
 }
 
 function exportToExcel() {
+  // Create workbook and worksheet
+  const workbook = {
+    SheetNames: ['Summary'],
+    Sheets: {}
+  };
+  
   const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
   
-  const rows = sortedData.value.map(emp => [
-    emp.employeeName,
-    emp.employeeId,
-    emp.workedHours.toFixed(2),
-    emp.restHours.toFixed(2),
-    emp.missedHours.toFixed(2),
-    emp.totalHours.toFixed(2),
-    emp.workedDays,
-    emp.restDays,
-    emp.missedDays
-  ]);
+  const data = [
+    headers,
+    ...sortedData.value.map(emp => [
+      emp.employeeName,
+      emp.employeeId,
+      emp.workedHours.toFixed(2),
+      emp.restHours.toFixed(2),
+      emp.missedHours.toFixed(2),
+      emp.totalHours.toFixed(2),
+      emp.workedDays,
+      emp.restDays,
+      emp.missedDays
+    ]),
+    // Add total row
+    [
+      'НИЙТ',
+      '',
+      totalWorkedHours.value.toFixed(2),
+      totalRestHours.value.toFixed(2),
+      totalMissedHours.value.toFixed(2),
+      grandTotalHours.value.toFixed(2),
+      '',
+      '',
+      ''
+    ]
+  ];
   
-  // Add total row
-  rows.push([
-    'НИЙТ',
-    '',
-    totalWorkedHours.value.toFixed(2),
-    totalRestHours.value.toFixed(2),
-    totalMissedHours.value.toFixed(2),
-    grandTotalHours.value.toFixed(2),
-    '',
-    '',
-    ''
-  ]);
+  // Create worksheet from data
+  const ws = XLSX.utils.aoa_to_sheet(data);
   
-  let csvContent = '\uFEFF'; // BOM for UTF-8
-  csvContent += headers.join(',') + '\n';
-  csvContent += rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  // Set column widths
+  ws['!cols'] = [
+    { wch: 20 }, // Ажилтан
+    { wch: 10 }, // ID
+    { wch: 15 }, // Ажилласан цаг
+    { wch: 18 }, // Амарсан/Чөлөөтэй
+    { wch: 12 }, // Тасалсан
+    { wch: 12 }, // Нийт цаг
+    { wch: 15 }, // Ажилласан өдөр
+    { wch: 15 }, // Амралтын өдөр
+    { wch: 15 }  // Тасалсан өдөр
+  ];
   
-  // Download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  workbook.Sheets['Summary'] = ws;
+  
+  // Generate XLSX file and download
+  const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `TA_Summary_${getDateRangeText().replace(/\//g, '-')}.csv`;
+  link.download = `TA_Summary_${getDateRangeText().replace(/\//g, '-')}.xlsx`;
   link.click();
 }
 
@@ -547,6 +575,19 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.day-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.day-separator {
+  color: #9ca3af;
+  font-weight: 600;
+  padding: 0 2px;
 }
 
 .day-badge {
