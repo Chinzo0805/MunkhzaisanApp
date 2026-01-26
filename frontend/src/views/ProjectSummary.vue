@@ -143,14 +143,17 @@ const searchQuery = ref('');
 
 // Sorting
 const sortColumn = ref('id');
-const sortAsc = ref(true);
+const sortAsc = ref(false); // Default to descending
 
 // Filtered projects
 const filteredProjects = computed(() => {
   let filtered = [...allProjects.value];
   
   if (selectedStatus.value) {
-    filtered = filtered.filter(p => p.status === selectedStatus.value);
+    filtered = filtered.filter(p => {
+      const projectStatus = (p.status || '').trim();
+      return projectStatus === selectedStatus.value;
+    });
   }
   
   if (searchQuery.value.trim()) {
@@ -187,7 +190,10 @@ const sortedProjects = computed(() => {
 
 // Get count for a specific status
 function getStatusCount(status) {
-  return allProjects.value.filter(p => p.status === status).length;
+  return allProjects.value.filter(p => {
+    const projectStatus = (p.status || '').trim();
+    return projectStatus === status;
+  }).length;
 }
 
 // Filter by status
@@ -201,6 +207,10 @@ async function loadProjects() {
     await projectsStore.fetchProjects();
     allProjects.value = projectsStore.projects;
     console.log(`Loaded ${allProjects.value.length} projects`);
+    
+    // Log unique status values for debugging
+    const uniqueStatuses = [...new Set(allProjects.value.map(p => p.status))];
+    console.log('Unique statuses in database:', uniqueStatuses);
   } catch (error) {
     console.error('Error loading projects:', error);
   } finally {
