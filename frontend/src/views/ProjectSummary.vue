@@ -2,58 +2,68 @@
   <div class="project-summary-container">
     <h3>📊 Төслийн нэгтгэл</h3>
     
-    <!-- Filters Section -->
+    <!-- Filter Buttons -->
+    <div class="filter-buttons-section">
+      <button 
+        @click="filterByStatus('')" 
+        :class="['filter-btn', 'filter-all', { active: selectedStatus === '' }]">
+        <span class="filter-label">Бүгд</span>
+        <span class="filter-count">{{ allProjects.length }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Ажиллаж байгаа')" 
+        :class="['filter-btn', 'filter-working', { active: selectedStatus === 'Ажиллаж байгаа' }]">
+        <span class="filter-label">Ажиллаж байгаа</span>
+        <span class="filter-count">{{ getStatusCount('Ажиллаж байгаа') }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Төлөвлөсөн')" 
+        :class="['filter-btn', 'filter-planned', { active: selectedStatus === 'Төлөвлөсөн' }]">
+        <span class="filter-label">Төлөвлөсөн</span>
+        <span class="filter-count">{{ getStatusCount('Төлөвлөсөн') }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Ажил хүлээлгэн өгөх')" 
+        :class="['filter-btn', 'filter-handover', { active: selectedStatus === 'Ажил хүлээлгэн өгөх' }]">
+        <span class="filter-label">Ажил хүлээлгэн өгөх</span>
+        <span class="filter-count">{{ getStatusCount('Ажил хүлээлгэн өгөх') }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Нэхэмжлэх өгөх ба Шалгах')" 
+        :class="['filter-btn', 'filter-invoice', { active: selectedStatus === 'Нэхэмжлэх өгөх ба Шалгах' }]">
+        <span class="filter-label">Нэхэмжлэх өгөх ба Шалгах</span>
+        <span class="filter-count">{{ getStatusCount('Нэхэмжлэх өгөх ба Шалгах') }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Үрамшуулал олгох')" 
+        :class="['filter-btn', 'filter-award', { active: selectedStatus === 'Үрамшуулал олгох' }]">
+        <span class="filter-label">Үрамшуулал олгох</span>
+        <span class="filter-count">{{ getStatusCount('Үрамшуулал олгох') }}</span>
+      </button>
+      
+      <button 
+        @click="filterByStatus('Дууссан')" 
+        :class="['filter-btn', 'filter-finished', { active: selectedStatus === 'Дууссан' }]">
+        <span class="filter-label">Дууссан</span>
+        <span class="filter-count">{{ getStatusCount('Дууссан') }}</span>
+      </button>
+    </div>
+
+    <!-- Search and Refresh Section -->
     <div class="filters-section">
       <div class="filter-group">
-        <label>Статус:</label>
-        <select v-model="selectedStatus" @change="applyFilters">
-          <option value="">Бүгд</option>
-          <option value="Идэвхтэй">Идэвхтэй</option>
-          <option value="Хаагдсан">Хаагдсан</option>
-          <option value="Түр зогссон">Түр зогссон</option>
-        </select>
-      </div>
-      
-      <div class="filter-group">
         <label>Хайх:</label>
-        <input type="text" v-model="searchQuery" @input="applyFilters" placeholder="Төслийн нэр эсвэл код..." />
+        <input type="text" v-model="searchQuery" placeholder="Төслийн нэр эсвэл код..." />
       </div>
       
       <button @click="loadProjects" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
-    </div>
-
-    <!-- Summary Statistics -->
-    <div v-if="!loading && filteredProjects.length > 0" class="stats-section">
-      <div class="stat-card">
-        <div class="stat-icon">📋</div>
-        <div class="stat-content">
-          <div class="stat-label">Нийт төсөл</div>
-          <div class="stat-value">{{ filteredProjects.length }}</div>
-        </div>
-      </div>
-      <div class="stat-card active">
-        <div class="stat-icon">✅</div>
-        <div class="stat-content">
-          <div class="stat-label">Идэвхтэй</div>
-          <div class="stat-value">{{ activeProjects }}</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">⏸️</div>
-        <div class="stat-content">
-          <div class="stat-label">Түр зогссон</div>
-          <div class="stat-value">{{ pausedProjects }}</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">🔒</div>
-        <div class="stat-content">
-          <div class="stat-label">Хаагдсан</div>
-          <div class="stat-value">{{ closedProjects }}</div>
-        </div>
-      </div>
     </div>
 
     <!-- Loading State -->
@@ -140,7 +150,7 @@ const filteredProjects = computed(() => {
   let filtered = [...allProjects.value];
   
   if (selectedStatus.value) {
-    filtered = filtered.filter(p => (p.status || 'Идэвхтэй') === selectedStatus.value);
+    filtered = filtered.filter(p => p.status === selectedStatus.value);
   }
   
   if (searchQuery.value.trim()) {
@@ -175,18 +185,15 @@ const sortedProjects = computed(() => {
   return data;
 });
 
-// Status statistics
-const activeProjects = computed(() => {
-  return filteredProjects.value.filter(p => (p.status || 'Идэвхтэй') === 'Идэвхтэй').length;
-});
+// Get count for a specific status
+function getStatusCount(status) {
+  return allProjects.value.filter(p => p.status === status).length;
+}
 
-const pausedProjects = computed(() => {
-  return filteredProjects.value.filter(p => p.status === 'Түр зогссон').length;
-});
-
-const closedProjects = computed(() => {
-  return filteredProjects.value.filter(p => p.status === 'Хаагдсан').length;
-});
+// Filter by status
+function filterByStatus(status) {
+  selectedStatus.value = status;
+}
 
 async function loadProjects() {
   loading.value = true;
@@ -199,10 +206,6 @@ async function loadProjects() {
   } finally {
     loading.value = false;
   }
-}
-
-function applyFilters() {
-  // Filters are applied through computed property
 }
 
 function sortBy(column) {
@@ -221,11 +224,14 @@ function formatDate(dateStr) {
 
 function getStatusClass(status) {
   const statusMap = {
-    'Идэвхтэй': 'status-active',
-    'Түр зогссон': 'status-paused',
-    'Хаагдсан': 'status-closed'
+    'Ажиллаж байгаа': 'status-working',
+    'Төлөвлөсөн': 'status-planned',
+    'Ажил хүлээлгэн өгөх': 'status-handover',
+    'Нэхэмжлэх өгөх ба Шалгах': 'status-invoice',
+    'Үрамшуулал олгох': 'status-award',
+    'Дууссан': 'status-finished'
   };
-  return statusMap[status] || 'status-active';
+  return statusMap[status] || 'status-working';
 }
 
 function exportToExcel() {
@@ -289,6 +295,119 @@ onMounted(async () => {
   color: #1f2937;
   font-size: 24px;
   font-weight: 700;
+}
+
+.filter-buttons-section {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  flex: 1;
+  min-width: 140px;
+  padding: 16px 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.filter-btn.active {
+  border-width: 3px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.filter-btn .filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.filter-btn .filter-count {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.filter-all {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: #667eea;
+}
+
+.filter-all:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #653a8a 100%);
+}
+
+.filter-working {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.filter-working.active {
+  background: #10b981;
+  color: white;
+}
+
+.filter-planned {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.filter-planned.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.filter-handover {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.filter-handover.active {
+  background: #f59e0b;
+  color: white;
+}
+
+.filter-invoice {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+.filter-invoice.active {
+  background: #8b5cf6;
+  color: white;
+}
+
+.filter-award {
+  border-color: #ec4899;
+  color: #ec4899;
+}
+
+.filter-award.active {
+  background: #ec4899;
+  color: white;
+}
+
+.filter-finished {
+  border-color: #6b7280;
+  color: #6b7280;
+}
+
+.filter-finished.active {
+  background: #6b7280;
+  color: white;
 }
 
 .filters-section {
@@ -519,18 +638,33 @@ onMounted(async () => {
   display: inline-block;
 }
 
-.status-active {
-  background: #d4edda;
-  color: #155724;
+.status-working {
+  background: #d1fae5;
+  color: #065f46;
 }
 
-.status-paused {
-  background: #fff3cd;
-  color: #856404;
+.status-planned {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
-.status-closed {
-  background: #f8d7da;
-  color: #721c24;
+.status-handover {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-invoice {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.status-award {
+  background: #fce7f3;
+  color: #9f1239;
+}
+
+.status-finished {
+  background: #f3f4f6;
+  color: #374151;
 }
 </style>
