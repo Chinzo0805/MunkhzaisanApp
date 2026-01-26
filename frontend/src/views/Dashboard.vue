@@ -26,6 +26,9 @@
           <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
           </button>
+          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/supervisor-ta-summary')" class="btn-action summary">
+            📊 Ирцийн нэгтгэл
+          </button>
         </div>
       </div>
 
@@ -471,6 +474,11 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
 }
 
+.btn-action.summary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
 .btn-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
@@ -478,6 +486,10 @@ function handleSaved(event) {
 
 .btn-action.salary:hover {
   box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+}
+
+.btn-action.summary:hover {
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
 }
 
 .time-attendance-section {
