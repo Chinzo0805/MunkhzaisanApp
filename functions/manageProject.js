@@ -104,8 +104,8 @@ function calculateProjectMetrics(projectData) {
   const plannedHour = parseFloat(data.PlannedHour) || 0;
   const wosHour = parseFloat(data.WosHour) || 0;
   
-  // Calculate EngineerHand (changed from 7500 to 12500) - rounded to whole number
-  data.EngineerHand = Math.round(wosHour * 12500);
+  // Calculate base amount (WosHour * 12500) - rounded to whole number
+  const baseAmount = Math.round(wosHour * 12500);
   
   // Calculate TeamBounty - rounded to whole number
   data.TeamBounty = Math.round(wosHour * 22500);
@@ -121,16 +121,16 @@ function calculateProjectMetrics(projectData) {
     data.HourPerformance = 0;
   }
   
-  // Calculate AdjustedEngineerBounty - rounded to whole number
+  // Calculate EngineerHand (performance-adjusted bounty) - rounded to whole number
   // Formula: Bounty % = 200% - Performance %
   // At 100% performance: 200 - 100 = 100% bounty
   // At 60% performance: 200 - 60 = 140% bounty
   // At 120% performance: 200 - 120 = 80% bounty
-  if (plannedHour > 0 && data.EngineerHand > 0) {
+  if (plannedHour > 0 && baseAmount > 0) {
     const bountyPercentage = 200 - data.HourPerformance;
-    data.AdjustedEngineerBounty = Math.round((data.EngineerHand * bountyPercentage) / 100);
+    data.EngineerHand = Math.round((baseAmount * bountyPercentage) / 100);
   } else {
-    data.AdjustedEngineerBounty = 0;
+    data.EngineerHand = baseAmount;
   }
   
   return data;

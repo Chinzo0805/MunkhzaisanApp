@@ -60,7 +60,7 @@
             </div>
             <div class="stat-row" v-if="project.engineerHand > 0">
               <span class="stat-label">Инженерийн урамшуулал:</span>
-              <span class="stat-value bounty">{{ formatNumber(project.engineerHand) }} ₮</span>
+              <span class="stat-value bounty-adjusted">{{ formatNumber(project.engineerHand) }} ₮</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Төлөвийн прогресс:</span>
@@ -78,10 +78,6 @@
                 }"></div>
                 <span class="progress-text" :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
               </div>
-            </div>
-            <div class="stat-row" v-if="project.AdjustedEngineerBounty != null && project.AdjustedEngineerBounty > 0">
-              <span class="stat-label">Гарт олгох инженерийн урамшуулал:</span>
-              <span class="stat-value bounty-adjusted">{{ formatNumber(project.AdjustedEngineerBounty) }} ₮</span>
             </div>
           </div>
         </div>
@@ -570,10 +566,9 @@ async function loadProjectSummary() {
           startDate: projectData.StartDate || '',
           plannedHour: Math.round(plannedHour * 10) / 10,
           realHour: Math.round(realHour * 10) / 10,
-          engineerHand: Math.round(engineerHand),
+          engineerHand: projectData.EngineerHand || Math.round(engineerHand),
           progress,
-          HourPerformance: projectData.HourPerformance,
-          AdjustedEngineerBounty: projectData.AdjustedEngineerBounty
+          HourPerformance: projectData.HourPerformance
         });
       }
     });

@@ -106,22 +106,20 @@ async function updateProjectMetrics(projectId) {
       const wosHour = parseFloat(projectData.WosHour) || 0;
       
       // Calculate bounties - rounded to whole numbers
-      const engineerHand = Math.round(wosHour * 12500);
+      const baseAmount = Math.round(wosHour * 12500);
       const teamBounty = Math.round(wosHour * 22500);
       const nonEngineerBounty = Math.round(nonEngineerHours * 5000);
       
       let hourPerformance = 0;
-      let adjustedEngineerBounty = 0;
+      let engineerHand = baseAmount;
       
       if (plannedHour > 0) {
         hourPerformance = (totalHours / plannedHour) * 100;
         
-        if (engineerHand > 0) {
+        if (baseAmount > 0) {
           const bountyPercentage = 200 - hourPerformance;
-          adjustedEngineerBounty = Math.round((engineerHand * bountyPercentage) / 100);
+          engineerHand = Math.round((baseAmount * bountyPercentage) / 100);
         }
-      } else {
-        adjustedEngineerBounty = 0;
       }
       
       await projectDoc.ref.update({
@@ -134,7 +132,6 @@ async function updateProjectMetrics(projectId) {
         TeamBounty: teamBounty,
         NonEngineerBounty: nonEngineerBounty,
         HourPerformance: hourPerformance,
-        AdjustedEngineerBounty: adjustedEngineerBounty,
         lastRealHourUpdate: new Date().toISOString()
       });
       

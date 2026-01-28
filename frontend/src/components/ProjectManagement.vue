@@ -82,11 +82,7 @@
           </div>
           <div class="engineer-bounty" v-if="project.EngineerHand && project.EngineerHand > 0">
             <span class="bounty-label">Инженерийн урамшуулал:</span>
-            <span class="bounty-value-base">{{ formatNumber(project.EngineerHand) }}₮</span>
-          </div>
-          <div class="engineer-bounty adjusted" v-if="project.AdjustedEngineerBounty && project.AdjustedEngineerBounty > 0">
-            <span class="bounty-label">Гарт олгох инженерийн урамшуулал:</span>
-            <span class="bounty-value">{{ formatNumber(project.AdjustedEngineerBounty) }}₮</span>
+            <span class="bounty-value">{{ formatNumber(project.EngineerHand) }}₮</span>
           </div>
           <div class="team-bounty" v-if="project.TeamBounty && project.TeamBounty > 0">
             <span class="team-bounty-label">Багийн урамшуулал:</span>
@@ -105,7 +101,8 @@
     </div>
     
     <!-- Add/Edit/View Modal -->
-    <div v-if="showModal || editingItem" class="modal-overlay" @click.self="closeModal">
+    <Teleport to="body">
+      <div v-if="showModal || editingItem" class="modal-overlay" @click.self="closeModal">
       <div class="modal-content">
         <h3>{{ editingItem && !isEditMode ? 'View Project' : editingItem ? 'Edit Project' : 'Add New Project' }}</h3>
         
@@ -227,9 +224,9 @@
           
           <div class="form-row">
             <div class="form-group">
-              <label>Инженерийн урамшуулал</label>
-              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #fef3c7;" />
-              <small style="color: #6b7280;">WosHour × 12,500 MNT</small>
+              <label>Инженерийн урамшуулал (гүйцэтгэлийн дагуу)</label>
+              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+              <small style="color: #6b7280;">Performance-adjusted bounty</small>
             </div>
             <div class="form-group">
               <label>Багийн урамшуулал</label>
@@ -277,11 +274,6 @@
               <label>Цагийн гүйцэтгэл</label>
               <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">RealHour / PlannedHour × 100</small>
-            </div>
-            <div class="form-group" v-if="form.EngineerHand > 0">
-              <label>Гарт олгох инженерийн урамшуулал</label>
-              <input :value="formatNumber(form.AdjustedEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-              <small style="color: #6b7280;">100%= EngineerHand, <100%= higher, >100%= lower</small>
             </div>
           </div>
           
@@ -373,6 +365,7 @@
         </form>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -412,9 +405,15 @@ const form = ref({
   referenceIdfromCustomer: '',
   Status: 'Active',
   WosHour: 0,
+  EngineerHand: 0,
+  TeamBounty: 0,
   EngineerBounty: 0,
   PlannedHour: 0,
   RealHour: 0,
+  EngineerWorkHour: 0,
+  NonEngineerWorkHour: 0,
+  NonEngineerBounty: 0,
+  HourPerformance: 0,
   IncomeHR: 0,
   ExpenceHR: 0,
   IncomeCar: 0,
@@ -552,10 +551,19 @@ function onIncomeHRChange() {
 }
 
 function calculateFinancials() {
-  // EngineerHand = WosHour * 7500
-  form.value.EngineerHand = (form.value.WosHour || 0) * 7500;
+  // TeamBounty = WosHour * 22500
+  form.value.TeamBounty = (form.value.WosHour || 0) * 22500;
   // PlannedHour = WosHour * 3
   form.value.PlannedHour = (form.value.WosHour || 0) * 3;
+  // NonEngineerBounty = NonEngineerWorkHour * 5000
+  form.value.NonEngineerBounty = (form.value.NonEngineerWorkHour || 0) * 5000;
+  // HourPerformance = (RealHour / PlannedHour) * 100
+  form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
+  // EngineerHand = Performance-adjusted bounty (WosHour * 12500 * (200 - performance%) / 100)
+  const baseAmount = (form.value.WosHour || 0) * 12500;
+  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, baseAmount);
+  // EngineerBounty = EngineerWorkHour * 12500 (basic calculation)
+  form.value.EngineerBounty = (form.value.EngineerWorkHour || 0) * 12500;
   // ProfitHR = IncomeHR - ExpenceHR
   form.value.ProfitHR = (form.value.IncomeHR || 0) - (form.value.ExpenceHR || 0);
   // ProfitCar = IncomeCar - ExpenceCar
@@ -600,13 +608,13 @@ function editItem(project) {
     WosHour: project.WosHour || 0,
     EngineerHand: project.EngineerHand || 0,
     TeamBounty: project.TeamBounty || 0,
+    EngineerBounty: project.EngineerBounty || 0,
     PlannedHour: project.PlannedHour || 0,
     RealHour: project.RealHour || 0,
     EngineerWorkHour: project.EngineerWorkHour || 0,
     NonEngineerWorkHour: project.NonEngineerWorkHour || 0,
     NonEngineerBounty: project.NonEngineerBounty || 0,
     HourPerformance: project.HourPerformance || 0,
-    AdjustedEngineerBounty: project.AdjustedEngineerBounty || 0,
     IncomeHR: project.IncomeHR || 0,
     ExpenceHR: project.ExpenceHR || 0,
     IncomeCar: project.IncomeCar || 0,
@@ -640,6 +648,27 @@ function closeModal() {
     Comment: '',
     referenceIdfromCustomer: '',
     Status: 'Active',
+    WosHour: 0,
+    EngineerHand: 0,
+    TeamBounty: 0,
+    EngineerBounty: 0,
+    PlannedHour: 0,
+    RealHour: 0,
+    EngineerWorkHour: 0,
+    NonEngineerWorkHour: 0,
+    NonEngineerBounty: 0,
+    HourPerformance: 0,
+    IncomeHR: 0,
+    ExpenceHR: 0,
+    IncomeCar: 0,
+    ExpenceCar: 0,
+    IncomeMaterial: 0,
+    ExpenceMaterial: 0,
+    ExpenceHSE: 0,
+    ProfitHR: 0,
+    ProfitCar: 0,
+    ProfitMaterial: 0,
+    TotalProfit: 0,
   };
 }
 

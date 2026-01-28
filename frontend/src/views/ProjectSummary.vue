@@ -203,8 +203,10 @@
       Сонгосон хугацаанд бүртгэл олдсонгүй
     </div>
 
-    <!-- Project Management Modal (hidden, only for viewing) -->
-    <ProjectManagement ref="projectManagementRef" style="display: none;" />
+    <!-- Project Management Component (hidden by default, only shows modal) -->
+    <div style="display: none;">
+      <ProjectManagement ref="projectManagementRef" />
+    </div>
   </div>
 </template>
 

@@ -98,25 +98,25 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           const projectDoc = projectQuery.docs[0];
           const projectData = projectDoc.data();
           
-          // Calculate HourPerformance and AdjustedEngineerBounty
+          // Calculate HourPerformance and EngineerHand (performance-adjusted)
           const realHour = hours.totalHours;
           const plannedHour = parseFloat(projectData.PlannedHour) || 0;
           const wosHour = parseFloat(projectData.WosHour) || 0;
           
-          // Calculate EngineerHand and TeamBounty - rounded to whole numbers
-          const engineerHand = Math.round(wosHour * 12500);
+          // Calculate base amount and TeamBounty - rounded to whole numbers
+          const baseAmount = Math.round(wosHour * 12500);
           const teamBounty = Math.round(wosHour * 22500);
           const nonEngineerBounty = Math.round(hours.nonEngineerHours * 5000);
           
           let hourPerformance = 0;
-          let adjustedEngineerBounty = 0;
+          let engineerHand = baseAmount;
           
           if (plannedHour > 0) {
             hourPerformance = (realHour / plannedHour) * 100;
             
-            if (engineerHand > 0) {
+            if (baseAmount > 0) {
               const bountyPercentage = 200 - hourPerformance;
-              adjustedEngineerBounty = Math.round((engineerHand * bountyPercentage) / 100);
+              engineerHand = Math.round((baseAmount * bountyPercentage) / 100);
             }
           }
           
@@ -130,7 +130,6 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             TeamBounty: teamBounty,
             NonEngineerBounty: nonEngineerBounty,
             HourPerformance: hourPerformance,
-            AdjustedEngineerBounty: adjustedEngineerBounty,
             lastRealHourUpdate: new Date().toISOString()
           });
           updates.push({ 
@@ -162,7 +161,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           WorkingHours: 0,
           OvertimeHours: 0,
           HourPerformance: 0,
-          AdjustedEngineerBounty: 0,
+          EngineerHand: 0,
           lastRealHourUpdate: new Date().toISOString()
         });
         zeroUpdates++;
