@@ -202,120 +202,18 @@
     <div v-else-if="!loading" class="no-data">
       Сонгосон хугацаанд бүртгэл олдсонгүй
     </div>
-
-    <!-- Project Detail Modal -->
-    <div v-if="viewingProject" class="modal-overlay" @click="closeProjectView">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>Төслийн дэлгэрэнгүй мэдээлэл</h3>
-          <button @click="closeProjectView" class="modal-close">✖</button>
-        </div>
-        <div class="modal-body">
-          <div class="project-detail-grid">
-            <div class="detail-row">
-              <span class="detail-label">ID:</span>
-              <span class="detail-value">{{ viewingProject.id }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Төслийн нэр:</span>
-              <span class="detail-value">{{ viewingProject.Detail || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Харилцагч:</span>
-              <span class="detail-value">{{ viewingProject.customer || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Байршил:</span>
-              <span class="detail-value">{{ viewingProject.siteLocation || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Төрөл:</span>
-              <span class="detail-value">{{ viewingProject.type || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Дэд төрөл:</span>
-              <span class="detail-value">{{ viewingProject.subtype || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Статус:</span>
-              <span :class="['status-badge', getStatusClass(viewingProject.Status)]">
-                {{ viewingProject.Status || '-' }}
-              </span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Хариуцах ажилтан:</span>
-              <span class="detail-value">{{ viewingProject.ResponsibleEmp || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Эхлэх огноо:</span>
-              <span class="detail-value">{{ viewingProject.StartDate || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Дуусах огноо:</span>
-              <span class="detail-value">{{ viewingProject.EndDate || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Төлөвлөсөн цаг:</span>
-              <span class="detail-value">{{ viewingProject.PlannedHour || 0 }} цаг</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Бодит цаг:</span>
-              <span class="detail-value">{{ viewingProject.RealHour || 0 }} цаг</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Цагийн гүйцэтгэл:</span>
-              <span class="detail-value">{{ viewingProject.HourPerformance ? viewingProject.HourPerformance.toFixed(2) + '%' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Инженер ажилласан цаг:</span>
-              <span class="detail-value">{{ viewingProject.EngineerWorkHour || 0 }} цаг</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Инженер бус ажилласан цаг:</span>
-              <span class="detail-value">{{ viewingProject.NonEngineerWorkHour || 0 }} цаг</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Инженерийн урамшуулал:</span>
-              <span class="detail-value">{{ viewingProject.EngineerBounty ? viewingProject.EngineerBounty.toLocaleString() + '₮' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Инженерийн гар:</span>
-              <span class="detail-value">{{ viewingProject.EngineerHand ? viewingProject.EngineerHand.toLocaleString() + '₮' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Багийн урамшуулал:</span>
-              <span class="detail-value">{{ viewingProject.TeamBounty ? viewingProject.TeamBounty.toLocaleString() + '₮' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Инженер бус урамшуулал:</span>
-              <span class="detail-value">{{ viewingProject.NonEngineerBounty ? viewingProject.NonEngineerBounty.toLocaleString() + '₮' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Нийт ашиг:</span>
-              <span class="detail-value">{{ viewingProject.TotalProfit ? viewingProject.TotalProfit.toLocaleString() + '₮' : '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Харилцагчийн лавлах дугаар:</span>
-              <span class="detail-value">{{ viewingProject.referenceIdfromCustomer || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Тайлбар:</span>
-              <span class="detail-value">{{ viewingProject.Comment || '-' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
 import * as XLSX from 'xlsx';
 
+const router = useRouter();
 const projectsStore = useProjectsStore();
 const loading = ref(false);
 const allProjects = ref([]);
@@ -334,9 +232,6 @@ const editForm = ref({
   EngineerHand: 0,
   referenceIdfromCustomer: ''
 });
-
-// Viewing state
-const viewingProject = ref(null);
 
 // Sorting
 const sortColumn = ref('id');
@@ -455,11 +350,11 @@ function startEdit(project) {
 }
 
 function viewProject(project) {
-  viewingProject.value = project;
-}
-
-function closeProjectView() {
-  viewingProject.value = null;
+  // Navigate to dashboard with project ID to open the project form
+  router.push({ 
+    name: 'Dashboard', 
+    query: { projectId: project.id }
+  });
 }
 
 function cancelEdit() {
@@ -1023,91 +918,5 @@ onMounted(async () => {
 .btn-cancel:hover {
   background: #dc2626;
   transform: scale(1.1);
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 20px;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  max-width: 800px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 2px solid #e5e7eb;
-  position: sticky;
-  top: 0;
-  background: white;
-  z-index: 1;
-}
-
-.modal-header h3 {
-  margin: 0;
-  color: #1f2937;
-  font-size: 20px;
-}
-
-.modal-close {
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 18px;
-  transition: all 0.2s;
-}
-
-.modal-close:hover {
-  background: #dc2626;
-  transform: scale(1.1);
-}
-
-.modal-body {
-  padding: 24px;
-}
-
-.project-detail-grid {
-  display: grid;
-  gap: 16px;
-}
-
-.detail-row {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 16px;
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 6px;
-  align-items: center;
-}
-
-.detail-label {
-  font-weight: 600;
-  color: #374151;
-}
-
-.detail-value {
-  color: #1f2937;
 }
 </style>

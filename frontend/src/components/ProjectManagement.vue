@@ -668,6 +668,17 @@ async function handleSave() {
     saving.value = false;
   }
 }
+
+function openProjectById(projectId) {
+  const project = projectsStore.projects.find(p => p.id === projectId);
+  if (project) {
+    editItem(project);
+  }
+}
+
+defineExpose({
+  openProjectById
+});
 </script>
 
 <style scoped>
