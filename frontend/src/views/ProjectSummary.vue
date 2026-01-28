@@ -82,10 +82,7 @@
         <thead>
           <tr>
             <th @click="sortBy('id')" class="sortable">
-              Төслийн код {{ sortColumn === 'id' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="sortBy('Detail')" class="sortable">
-              Төслийн нэр {{ sortColumn === 'Detail' ? (sortAsc ? '↑' : '↓') : '' }}
+              ID {{ sortColumn === 'id' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th @click="sortBy('customer')" class="sortable">
               Харилцагч {{ sortColumn === 'customer' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -93,30 +90,108 @@
             <th @click="sortBy('siteLocation')" class="sortable">
               Байршил {{ sortColumn === 'siteLocation' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('Status')" class="sortable status-col">
-              Статус {{ sortColumn === 'Status' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('ResponsibleEmp')" class="sortable">
+              Хариуцах {{ sortColumn === 'ResponsibleEmp' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('StartDate')" class="sortable">
-              Эхэлсэн {{ sortColumn === 'StartDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('HourPerformance')" class="sortable">
+              Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('EndDate')" class="sortable">
-              Дуусах {{ sortColumn === 'EndDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('EngineerBounty')" class="sortable">
+              Инженер урамшуулал {{ sortColumn === 'EngineerBounty' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="sortBy('EngineerHand')" class="sortable">
+              Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
+              Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th class="actions-col">Үйлдэл</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="project in sortedProjects" :key="project.id">
             <td class="project-id-cell">{{ project.id }}</td>
-            <td class="project-name-cell">{{ project.Detail || '-' }}</td>
-            <td>{{ project.customer || '-' }}</td>
-            <td>{{ project.siteLocation || '-' }}</td>
-            <td class="status-cell">
-              <span :class="['status-badge', getStatusClass(project.Status)]">
-                {{ project.Status || '-' }}
-              </span>
+            
+            <td>
+              <input 
+                v-if="editingId === project.id"
+                v-model="editForm.customer"
+                type="text"
+                class="edit-input"
+              />
+              <span v-else>{{ project.customer || '-' }}</span>
             </td>
-            <td>{{ formatDate(project.StartDate) }}</td>
-            <td>{{ formatDate(project.EndDate) }}</td>
+            
+            <td>
+              <input 
+                v-if="editingId === project.id"
+                v-model="editForm.siteLocation"
+                type="text"
+                class="edit-input"
+              />
+              <span v-else>{{ project.siteLocation || '-' }}</span>
+            </td>
+            
+            <td>
+              <input 
+                v-if="editingId === project.id"
+                v-model="editForm.ResponsibleEmp"
+                type="text"
+                class="edit-input"
+              />
+              <span v-else>{{ project.ResponsibleEmp || '-' }}</span>
+            </td>
+            
+            <td class="number-cell">
+              <input 
+                v-if="editingId === project.id"
+                v-model.number="editForm.HourPerformance"
+                type="number"
+                step="0.01"
+                class="edit-input"
+              />
+              <span v-else>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
+            </td>
+            
+            <td class="number-cell">
+              <input 
+                v-if="editingId === project.id"
+                v-model.number="editForm.EngineerBounty"
+                type="number"
+                class="edit-input"
+              />
+              <span v-else>{{ project.EngineerBounty ? project.EngineerBounty.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td class="number-cell">
+              <input 
+                v-if="editingId === project.id"
+                v-model.number="editForm.EngineerHand"
+                type="number"
+                class="edit-input"
+              />
+              <span v-else>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td>
+              <input 
+                v-if="editingId === project.id"
+                v-model="editForm.referenceIdfromCustomer"
+                type="text"
+                class="edit-input"
+              />
+              <span v-else>{{ project.referenceIdfromCustomer || '-' }}</span>
+            </td>
+            
+            <td class="actions-cell">
+              <template v-if="editingId === project.id">
+                <button @click="saveEdit(project)" class="btn-save" :disabled="saving">💾</button>
+                <button @click="cancelEdit" class="btn-cancel">✖</button>
+              </template>
+              <template v-else>
+                <button @click="startEdit(project)" class="btn-edit">✏️</button>
+              </template>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -131,6 +206,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
 import * as XLSX from 'xlsx';
@@ -140,6 +216,19 @@ const loading = ref(false);
 const allProjects = ref([]);
 const selectedStatus = ref('');
 const searchQuery = ref('');
+
+// Editing state
+const editingId = ref(null);
+const saving = ref(false);
+const editForm = ref({
+  customer: '',
+  siteLocation: '',
+  ResponsibleEmp: '',
+  HourPerformance: 0,
+  EngineerBounty: 0,
+  EngineerHand: 0,
+  referenceIdfromCustomer: ''
+});
 
 // Sorting
 const sortColumn = ref('id');
@@ -244,37 +333,96 @@ function getStatusClass(status) {
   return statusMap[status] || 'status-working';
 }
 
+function startEdit(project) {
+  editingId.value = project.id;
+  editForm.value = {
+    customer: project.customer || '',
+    siteLocation: project.siteLocation || '',
+    ResponsibleEmp: project.ResponsibleEmp || '',
+    HourPerformance: project.HourPerformance || 0,
+    EngineerBounty: project.EngineerBounty || 0,
+    EngineerHand: project.EngineerHand || 0,
+    referenceIdfromCustomer: project.referenceIdfromCustomer || ''
+  };
+}
+
+function cancelEdit() {
+  editingId.value = null;
+  editForm.value = {
+    customer: '',
+    siteLocation: '',
+    ResponsibleEmp: '',
+    HourPerformance: 0,
+    EngineerBounty: 0,
+    EngineerHand: 0,
+    referenceIdfromCustomer: ''
+  };
+}
+
+async function saveEdit(project) {
+  saving.value = true;
+  try {
+    const projectRef = doc(db, 'projects', project.docId);
+    await updateDoc(projectRef, {
+      customer: editForm.value.customer,
+      siteLocation: editForm.value.siteLocation,
+      ResponsibleEmp: editForm.value.ResponsibleEmp,
+      HourPerformance: Number(editForm.value.HourPerformance),
+      EngineerBounty: Number(editForm.value.EngineerBounty),
+      EngineerHand: Number(editForm.value.EngineerHand),
+      referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Update local data
+    const index = allProjects.value.findIndex(p => p.id === project.id);
+    if (index !== -1) {
+      Object.assign(allProjects.value[index], editForm.value);
+    }
+    
+    console.log('Project updated successfully');
+    cancelEdit();
+  } catch (error) {
+    console.error('Error updating project:', error);
+    alert('Алдаа гарлаа: ' + error.message);
+  } finally {
+    saving.value = false;
+  }
+}
+
 function exportToExcel() {
   const workbook = {
     SheetNames: ['Projects'],
     Sheets: {}
   };
   
-  const headers = ['Төслийн код', 'Төслийн нэр', 'Харилцагч', 'Байршил', 'Статус', 'Эхэлсэн', 'Дуусах'];
+  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
   
   const data = [
     headers,
     ...sortedProjects.value.map(proj => [
       proj.id,
-      proj.Detail || '-',
       proj.customer || '-',
       proj.siteLocation || '-',
-      proj.Status || '-',
-      proj.StartDate || '-',
-      proj.EndDate || '-'
+      proj.ResponsibleEmp || '-',
+      proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
+      proj.EngineerBounty || '-',
+      proj.EngineerHand || '-',
+      proj.referenceIdfromCustomer || '-'
     ])
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
   
   ws['!cols'] = [
-    { wch: 15 },
+    { wch: 8 },
     { wch: 30 },
     { wch: 25 },
-    { wch: 25 },
+    { wch: 20 },
     { wch: 15 },
-    { wch: 12 },
-    { wch: 12 }
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 20 }
   ];
   
   workbook.Sheets['Projects'] = ws;
@@ -676,5 +824,77 @@ onMounted(async () => {
 .status-finished {
   background: #f3f4f6;
   color: #374151;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #eff6ff;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.actions-col {
+  width: 100px;
+  text-align: center;
+}
+
+.actions-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn-edit,
+.btn-save,
+.btn-cancel {
+  padding: 6px 12px;
+  margin: 0 4px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.btn-edit {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-edit:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+.btn-save {
+  background: #10b981;
+  color: white;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #059669;
+  transform: scale(1.1);
+}
+
+.btn-save:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background: #dc2626;
+  transform: scale(1.1);
 }
 </style>
