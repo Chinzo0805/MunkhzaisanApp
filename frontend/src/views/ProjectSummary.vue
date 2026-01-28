@@ -202,23 +202,26 @@
     <div v-else-if="!loading" class="no-data">
       Сонгосон хугацаанд бүртгэл олдсонгүй
     </div>
+
+    <!-- Project Management Modal (hidden, only for viewing) -->
+    <ProjectManagement ref="projectManagementRef" style="display: none;" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
+import ProjectManagement from '../components/ProjectManagement.vue';
 import * as XLSX from 'xlsx';
 
-const router = useRouter();
 const projectsStore = useProjectsStore();
 const loading = ref(false);
 const allProjects = ref([]);
 const selectedStatus = ref('');
 const searchQuery = ref('');
+const projectManagementRef = ref(null);
 
 // Editing state
 const editingId = ref(null);
@@ -350,11 +353,9 @@ function startEdit(project) {
 }
 
 function viewProject(project) {
-  // Navigate to dashboard with project ID to open the project form
-  router.push({ 
-    name: 'Dashboard', 
-    query: { projectId: project.id }
-  });
+  if (projectManagementRef.value && projectManagementRef.value.openProjectById) {
+    projectManagementRef.value.openProjectById(project.id);
+  }
 }
 
 function cancelEdit() {

@@ -84,7 +84,7 @@
         <!-- Management Components -->
         <EmployeeManagement @saved="handleSaved" />
         <CustomerManagement @saved="handleSaved" />
-        <ProjectManagement ref="projectManagementRef" @saved="handleSaved" />
+        <ProjectManagement @saved="handleSaved" />
         
         <!-- Time Attendance Approval (Supervisor only) - Collapsed by default -->
         <div v-if="authStore.userData?.isSupervisor" class="time-attendance-section">
@@ -150,7 +150,6 @@ const loading = ref(false);
 const showSyncDialog = ref(false);
 const syncType = ref('employee'); // 'employee', 'customer', or 'project'
 const showTimeAttendance = ref(false);
-const projectManagementRef = ref(null);
 let dismissTimer = null;
 
 // Auto-dismiss success messages after 8 seconds
@@ -196,16 +195,6 @@ onMounted(async () => {
       customersStore.fetchCustomers(),
       projectsStore.fetchProjects()
     ]);
-    
-    // Check if we need to open a specific project
-    const projectId = router.currentRoute.value.query.projectId;
-    if (projectId) {
-      // Trigger project form opening via ProjectManagement component
-      // The component will handle this via a ref or method
-      openProjectForm(parseInt(projectId));
-      // Clear the query parameter
-      router.replace({ name: 'Dashboard' });
-    }
   }
 });
 
@@ -251,12 +240,6 @@ async function handleSignOut() {
     router.push('/login');
   } catch (error) {
     console.error('Sign out error:', error);
-  }
-}
-
-function openProjectForm(projectId) {
-  if (projectManagementRef.value && projectManagementRef.value.openProjectById) {
-    projectManagementRef.value.openProjectById(projectId);
   }
 }
 
