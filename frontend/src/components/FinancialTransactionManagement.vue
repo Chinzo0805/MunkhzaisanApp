@@ -102,7 +102,7 @@
               <select v-model="formData.employeeID" required class="form-input" @change="onEmployeeChange">
                 <option value="">Select Employee</option>
                 <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.Id">
-                  {{ employee.Id }} - {{ employee.FirstName }} {{ employee.LastName }}
+                  {{ employee.FirstName }} ({{ employee.Id }})
                 </option>
               </select>
             </div>
