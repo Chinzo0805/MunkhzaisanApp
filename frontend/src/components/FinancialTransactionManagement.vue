@@ -101,8 +101,8 @@
               <label>Employee *</label>
               <select v-model="formData.employeeID" required class="form-input" @change="onEmployeeChange">
                 <option value="">Select Employee</option>
-                <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.id">
-                  {{ employee.id }} - {{ employee.FirstName }} {{ employee.LastName }}
+                <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.Id">
+                  {{ employee.Id }} - {{ employee.FirstName }} {{ employee.LastName }}
                 </option>
               </select>
             </div>
@@ -270,10 +270,10 @@
                   <label>
                     <input 
                       type="checkbox" 
-                      :value="employee.id" 
+                      :value="employee.Id" 
                       v-model="bulkFormData.selectedEmployees"
                     />
-                    <span>{{ employee.FirstName }} ({{ employee.id }})</span>
+                    <span>{{ employee.FirstName }} ({{ employee.Id }})</span>
                   </label>
                 </div>
               </div>
@@ -450,7 +450,7 @@ function onProjectChange() {
 }
 
 function onEmployeeChange() {
-  const employee = employeesStore.employees.find(emp => emp.id === formData.value.employeeID);
+  const employee = employeesStore.employees.find(emp => emp.Id === formData.value.employeeID);
   if (employee) {
     formData.value.employeeLastName = employee.LastName || '';
   }
@@ -577,14 +577,14 @@ async function handleBulkSubmit() {
 
     // Create a transaction for each selected employee
     for (const employeeId of bulkFormData.value.selectedEmployees) {
-      const employee = employeesStore.employees.find(emp => emp.id === employeeId);
+      const employee = employeesStore.employees.find(emp => emp.Id === employeeId);
       if (!employee) continue;
 
       const transaction = {
         date: bulkFormData.value.date,
         projectID: '',
         projectLocation: '',
-        employeeID: employee.id,
+        employeeID: employee.Id,
         employeeLastName: employee.LastName || '',
         amount: 0,
         type: bulkFormData.value.type,
