@@ -88,12 +88,6 @@ exports.fixMissingEmployeeID = require("./fixMissingEmployeeID").fixMissingEmplo
 // Fix function to add employeeId to users collection
 exports.fixUserEmployeeIds = require("./fixUserEmployeeIds").fixUserEmployeeIds;
 
-// Check for duplicate users with same employeeId
-exports.checkDuplicateUsers = require("./checkDuplicateUsers").checkDuplicateUsers;
-
-// Remove duplicate user by document ID
-exports.removeDuplicateUser = require("./removeDuplicateUser").removeDuplicateUser;
-
 // Fix function for Баатархүү records (EmployeeID 40)
 exports.fixBaatarkhuu = require("./fixBaatarkhuu").fixBaatarkhuu;
 
