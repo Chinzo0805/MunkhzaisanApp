@@ -365,9 +365,9 @@ const sortedEmployeesByLastName = computed(() => {
   return employeesStore.employees
     .filter(emp => emp.State !== 'Гарсан')
     .sort((a, b) => {
-      const lastNameA = a.LastName || '';
-      const lastNameB = b.LastName || '';
-      return lastNameA.localeCompare(lastNameB);
+      const firstNameA = a.FirstName || '';
+      const firstNameB = b.FirstName || '';
+      return firstNameA.localeCompare(firstNameB);
     });
 });
 
@@ -1010,11 +1010,11 @@ textarea.form-input {
 }
 
 .bulk-btn {
-  background-color: #9b59b6;
+  background-color: #27ae60;
 }
 
 .bulk-btn:hover {
-  background-color: #8e44ad;
+  background-color: #229954;
 }
 
 .radio-group {
