@@ -5,8 +5,11 @@
       <button @click="handleAddItem" class="action-btn add-btn">
         + Add Transaction
       </button>
-      <button @click="handleBulkFoodTrip" class="action-btn bulk-btn">
+      <button @click="handleBulkFoodTrip" class="action-btn add-btn">
         + Хоол/томилолтын зардал
+      </button>
+      <button @click="showSettings = true" class="action-btn settings-btn">
+        ⚙️ Settings
       </button>
       <button @click="showList = !showList" class="action-btn">
         {{ showList ? 'Hide Transactions' : 'List Transactions' }}
@@ -290,6 +293,49 @@
       </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div v-if="showSettings" class="modal-overlay" @click.self="closeSettings">
+      <div class="modal-content settings-modal">
+        <div class="modal-header">
+          <h4>⚙️ Food & Trip Amount Settings</h4>
+          <button class="close-btn" @click="closeSettings">&times;</button>
+        </div>
+        
+        <form @submit.prevent="saveSettings" class="item-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Food Money Amount (MNT) *</label>
+              <input 
+                v-model.number="settingsData.foodAmount" 
+                type="number" 
+                required 
+                class="form-input"
+                placeholder="10000"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Trip Money Amount (MNT) *</label>
+              <input 
+                v-model.number="settingsData.tripAmount" 
+                type="number" 
+                required 
+                class="form-input"
+                placeholder="75000"
+              />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-submit">
+              Save Settings
+            </button>
+            <button type="button" @click="closeSettings" class="btn-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Message Display -->
     <div v-if="message" :class="['message', messageType]">
       {{ message }}
@@ -311,6 +357,7 @@ const employeesStore = useEmployeesStore();
 const showList = ref(false);
 const showForm = ref(false);
 const showBulkForm = ref(false);
+const showSettings = ref(false);
 const isEditMode = ref(false);
 const searchQuery = ref('');
 const filterType = ref('');
@@ -324,6 +371,11 @@ const bulkFormData = ref({
   date: new Date().toISOString().split('T')[0],
   type: 'Хоолны мөнгө',
   selectedEmployees: [],
+});
+
+const settingsData = ref({
+  foodAmount: 10000,
+  tripAmount: 75000,
 });
 
 const formData = ref({
@@ -580,13 +632,18 @@ async function handleBulkSubmit() {
       const employee = employeesStore.employees.find(emp => emp.Id === employeeId);
       if (!employee) continue;
 
+      // Determine amount based on type
+      const amount = bulkFormData.value.type === 'Хоолны мөнгө' 
+        ? settingsData.value.foodAmount 
+        : settingsData.value.tripAmount;
+
       const transaction = {
         date: bulkFormData.value.date,
         projectID: '',
         projectLocation: '',
         employeeID: employee.Id,
         employeeLastName: employee.LastName || '',
-        amount: 0,
+        amount: amount,
         type: bulkFormData.value.type,
         purpose: 'Хоол/томилолт',
         ebarimt: false,
@@ -616,6 +673,15 @@ async function handleBulkSubmit() {
     console.error('Error creating bulk transactions:', error);
     showMessage(error.message || 'Failed to create bulk transactions', 'error');
   }
+}
+
+function closeSettings() {
+  showSettings.value = false;
+}
+
+function saveSettings() {
+  showMessage('Settings saved successfully', 'success');
+  closeSettings();
 }
 
 async function syncToExcel() {
@@ -1009,12 +1075,16 @@ textarea.form-input {
   background-color: #c0392b;
 }
 
-.bulk-btn {
-  background-color: #27ae60;
+.settings-btn {
+  background-color: #3498db;
 }
 
-.bulk-btn:hover {
-  background-color: #229954;
+.settings-btn:hover {
+  background-color: #2980b9;
+}
+
+.settings-modal {
+  max-width: 500px;
 }
 
 .radio-group {
