@@ -54,12 +54,12 @@ exports.syncFromExcelToFinancialTrans = functions
       const batch = db.batch();
       let syncCount = 0;
 
-      // Expected columns: id, date, projectID, projectLocation, requestedby, amount, type, purpose, ebarimt, НӨАТ, comment
+      // Expected columns: id, date, projectID, projectLocation, employeeID, employeeLastName, amount, type, purpose, ebarimt, НӨАТ, comment
       for (const row of rows) {
         const values = row.values[0];
-        const [id, date, projectID, projectLocation, requestedby, amount, type, purpose, ebarimt, НӨАТ, comment] = values;
+        const [id, date, projectID, projectLocation, employeeID, employeeLastName, amount, type, purpose, ebarimt, НӨАТ, comment] = values;
 
-        if (!id || !date || !requestedby || !amount || !type || !purpose) {
+        if (!id || !date || !amount || !type || !purpose) {
           console.log("Skipping row with missing required fields:", values);
           continue;
         }
@@ -71,7 +71,8 @@ exports.syncFromExcelToFinancialTrans = functions
             date: String(date),
             projectID: String(projectID || ""),
             projectLocation: String(projectLocation || ""),
-            requestedby: String(requestedby),
+            employeeID: String(employeeID || ""),
+            employeeLastName: String(employeeLastName || ""),
             amount: parseFloat(amount) || 0,
             type: String(type),
             purpose: String(purpose),

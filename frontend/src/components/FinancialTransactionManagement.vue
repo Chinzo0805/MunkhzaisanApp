@@ -5,6 +5,9 @@
       <button @click="handleAddItem" class="action-btn add-btn">
         + Add Transaction
       </button>
+      <button @click="handleBulkFoodTrip" class="action-btn bulk-btn">
+        + Хоол/томилолтын зардал
+      </button>
       <button @click="showList = !showList" class="action-btn">
         {{ showList ? 'Hide Transactions' : 'List Transactions' }}
       </button>
@@ -66,8 +69,8 @@
               <span class="amount">{{ formatNumber(transaction.amount) }}₮</span>
             </div>
             <div class="info-row">
-              <strong>Requested by:</strong>
-              <span>{{ transaction.requestedby }}</span>
+              <strong>Employee:</strong>
+              <span>{{ transaction.employeeID }} - {{ transaction.employeeLastName }}</span>
             </div>
           </div>
         </div>
@@ -95,11 +98,11 @@
             </div>
             
             <div class="form-group">
-              <label>Requested By *</label>
-              <select v-model="formData.requestedby" required class="form-input">
+              <label>Employee *</label>
+              <select v-model="formData.employeeID" required class="form-input" @change="onEmployeeChange">
                 <option value="">Select Employee</option>
-                <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.FirstName">
-                  {{ employee.FirstName }} {{ employee.LastName }}
+                <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.id">
+                  {{ employee.id }} - {{ employee.FirstName }} {{ employee.LastName }}
                 </option>
               </select>
             </div>
@@ -114,6 +117,7 @@
                 <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
                 <option value="Бараа материал, Хангамж авах">Бараа материал, Хангамж авах</option>
                 <option value="хувийн зарлага">хувийн зарлага</option>
+                <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
               </select>
             </div>
             
@@ -147,8 +151,13 @@
             </div>
             
             <div class="form-group">
-              <label>Type *</label>
-              <select v-model="formData.type" required class="form-input">
+              <label>Type {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <select 
+                v-model="formData.type" 
+                :required="formData.purpose === 'Төсөлд'" 
+                class="form-input"
+                :disabled="formData.purpose !== 'Төсөлд'"
+              >
                 <option value="">Select Type</option>
                 <option value="Бараа материал">Бараа материал</option>
                 <option value="Түлш">Түлш</option>
@@ -218,6 +227,69 @@
       </div>
     </div>
 
+    <!-- Bulk Food/Trip Transaction Modal -->
+    <div v-if="showBulkForm" class="modal-overlay" @click.self="closeBulkForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>Хоол/томилолтын зардал</h4>
+          <button class="close-btn" @click="closeBulkForm">&times;</button>
+        </div>
+        
+        <form @submit.prevent="handleBulkSubmit" class="item-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Date *</label>
+              <input 
+                v-model="bulkFormData.date" 
+                type="date" 
+                required 
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Type *</label>
+              <div class="radio-group">
+                <label>
+                  <input type="radio" v-model="bulkFormData.type" value="Хоолны мөнгө" required />
+                  <span>Хоолны мөнгө</span>
+                </label>
+                <label>
+                  <input type="radio" v-model="bulkFormData.type" value="Томилолт" required />
+                  <span>Томилолт</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label>Select Employees *</label>
+              <div class="employee-list">
+                <div v-for="employee in sortedEmployeesByLastName" :key="employee.id" class="employee-checkbox">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      :value="employee.id" 
+                      v-model="bulkFormData.selectedEmployees"
+                    />
+                    <span>{{ employee.LastName }} {{ employee.FirstName }} ({{ employee.id }})</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-submit">
+              Create Transactions
+            </button>
+            <button type="button" @click="closeBulkForm" class="btn-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Message Display -->
     <div v-if="message" :class="['message', messageType]">
       {{ message }}
@@ -238,6 +310,7 @@ const employeesStore = useEmployeesStore();
 
 const showList = ref(false);
 const showForm = ref(false);
+const showBulkForm = ref(false);
 const isEditMode = ref(false);
 const searchQuery = ref('');
 const filterType = ref('');
@@ -247,12 +320,19 @@ const messageType = ref('');
 const syncing = ref(false);
 const displayAmount = ref('0');
 
+const bulkFormData = ref({
+  date: new Date().toISOString().split('T')[0],
+  type: 'Хоолны мөнгө',
+  selectedEmployees: [],
+});
+
 const formData = ref({
   id: '',
   date: '',
   projectID: '',
   projectLocation: '',
-  requestedby: '',
+  employeeID: '',
+  employeeLastName: '',
   amount: 0,
   type: '',
   purpose: '',
@@ -278,6 +358,16 @@ const sortedEmployees = computed(() => {
       const nameA = a.FirstName || '';
       const nameB = b.FirstName || '';
       return nameA.localeCompare(nameB);
+    });
+});
+
+const sortedEmployeesByLastName = computed(() => {
+  return employeesStore.employees
+    .filter(emp => emp.State !== 'Гарсан')
+    .sort((a, b) => {
+      const lastNameA = a.LastName || '';
+      const lastNameB = b.LastName || '';
+      return lastNameA.localeCompare(lastNameB);
     });
 });
 
@@ -329,20 +419,18 @@ function formatNumber(num) {
 }
 
 function onAmountInput(event) {
-  // Remove all non-digit characters except decimal point
-  let value = event.target.value.replace(/[^\d.]/g, '');
-  
-  // Ensure only one decimal point
-  const parts = value.split('.');
-  if (parts.length > 2) {
-    value = parts[0] + '.' + parts.slice(1).join('');
-  }
+  // Remove all non-digit characters
+  let value = event.target.value.replace(/[^\d]/g, '');
   
   // Update the actual amount value
   formData.value.amount = parseFloat(value) || 0;
   
-  // Update display with formatting
-  displayAmount.value = value;
+  // Format with thousand separators
+  if (value) {
+    displayAmount.value = parseInt(value).toLocaleString('en-US');
+  } else {
+    displayAmount.value = '0';
+  }
 }
 
 function formatAmountOnBlur() {
@@ -361,11 +449,19 @@ function onProjectChange() {
   }
 }
 
+function onEmployeeChange() {
+  const employee = employeesStore.employees.find(emp => emp.id === formData.value.employeeID);
+  if (employee) {
+    formData.value.employeeLastName = employee.LastName || '';
+  }
+}
+
 function onPurposeChange() {
-  // Clear project if purpose is not "Төсөлд"
+  // Clear project and type if purpose is not "Төсөлд"
   if (formData.value.purpose !== 'Төсөлд') {
     formData.value.projectID = '';
     formData.value.projectLocation = '';
+    formData.value.type = '';
   }
 }
 
@@ -376,7 +472,8 @@ function handleAddItem() {
     date: new Date().toISOString().split('T')[0],
     projectID: '',
     projectLocation: '',
-    requestedby: '',
+    employeeID: '',
+    employeeLastName: '',
     amount: 0,
     type: '',
     purpose: '',
@@ -402,7 +499,8 @@ function closeForm() {
     date: '',
     projectID: '',
     projectLocation: '',
-    requestedby: '',
+    employeeID: '',
+    employeeLastName: '',
     amount: 0,
     type: '',
     purpose: '',
@@ -446,6 +544,77 @@ async function handleDelete() {
   } catch (error) {
     console.error('Error deleting transaction:', error);
     showMessage(error.message || 'Failed to delete transaction', 'error');
+  }
+}
+
+function handleBulkFoodTrip() {
+  bulkFormData.value = {
+    date: new Date().toISOString().split('T')[0],
+    type: 'Хоолны мөнгө',
+    selectedEmployees: [],
+  };
+  showBulkForm.value = true;
+}
+
+function closeBulkForm() {
+  showBulkForm.value = false;
+  bulkFormData.value = {
+    date: new Date().toISOString().split('T')[0],
+    type: 'Хоолны мөнгө',
+    selectedEmployees: [],
+  };
+}
+
+async function handleBulkSubmit() {
+  if (bulkFormData.value.selectedEmployees.length === 0) {
+    showMessage('Please select at least one employee', 'error');
+    return;
+  }
+
+  try {
+    let successCount = 0;
+    let failCount = 0;
+
+    // Create a transaction for each selected employee
+    for (const employeeId of bulkFormData.value.selectedEmployees) {
+      const employee = employeesStore.employees.find(emp => emp.id === employeeId);
+      if (!employee) continue;
+
+      const transaction = {
+        date: bulkFormData.value.date,
+        projectID: '',
+        projectLocation: '',
+        employeeID: employee.id,
+        employeeLastName: employee.LastName || '',
+        amount: 0,
+        type: bulkFormData.value.type,
+        purpose: 'Хоол/томилолт',
+        ebarimt: false,
+        НӨАТ: false,
+        comment: '',
+      };
+
+      try {
+        const response = await manageFinancialTransaction('create', transaction);
+        if (response.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      showMessage(`Created ${successCount} transactions successfully${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
+      closeBulkForm();
+    } else {
+      showMessage('Failed to create transactions', 'error');
+    }
+  } catch (error) {
+    console.error('Error creating bulk transactions:', error);
+    showMessage(error.message || 'Failed to create bulk transactions', 'error');
   }
 }
 
@@ -838,6 +1007,67 @@ textarea.form-input {
 
 .btn-delete:hover {
   background-color: #c0392b;
+}
+
+.bulk-btn {
+  background-color: #9b59b6;
+}
+
+.bulk-btn:hover {
+  background-color: #8e44ad;
+}
+
+.radio-group {
+  display: flex;
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+
+.radio-group input[type="radio"] {
+  margin-right: 8px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.employee-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 10px;
+  background-color: #f9f9f9;
+}
+
+.employee-checkbox {
+  margin-bottom: 8px;
+}
+
+.employee-checkbox label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.employee-checkbox label:hover {
+  background-color: #e8e8e8;
+}
+
+.employee-checkbox input[type="checkbox"] {
+  margin-right: 8px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 
 /* Message Styles */

@@ -24,16 +24,16 @@ exports.manageFinancialTransaction = functions
 
     try {
       if (action === "create") {
-        // Validate required fields
-        if (!transaction.date || !transaction.requestedby || !transaction.amount || !transaction.type || !transaction.purpose) {
+        // Validate required fields - employeeID and employeeLastName are now used instead of requestedby
+        if (!transaction.date || !transaction.amount || !transaction.type || !transaction.purpose) {
           return res.status(400).json({
             success: false,
-            error: "Missing required fields: date, requestedby, amount, type, purpose",
+            error: "Missing required fields: date, amount, type, purpose",
           });
         }
 
         // Validate purpose values
-        const validPurposes = ["Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал, Хангамж авах", "хувийн зарлага"];
+        const validPurposes = ["Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал, Хангамж авах", "хувийн зарлага", "Оффис хэрэглээний зардал", "Хоол/томилолт"];
         if (!validPurposes.includes(transaction.purpose)) {
           return res.status(400).json({
             success: false,
@@ -54,7 +54,8 @@ exports.manageFinancialTransaction = functions
           date: transaction.date,
           projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
-          requestedby: transaction.requestedby,
+          employeeID: transaction.employeeID || "",
+          employeeLastName: transaction.employeeLastName || "",
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
           purpose: transaction.purpose,
@@ -97,7 +98,8 @@ exports.manageFinancialTransaction = functions
           date: transaction.date,
           projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
-          requestedby: transaction.requestedby,
+          employeeID: transaction.employeeID || "",
+          employeeLastName: transaction.employeeLastName || "",
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
           purpose: transaction.purpose,
