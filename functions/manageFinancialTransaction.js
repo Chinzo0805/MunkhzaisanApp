@@ -32,6 +32,15 @@ exports.manageFinancialTransaction = functions
           });
         }
 
+        // Validate purpose values
+        const validPurposes = ["Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал, Хангамж авах", "хувийн зарлага"];
+        if (!validPurposes.includes(transaction.purpose)) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid purpose value",
+          });
+        }
+
         // If purpose is "Төсөлд", projectID is mandatory
         if (transaction.purpose === "Төсөлд" && !transaction.projectID) {
           return res.status(400).json({
@@ -49,6 +58,9 @@ exports.manageFinancialTransaction = functions
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
           purpose: transaction.purpose,
+          ebarimt: transaction.ebarimt || false,
+          НӨАТ: transaction.НӨАТ || false,
+          comment: transaction.comment || "",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -89,6 +101,9 @@ exports.manageFinancialTransaction = functions
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
           purpose: transaction.purpose,
+          ebarimt: transaction.ebarimt || false,
+          НӨАТ: transaction.НӨАТ || false,
+          comment: transaction.comment || "",
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 

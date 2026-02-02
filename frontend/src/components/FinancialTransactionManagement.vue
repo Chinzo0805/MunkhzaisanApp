@@ -112,7 +112,8 @@
                 <option value="">Select Purpose</option>
                 <option value="Төсөлд">Төсөлд</option>
                 <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-                <option value="бараа материал бөөн татах">бараа материал бөөн татах</option>
+                <option value="Бараа материал, Хангамж авах">Бараа материал, Хангамж авах</option>
+                <option value="хувийн зарлага">хувийн зарлага</option>
               </select>
             </div>
             
@@ -160,13 +161,42 @@
             <div class="form-group">
               <label>Amount *</label>
               <input 
-                v-model.number="formData.amount" 
-                type="number" 
-                step="0.01"
+                v-model="displayAmount" 
+                type="text" 
                 required 
                 class="form-input"
-                placeholder="0.00"
+                placeholder="0"
+                @input="onAmountInput"
+                @blur="formatAmountOnBlur"
               />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" v-model="formData.ebarimt" />
+                <span>ebarimt</span>
+              </label>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" v-model="formData.НӨАТ" />
+                <span>НӨАТ</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label>дэлгэрэнгүй</label>
+              <textarea 
+                v-model="formData.comment" 
+                class="form-input"
+                rows="3"
+                placeholder="Add detailed comment..."
+              ></textarea>
             </div>
           </div>
 
@@ -215,6 +245,7 @@ const sortBy = ref('date');
 const message = ref('');
 const messageType = ref('');
 const syncing = ref(false);
+const displayAmount = ref('0');
 
 const formData = ref({
   id: '',
@@ -225,6 +256,9 @@ const formData = ref({
   amount: 0,
   type: '',
   purpose: '',
+  ebarimt: false,
+  НӨАТ: false,
+  comment: '',
 });
 
 const activeProjects = computed(() => {
@@ -294,6 +328,32 @@ function formatNumber(num) {
   return Number(num).toLocaleString('en-US');
 }
 
+function onAmountInput(event) {
+  // Remove all non-digit characters except decimal point
+  let value = event.target.value.replace(/[^\d.]/g, '');
+  
+  // Ensure only one decimal point
+  const parts = value.split('.');
+  if (parts.length > 2) {
+    value = parts[0] + '.' + parts.slice(1).join('');
+  }
+  
+  // Update the actual amount value
+  formData.value.amount = parseFloat(value) || 0;
+  
+  // Update display with formatting
+  displayAmount.value = value;
+}
+
+function formatAmountOnBlur() {
+  // Format the display value when user leaves the field
+  if (formData.value.amount) {
+    displayAmount.value = formData.value.amount.toLocaleString('en-US');
+  } else {
+    displayAmount.value = '0';
+  }
+}
+
 function onProjectChange() {
   const project = projectsStore.projects.find(p => p.id === formData.value.projectID);
   if (project) {
@@ -320,13 +380,18 @@ function handleAddItem() {
     amount: 0,
     type: '',
     purpose: '',
+    ebarimt: false,
+    НӨАТ: false,
+    comment: '',
   };
+  displayAmount.value = '0';
   showForm.value = true;
 }
 
 function editItem(transaction) {
   isEditMode.value = true;
   formData.value = { ...transaction };
+  displayAmount.value = transaction.amount ? transaction.amount.toLocaleString('en-US') : '0';
   showForm.value = true;
 }
 
@@ -341,6 +406,9 @@ function closeForm() {
     amount: 0,
     type: '',
     purpose: '',
+    ebarimt: false,
+    НӨАТ: false,
+    comment: '',
   };
 }
 
@@ -669,6 +737,29 @@ h4 {
   flex-direction: column;
 }
 
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group.checkbox-group {
+  flex-direction: row;
+  align-items: center;
+}
+
+.form-group.checkbox-group label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.form-group.checkbox-group input[type="checkbox"] {
+  margin-right: 8px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
 .form-group label {
   margin-bottom: 5px;
   color: #555;
@@ -681,6 +772,11 @@ h4 {
   border: 1px solid #ddd;
   border-radius: 5px;
   font-size: 14px;
+}
+
+textarea.form-input {
+  resize: vertical;
+  font-family: inherit;
 }
 
 .form-input:focus {

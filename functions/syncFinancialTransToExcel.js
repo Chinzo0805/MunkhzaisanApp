@@ -65,6 +65,9 @@ exports.syncFinancialTransToExcel = functions
           data.amount || 0,
           data.type || "",
           data.purpose || "",
+          data.ebarimt ? "Yes" : "No",
+          data.НӨАТ ? "Yes" : "No",
+          data.comment || "",
         ]);
       });
 
