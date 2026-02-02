@@ -46,6 +46,12 @@ service cloud.firestore {
       allow delete: if false; // Only backend can delete
     }
     
+    // Financial transactions - supervisors can read/write
+    match /financialTransactions/{transactionId} {
+      allow read: if request.auth != null && isSupervisor();
+      allow write: if false; // Only backend can create/update/delete
+    }
+    
     // Legacy time attendance - users can read their own, supervisors can read all
     match /time_attendance/{attendanceId} {
       allow read: if request.auth != null;

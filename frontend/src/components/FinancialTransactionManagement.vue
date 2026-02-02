@@ -405,7 +405,7 @@ const activeProjects = computed(() => {
 
 const sortedEmployees = computed(() => {
   return employeesStore.employees
-    .filter(emp => emp.State !== 'Гарсан')
+    .filter(emp => emp.State === 'Ажиллаж байгаа')
     .sort((a, b) => {
       const nameA = a.FirstName || '';
       const nameB = b.FirstName || '';
@@ -415,7 +415,7 @@ const sortedEmployees = computed(() => {
 
 const sortedEmployeesByLastName = computed(() => {
   return employeesStore.employees
-    .filter(emp => emp.State !== 'Гарсан')
+    .filter(emp => emp.State === 'Ажиллаж байгаа')
     .sort((a, b) => {
       const firstNameA = a.FirstName || '';
       const firstNameB = b.FirstName || '';
