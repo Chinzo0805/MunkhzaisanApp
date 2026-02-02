@@ -14,69 +14,87 @@
       <button @click="showList = !showList" class="action-btn">
         {{ showList ? 'Hide Transactions' : 'List Transactions' }}
       </button>
-      <button @click="syncToExcel" class="action-btn sync-btn" :disabled="syncing">
-        {{ syncing ? 'Syncing...' : 'Sync to Excel' }}
-      </button>
-      <button @click="syncFromExcel" class="action-btn sync-btn" :disabled="syncing">
-        {{ syncing ? 'Syncing...' : 'Sync from Excel' }}
-      </button>
     </div>
     
     <!-- Transaction List -->
     <div v-if="showList" class="item-list">
-      <h5>Select Transaction to Edit:</h5>
+      <h5>Financial Transactions</h5>
       
       <div class="list-controls">
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="Search by project, type, or requester..." 
+          placeholder="Search by project, employee, comment..." 
           class="search-input"
         />
+        <select v-model="filterPurpose" class="filter-select">
+          <option value="">All Purposes</option>
+          <option value="Төсөлд">Төсөлд</option>
+          <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
+          <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
+          <option value="хувийн зарлага">хувийн зарлага</option>
+          <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
+          <option value="Хоол/томилолт">Хоол/томилолт</option>
+        </select>
         <select v-model="filterType" class="filter-select">
           <option value="">All Types</option>
-          <option value="Expense">Expense</option>
-          <option value="Income">Income</option>
-          <option value="Payment">Payment</option>
-          <option value="Refund">Refund</option>
+          <option value="Бараа материал">Бараа материал</option>
+          <option value="Түлш">Түлш</option>
+          <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
+          <option value="Хоолны мөнгө">Хоолны мөнгө</option>
+          <option value="Томилолт">Томилолт</option>
         </select>
-        <select v-model="sortBy" class="sort-select">
-          <option value="date">Sort by Date</option>
-          <option value="amount">Sort by Amount</option>
-          <option value="project">Sort by Project</option>
-        </select>
+        <div class="sum-display">
+          <strong>Total:</strong> {{ formatNumber(totalAmount) }}₮
+        </div>
       </div>
       
-      <div class="item-grid">
-        <div 
-          v-for="transaction in filteredTransactions" 
-          :key="transaction.id"
-          class="item-card transaction-card-item"
-          @click="editItem(transaction)"
-        >
-          <div class="card-header">
-            <div class="item-badge">{{ transaction.id }}</div>
-            <span class="type-badge" :class="transaction.type">{{ transaction.type }}</span>
-          </div>
-          <div class="card-content">
-            <div class="info-row">
-              <strong>Date:</strong>
-              <span>{{ formatDate(transaction.date) }}</span>
-            </div>
-            <div class="info-row">
-              <strong>Project:</strong>
-              <span>{{ transaction.projectID }} - {{ transaction.projectLocation }}</span>
-            </div>
-            <div class="info-row">
-              <strong>Amount:</strong>
-              <span class="amount">{{ formatNumber(transaction.amount) }}₮</span>
-            </div>
-            <div class="info-row">
-              <strong>Employee:</strong>
-              <span>{{ transaction.employeeID }} - {{ transaction.employeeLastName }}</span>
-            </div>
-          </div>
-        </div>
+      <div class="transactions-table-container">
+        <table class="transactions-table">
+          <thead>
+            <tr>
+              <th @click="sortByColumn('date')" class="sortable">
+                Date {{ getSortIcon('date') }}
+              </th>
+              <th @click="sortByColumn('project')" class="sortable">
+                Project {{ getSortIcon('project') }}
+              </th>
+              <th @click="sortByColumn('employee')" class="sortable">
+                Employee {{ getSortIcon('employee') }}
+              </th>
+              <th @click="sortByColumn('amount')" class="sortable">
+                Amount {{ getSortIcon('amount') }}
+              </th>
+              <th @click="sortByColumn('type')" class="sortable">
+                Type {{ getSortIcon('type') }}
+              </th>
+              <th @click="sortByColumn('purpose')" class="sortable">
+                Purpose {{ getSortIcon('purpose') }}
+              </th>
+              <th>ebarimt</th>
+              <th>НӨАТ</th>
+              <th>Comment</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              v-for="transaction in filteredTransactions" 
+              :key="transaction.id"
+            >
+              <td>{{ formatDate(transaction.date) }}</td>
+              <td>{{ transaction.projectID }}<br/><small>{{ transaction.projectLocation }}</small></td>
+              <td>{{ transaction.employeeID }}<br/><small>{{ transaction.employeeFirstName }}</small></td>
+              <td class="amount">{{ formatNumber(transaction.amount) }}₮</td>
+              <td>{{ transaction.type }}</td>
+              <td>{{ transaction.purpose }}</td>
+              <td>{{ transaction.ebarimt ? '✓' : '' }}</td>
+              <td>{{ transaction.НӨАТ ? '✓' : '' }}</td>
+              <td><small>{{ transaction.comment }}</small></td>
+              <td><button @click="editItem(transaction)" class="btn-edit-small">Edit</button></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -118,7 +136,7 @@
                 <option value="">Select Purpose</option>
                 <option value="Төсөлд">Төсөлд</option>
                 <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-                <option value="Бараа материал, Хангамж авах">Бараа материал, Хангамж авах</option>
+                <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
                 <option value="хувийн зарлага">хувийн зарлага</option>
                 <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
               </select>
@@ -348,7 +366,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
-import { manageFinancialTransaction, syncFinancialTransToExcel, syncFromExcelToFinancialTrans } from '../services/api';
+import { manageFinancialTransaction } from '../services/api';
 
 const transactionsStore = useFinancialTransactionsStore();
 const projectsStore = useProjectsStore();
@@ -361,10 +379,11 @@ const showSettings = ref(false);
 const isEditMode = ref(false);
 const searchQuery = ref('');
 const filterType = ref('');
+const filterPurpose = ref('');
 const sortBy = ref('date');
+const sortOrder = ref('desc');
 const message = ref('');
 const messageType = ref('');
-const syncing = ref(false);
 const displayAmount = ref('0');
 
 const bulkFormData = ref({
@@ -384,7 +403,7 @@ const formData = ref({
   projectID: '',
   projectLocation: '',
   employeeID: '',
-  employeeLastName: '',
+  employeeFirstName: '',
   amount: 0,
   type: '',
   purpose: '',
@@ -432,9 +451,16 @@ const filteredTransactions = computed(() => {
     result = result.filter(t => 
       t.projectID?.toLowerCase().includes(query) ||
       t.projectLocation?.toLowerCase().includes(query) ||
-      t.requestedby?.toLowerCase().includes(query) ||
+      t.employeeID?.toLowerCase().includes(query) ||
+      t.employeeFirstName?.toLowerCase().includes(query) ||
+      t.comment?.toLowerCase().includes(query) ||
       t.type?.toLowerCase().includes(query)
     );
+  }
+
+  // Apply purpose filter
+  if (filterPurpose.value) {
+    result = result.filter(t => t.purpose === filterPurpose.value);
   }
 
   // Apply type filter
@@ -444,19 +470,53 @@ const filteredTransactions = computed(() => {
 
   // Apply sorting
   result.sort((a, b) => {
+    let aVal, bVal;
+    
     switch (sortBy.value) {
       case 'date':
-        return new Date(b.date) - new Date(a.date);
+        aVal = new Date(a.date || 0);
+        bVal = new Date(b.date || 0);
+        break;
       case 'amount':
-        return (b.amount || 0) - (a.amount || 0);
+        aVal = parseFloat(a.amount) || 0;
+        bVal = parseFloat(b.amount) || 0;
+        break;
       case 'project':
-        return (a.projectID || '').localeCompare(b.projectID || '');
+        aVal = (a.projectID || '').toLowerCase();
+        bVal = (b.projectID || '').toLowerCase();
+        return sortOrder.value === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      case 'employee':
+        aVal = (a.employeeFirstName || '').toLowerCase();
+        bVal = (b.employeeFirstName || '').toLowerCase();
+        return sortOrder.value === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      case 'type':
+        aVal = (a.type || '').toLowerCase();
+        bVal = (b.type || '').toLowerCase();
+        return sortOrder.value === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      case 'purpose':
+        aVal = (a.purpose || '').toLowerCase();
+        bVal = (b.purpose || '').toLowerCase();
+        return sortOrder.value === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
       default:
         return 0;
     }
+    
+    return sortOrder.value === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
   return result;
+});
+
+const totalAmount = computed(() => {
+  return filteredTransactions.value.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
 });
 
 function formatDate(dateStr) {
@@ -468,6 +528,22 @@ function formatDate(dateStr) {
 function formatNumber(num) {
   if (!num && num !== 0) return '0';
   return Number(num).toLocaleString('en-US');
+}
+
+function sortByColumn(column) {
+  if (sortBy.value === column) {
+    // Toggle sort order if clicking the same column
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Default to descending for new column
+    sortBy.value = column;
+    sortOrder.value = column === 'date' || column === 'amount' ? 'desc' : 'asc';
+  }
+}
+
+function getSortIcon(column) {
+  if (sortBy.value !== column) return '⇅';
+  return sortOrder.value === 'asc' ? '↑' : '↓';
 }
 
 function onAmountInput(event) {
@@ -504,7 +580,7 @@ function onProjectChange() {
 function onEmployeeChange() {
   const employee = employeesStore.employees.find(emp => emp.Id === formData.value.employeeID);
   if (employee) {
-    formData.value.employeeLastName = employee.LastName || '';
+    formData.value.employeeFirstName = employee.FirstName || '';
   }
 }
 
@@ -525,7 +601,7 @@ function handleAddItem() {
     projectID: '',
     projectLocation: '',
     employeeID: '',
-    employeeLastName: '',
+    employeeFirstName: '',
     amount: 0,
     type: '',
     purpose: '',
@@ -642,7 +718,7 @@ async function handleBulkSubmit() {
         projectID: '',
         projectLocation: '',
         employeeID: employee.Id,
-        employeeLastName: employee.LastName || '',
+        employeeFirstName: employee.FirstName || '',
         amount: amount,
         type: bulkFormData.value.type,
         purpose: 'Хоол/томилолт',
@@ -682,40 +758,6 @@ function closeSettings() {
 function saveSettings() {
   showMessage('Settings saved successfully', 'success');
   closeSettings();
-}
-
-async function syncToExcel() {
-  syncing.value = true;
-  try {
-    const response = await syncFinancialTransToExcel();
-    if (response.success) {
-      showMessage(response.message, 'success');
-    } else {
-      showMessage(response.error || 'Sync to Excel failed', 'error');
-    }
-  } catch (error) {
-    console.error('Error syncing to Excel:', error);
-    showMessage(error.message || 'Failed to sync to Excel', 'error');
-  } finally {
-    syncing.value = false;
-  }
-}
-
-async function syncFromExcel() {
-  syncing.value = true;
-  try {
-    const response = await syncFromExcelToFinancialTrans();
-    if (response.success) {
-      showMessage(response.message, 'success');
-    } else {
-      showMessage(response.error || 'Sync from Excel failed', 'error');
-    }
-  } catch (error) {
-    console.error('Error syncing from Excel:', error);
-    showMessage(error.message || 'Failed to sync from Excel', 'error');
-  } finally {
-    syncing.value = false;
-  }
 }
 
 function showMessage(msg, type) {
@@ -1160,6 +1202,80 @@ textarea.form-input {
 .message.error {
   background-color: #e74c3c;
   color: white;
+}
+
+/* Table Styles */
+.transactions-table-container {
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.transactions-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.transactions-table th,
+.transactions-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.transactions-table th {
+  background-color: #3498db;
+  color: white;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.transactions-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.transactions-table th.sortable:hover {
+  background-color: #2980b9;
+}
+
+.transactions-table tbody tr:hover {
+  background-color: #f5f5f5;
+}
+
+.transactions-table .amount {
+  text-align: right;
+  font-weight: 600;
+  color: #27ae60;
+}
+
+.btn-edit-small {
+  padding: 5px 12px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-edit-small:hover {
+  background-color: #2980b9;
+}
+
+.sum-display {
+  padding: 8px 15px;
+  background-color: #27ae60;
+  color: white;
+  border-radius: 5px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 @keyframes slideIn {

@@ -75,6 +75,10 @@
               <span class="icon">📊</span>
               {{ syncing && syncType === 'project' ? 'Syncing...' : 'Sync Projects' }}
             </button>
+            <button @click="openSyncDialog('financial')" class="sync-btn financial" :disabled="syncing">
+              <span class="icon">💵</span>
+              {{ syncing && syncType === 'financial' ? 'Syncing...' : 'Sync Financial Trans' }}
+            </button>
           </div>
           
           <div v-if="syncResult" :class="['sync-result', syncResult.success ? 'success' : 'error']">
@@ -102,9 +106,9 @@
     <!-- Sync Direction Dialog -->
     <div v-if="showSyncDialog" class="modal-overlay" @click.self="showSyncDialog = false">
       <div class="modal-content sync-dialog">
-        <h3>Sync {{ syncType.charAt(0).toUpperCase() + syncType.slice(1) }}s</h3>
+        <h3>Sync {{ syncType === 'financial' ? 'Financial Transactions' : syncType.charAt(0).toUpperCase() + syncType.slice(1) + 's' }}</h3>
         <p>
-          Select which direction to sync {{ syncType }} data:
+          Select which direction to sync {{ syncType === 'financial' ? 'financial transaction' : syncType }} data:
         </p>
         <div class="sync-options">
           <button @click="handleSyncDirection('toExcel')" class="sync-option-btn to-excel" :disabled="syncing">
@@ -133,7 +137,8 @@ import { useProjectsStore } from '../stores/projects';
 import { 
   syncEmployeesToExcel, syncFromExcelToFirestore,
   syncCustomersToExcel, syncFromExcelToCustomers,
-  syncProjectsToExcel, syncFromExcelToProjects
+  syncProjectsToExcel, syncFromExcelToProjects,
+  syncFinancialTransToExcel, syncFromExcelToFinancialTrans
 } from '../services/api';
 import EmployeeManagement from '../components/EmployeeManagement.vue';
 import CustomerManagement from '../components/CustomerManagement.vue';
@@ -323,6 +328,20 @@ async function handleSyncDirection(direction) {
           message: `✓ Synced ${totalSynced} projects from Excel (${result.created || 0} created, ${result.updated || 0} updated)`,
         };
         await projectsStore.fetchProjects();
+      }
+    } else if (syncType.value === 'financial') {
+      if (direction === 'toExcel') {
+        result = await syncFinancialTransToExcel(token);
+        syncResult.value = {
+          success: true,
+          message: `✓ Synced financial transactions to Excel successfully`,
+        };
+      } else {
+        result = await syncFromExcelToFinancialTrans(token);
+        syncResult.value = {
+          success: true,
+          message: `✓ Synced financial transactions from Excel successfully`,
+        };
       }
     }
     

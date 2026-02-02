@@ -1,6 +1,5 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const { getAccessToken, findExcelFile } = require("./graphHelper");
 const fetch = require("node-fetch");
 
 /**
@@ -20,18 +19,38 @@ exports.syncFromExcelToFinancialTrans = functions
     try {
       console.log("Starting sync of financial transactions from Excel...");
 
-      // Get access token
-      const accessToken = await getAccessToken();
+      // Get token from request
+      const { token } = req.body;
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Microsoft access token is required",
+        });
+      }
 
-      // Find the Excel file
-      const fileId = await findExcelFile(accessToken);
+      // Search for MainExcel.xlsx in OneDrive
+      const searchEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='MainExcel.xlsx')`;
+      const searchResponse = await fetch(searchEndpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`Failed to search for Excel file: ${searchResponse.statusText}`);
+      }
+
+      const searchData = await searchResponse.json();
+      if (!searchData.value || searchData.value.length === 0) {
+        throw new Error('MainExcel.xlsx not found in OneDrive');
+      }
+
+      const fileId = searchData.value[0].id;
 
       // Get the table data
       const tableResponse = await fetch(
         `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/FinancialTrans/rows`,
         {
           method: 'GET',
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
@@ -57,9 +76,9 @@ exports.syncFromExcelToFinancialTrans = functions
       // Expected columns: id, date, projectID, projectLocation, employeeID, employeeLastName, amount, type, purpose, ebarimt, НӨАТ, comment
       for (const row of rows) {
         const values = row.values[0];
-        const [id, date, projectID, projectLocation, employeeID, employeeLastName, amount, type, purpose, ebarimt, НӨАТ, comment] = values;
+        const [id, date, projectID, projectLocation, employeeID, employeeFirstName, amount, type, purpose, ebarimt, НӨАТ, comment] = values;
 
-        if (!id || !date || !amount || !type || !purpose) {
+        if (!id || !date || !amount || !purpose) {
           console.log("Skipping row with missing required fields:", values);
           continue;
         }
@@ -72,9 +91,9 @@ exports.syncFromExcelToFinancialTrans = functions
             projectID: String(projectID || ""),
             projectLocation: String(projectLocation || ""),
             employeeID: String(employeeID || ""),
-            employeeLastName: String(employeeLastName || ""),
+            employeeFirstName: String(employeeFirstName || ""),
             amount: parseFloat(amount) || 0,
-            type: String(type),
+            type: String(type || ""),
             purpose: String(purpose),
             ebarimt: String(ebarimt).toLowerCase() === "yes",
             НӨАТ: String(НӨАТ).toLowerCase() === "yes",

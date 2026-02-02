@@ -227,9 +227,9 @@ export async function manageFinancialTransaction(action, transaction) {
   }
 }
 
-export async function syncFinancialTransToExcel() {
+export async function syncFinancialTransToExcel(token) {
   try {
-    const response = await api.post('/syncFinancialTransToExcel');
+    const response = await api.post('/syncFinancialTransToExcel', { token });
     return response.data;
   } catch (error) {
     console.error('Error syncing financial transactions to Excel:', error);
@@ -237,9 +237,9 @@ export async function syncFinancialTransToExcel() {
   }
 }
 
-export async function syncFromExcelToFinancialTrans() {
+export async function syncFromExcelToFinancialTrans(token) {
   try {
-    const response = await api.post('/syncFromExcelToFinancialTrans');
+    const response = await api.post('/syncFromExcelToFinancialTrans', { token });
     return response.data;
   } catch (error) {
     console.error('Error syncing from Excel to financial transactions:', error);

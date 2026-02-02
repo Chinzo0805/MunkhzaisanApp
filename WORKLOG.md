@@ -2,6 +2,141 @@
 
 ---
 
+## 2026.02.02 - Санхүүгийн зардлын удирдлагын систем нэмэгдсэн
+
+### Хийсэн ажлууд
+
+#### 1. Санхүүгийн бүртгэлийн систем (Financial Transactions Management)
+
+**Үндсэн функцууд:**
+- **Firestore Collection**: `financialTransactions` - Санхүүгийн бүртгэлүүдийг хадгална
+- **Backend Function**: `manageFinancialTransaction` - CRUD үйлдлүүд (Create, Read, Update, Delete)
+- **Frontend Component**: `FinancialTransactionManagement.vue` - Хэрэглэгчийн интерфэйс
+
+**Өгөгдлийн бүтэц (12 талбар):**
+- `id` - Бүртгэлийн дугаар (Document ID)
+- `date` - Огноо (2026-02-02 гэх мэт)
+- `projectID` - Төслийн дугаар
+- `projectLocation` - Төслийн байршил
+- `employeeID` - Ажилтны дугаар
+- `employeeFirstName` - Ажилтны нэр
+- `amount` - Дүн (тоо)
+- `type` - Төрөл (Сууц/Орон сууц/Хүчин зүйл/Худаг/Шинэ барилга)
+- `purpose` - Зориулалт (Хоол/Зам/Зөөвөр/Хөлс/Бусад/Төсөлд)
+- `ebarimt` - И-баримт (Yes/No)
+- `НӨАТ` - НӨАТ (Yes/No)
+- `comment` - Тайлбар
+
+**Үйлдлүүд:**
+- ✅ Санхүүгийн бүртгэл нэмэх
+- ✅ Засварлах, устгах
+- ✅ Хайлт хийх (Зориулалт, Төрөл, Ажилтны нэрээр)
+- ✅ Эрэмбэлэх (Огноо, Дүн, Төсөл гэх мэт)
+- ✅ Нийт дүн харуулах (шүүлтэд тохирсон)
+- ✅ Олноор нэмэх (Хоол/Зам зардлыг багаар нэмэх)
+
+**Олноор нэмэх (Bulk Transactions):**
+- Багийн гишүүдийг сонгож, нэг удаагийн дүн оруулах (жишээ: Хоол 50000₮)
+- Багийн тохиргоо хадгалах (Settings)
+- Хоол/Зам/Зөөвөр зэргийн стандарт дүн тохируулах
+
+---
+
+#### 2. ExcelSync системийн нэвтрүүлэлт
+
+**Excel Table**: `FinancialTrans` (MainExcel.xlsx файлд байрлана)
+
+**А. Firestore → Excel sync (syncFinancialTransToExcel)**
+
+**Хийсэн засвар:**
+- Microsoft Graph API ашиглан Excel table-д автомат sync хийнэ
+- Одоо байгаа мөрүүдийг устгаад шинэ өгөгдлийг нэмнэ
+- Batch үйлдэл (100 мөр/удаа) - том өгөгдөлд оновчтой
+- Token-ийг frontend-оос авч хэрэглэнэ (CORS асуудал шийдэгдсэн)
+
+**Техникийн дэлгэрэнгүй:**
+- Inline file search (`/me/drive/root/search(q='MainExcel.xlsx')`)
+- DriveId дэмжлэг (shared файлд ажиллана)
+- Endpoint: `/workbook/tables/FinancialTrans/rows`
+- Existing rows-ийг `itemAt(index)` ашиглан устгана
+- Boolean → "Yes"/"No" хөрвүүлэлт (ebarimt, НӨАТ)
+
+**Асуудлууд болон шийдлүүд:**
+- ❌ Хоосон table дээр /rows endpoint "Not Found" буцаасан
+- ✅ Одоо байгаа мөрүүдийг эхлээд авч, дараа нь нэг бүрийг устгах
+- ❌ `/rows/add` endpoint нь batch дэмжихгүй байсан
+- ✅ Ажиллаж байгаа `syncTimeAttendanceToExcel` функцийн pattern хэрэглэсэн
+- ❌ Variable naming error (`rows` → `rowsToAdd`)
+- ✅ Засч, амжилттай deploy хийгдсэн
+
+**Б. Excel → Firestore sync (syncFromExcelToFinancialTrans)**
+
+**Төлөвлөгөө:**
+- Маргааш хэрэгжүүлнэ
+- Excel-ээс өгөгдөл унших
+- "Yes"/"No" → Boolean хөрвүүлэлт
+- Firestore-д шинэчлэх/нэмэх
+
+---
+
+#### 3. Frontend интерфэйс
+
+**FinancialTransactionManagement.vue:**
+- Sortable table (Аль ч баганаар эрэмбэлэх)
+- Шүүлт: Зориулалт, Төрөл, Хайлт
+- Нийт дүн харуулах (filtered results)
+- Modal дээр засварлах/нэмэх
+- Олноор нэмэх функц (bulk add)
+- Settings modal (хоол/зам зардлын дүн тохируулах)
+
+**Dashboard.vue:**
+- Санхүүгийн sync товч нэмэгдсэн
+- Microsoft token дамжуулах систем
+
+---
+
+#### 4. Deployment болон тохиргоо
+
+**Firebase Functions:**
+- `manageFinancialTransaction` - CRUD operations
+- `syncFinancialTransToExcel` - Firestore → Excel
+- `syncFromExcelToFinancialTrans` - Excel → Firestore (partial)
+
+**Public IAM permissions:**
+```bash
+gcloud functions add-iam-policy-binding [FUNCTION_NAME] \
+  --member=allUsers \
+  --role=roles/cloudfunctions.invoker \
+  --region=asia-east2
+```
+
+**Анхааруулга:** Deploy бүрт public permission reset хийгдэж байгаа тул дахин тохируулах шаардлагатай.
+
+---
+
+### Техникийн өөрчлөлтүүд
+
+**Шинэ файлууд:**
+- `functions/manageFinancialTransaction.js` - CRUD backend
+- `functions/syncFinancialTransToExcel.js` - Sync to Excel
+- `functions/syncFromExcelToFinancialTrans.js` - Sync from Excel (partial)
+- `frontend/src/components/FinancialTransactionManagement.vue` - UI component
+
+**Өөрчлөгдсөн файлууд:**
+- `frontend/src/views/Dashboard.vue` - Sync button нэмэгдсэн
+- `functions/index.js` - Шинэ functions export хийгдсэн
+
+---
+
+### Дараагийн алхмууд
+
+1. ✅ Firestore → Excel sync ажиллаж байна
+2. ⏳ Excel → Firestore sync хэрэгжүүлэх (маргааш)
+3. ⏳ Санхүүгийн тайлан гаргах функц
+4. ⏳ Төслөөр нь group хийх
+
+---
+
 ## 2026.01.11 - Ирцийн системийн том шинэчлэлт: EmployeeID, 4 түвшний Role, автомат шалгалт
 
 ### Хийсэн ажлууд

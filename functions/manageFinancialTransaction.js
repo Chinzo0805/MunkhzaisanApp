@@ -8,32 +8,37 @@ const admin = require("firebase-admin");
 exports.manageFinancialTransaction = functions
   .region("asia-east2")
   .https.onRequest(async (req, res) => {
-    // Set CORS headers
+    // Enable CORS
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     // Handle preflight request
     if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
+      return res.status(200).send();
     }
 
-    const db = admin.firestore();
-    const { action, transaction } = req.body;
-
     try {
+      const db = admin.firestore();
+      const { action, transaction } = req.body;
+
+      if (!action || !transaction) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing action or transaction data",
+        });
+      }
       if (action === "create") {
-        // Validate required fields - employeeID and employeeLastName are now used instead of requestedby
-        if (!transaction.date || !transaction.amount || !transaction.type || !transaction.purpose) {
+        // Validate required fields
+        if (!transaction.date || !transaction.amount || !transaction.purpose) {
           return res.status(400).json({
             success: false,
-            error: "Missing required fields: date, amount, type, purpose",
+            error: "Missing required fields: date, amount, purpose",
           });
         }
 
         // Validate purpose values
-        const validPurposes = ["Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал, Хангамж авах", "хувийн зарлага", "Оффис хэрэглээний зардал", "Хоол/томилолт"];
+        const validPurposes = ["Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал/Хангамж авах", "хувийн зарлага", "Оффис хэрэглээний зардал", "Хоол/томилолт"];
         if (!validPurposes.includes(transaction.purpose)) {
           return res.status(400).json({
             success: false,
@@ -41,12 +46,20 @@ exports.manageFinancialTransaction = functions
           });
         }
 
-        // If purpose is "Төсөлд", projectID is mandatory
-        if (transaction.purpose === "Төсөлд" && !transaction.projectID) {
-          return res.status(400).json({
-            success: false,
-            error: "ProjectID is required when purpose is Төсөлд",
-          });
+        // If purpose is "Төсөлд", projectID and type are mandatory
+        if (transaction.purpose === "Төсөлд") {
+          if (!transaction.projectID) {
+            return res.status(400).json({
+              success: false,
+              error: "ProjectID is required when purpose is Төсөлд",
+            });
+          }
+          if (!transaction.type) {
+            return res.status(400).json({
+              success: false,
+              error: "Type is required when purpose is Төсөлд",
+            });
+          }
         }
 
         // Create new transaction with auto-generated ID
@@ -55,9 +68,9 @@ exports.manageFinancialTransaction = functions
           projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
           employeeID: transaction.employeeID || "",
-          employeeLastName: transaction.employeeLastName || "",
+          employeeFirstName: transaction.employeeFirstName || "",
           amount: parseFloat(transaction.amount) || 0,
-          type: transaction.type,
+          type: transaction.type || "",
           purpose: transaction.purpose,
           ebarimt: transaction.ebarimt || false,
           НӨАТ: transaction.НӨАТ || false,
@@ -99,9 +112,9 @@ exports.manageFinancialTransaction = functions
           projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
           employeeID: transaction.employeeID || "",
-          employeeLastName: transaction.employeeLastName || "",
+          employeeFirstName: transaction.employeeFirstName || "",
           amount: parseFloat(transaction.amount) || 0,
-          type: transaction.type,
+          type: transaction.type || "",
           purpose: transaction.purpose,
           ebarimt: transaction.ebarimt || false,
           НӨАТ: transaction.НӨАТ || false,
@@ -152,7 +165,7 @@ exports.manageFinancialTransaction = functions
       console.error("Error managing financial transaction:", error);
       return res.status(500).json({
         success: false,
-        error: error.message,
+        error: error.message || "Internal server error",
       });
     }
   });
