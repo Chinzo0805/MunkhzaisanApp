@@ -273,7 +273,7 @@
                       :value="employee.id" 
                       v-model="bulkFormData.selectedEmployees"
                     />
-                    <span>{{ employee.LastName }} {{ employee.FirstName }} ({{ employee.id }})</span>
+                    <span>{{ employee.FirstName }} ({{ employee.id }})</span>
                   </label>
                 </div>
               </div>
