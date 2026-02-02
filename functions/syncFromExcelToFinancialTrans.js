@@ -54,12 +54,12 @@ exports.syncFromExcelToFinancialTrans = functions
       const batch = db.batch();
       let syncCount = 0;
 
-      // Expected columns: id, date, projectID, projectLocation, requestedby, amount, type
+      // Expected columns: id, date, projectID, projectLocation, requestedby, amount, type, purpose
       for (const row of rows) {
         const values = row.values[0];
-        const [id, date, projectID, projectLocation, requestedby, amount, type] = values;
+        const [id, date, projectID, projectLocation, requestedby, amount, type, purpose] = values;
 
-        if (!id || !date || !projectID || !amount || !type) {
+        if (!id || !date || !requestedby || !amount || !type || !purpose) {
           console.log("Skipping row with missing required fields:", values);
           continue;
         }
@@ -69,11 +69,12 @@ exports.syncFromExcelToFinancialTrans = functions
           docRef,
           {
             date: String(date),
-            projectID: String(projectID),
+            projectID: String(projectID || ""),
             projectLocation: String(projectLocation || ""),
-            requestedby: String(requestedby || ""),
+            requestedby: String(requestedby),
             amount: parseFloat(amount) || 0,
             type: String(type),
+            purpose: String(purpose),
             syncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }

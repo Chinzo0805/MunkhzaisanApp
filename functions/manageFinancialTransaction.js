@@ -25,21 +25,30 @@ exports.manageFinancialTransaction = functions
     try {
       if (action === "create") {
         // Validate required fields
-        if (!transaction.date || !transaction.projectID || !transaction.amount || !transaction.type) {
+        if (!transaction.date || !transaction.requestedby || !transaction.amount || !transaction.type || !transaction.purpose) {
           return res.status(400).json({
             success: false,
-            error: "Missing required fields: date, projectID, amount, type",
+            error: "Missing required fields: date, requestedby, amount, type, purpose",
+          });
+        }
+
+        // If purpose is "Төсөлд", projectID is mandatory
+        if (transaction.purpose === "Төсөлд" && !transaction.projectID) {
+          return res.status(400).json({
+            success: false,
+            error: "ProjectID is required when purpose is Төсөлд",
           });
         }
 
         // Create new transaction with auto-generated ID
         const docRef = await db.collection("financialTransactions").add({
           date: transaction.date,
-          projectID: transaction.projectID,
+          projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
-          requestedby: transaction.requestedby || "",
+          requestedby: transaction.requestedby,
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
+          purpose: transaction.purpose,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -74,11 +83,12 @@ exports.manageFinancialTransaction = functions
         // Update transaction
         const updateData = {
           date: transaction.date,
-          projectID: transaction.projectID,
+          projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
-          requestedby: transaction.requestedby || "",
+          requestedby: transaction.requestedby,
           amount: parseFloat(transaction.amount) || 0,
           type: transaction.type,
+          purpose: transaction.purpose,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 

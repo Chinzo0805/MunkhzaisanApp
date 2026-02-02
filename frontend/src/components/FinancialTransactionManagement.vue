@@ -95,8 +95,36 @@
             </div>
             
             <div class="form-group">
-              <label>Project *</label>
-              <select v-model="formData.projectID" required class="form-input" @change="onProjectChange">
+              <label>Requested By *</label>
+              <select v-model="formData.requestedby" required class="form-input">
+                <option value="">Select Employee</option>
+                <option v-for="employee in sortedEmployees" :key="employee.id" :value="employee.FirstName">
+                  {{ employee.FirstName }} {{ employee.LastName }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Purpose *</label>
+              <select v-model="formData.purpose" required class="form-input" @change="onPurposeChange">
+                <option value="">Select Purpose</option>
+                <option value="Төсөлд">Төсөлд</option>
+                <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
+                <option value="бараа материал бөөн татах">бараа материал бөөн татах</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Project {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <select 
+                v-model="formData.projectID" 
+                :required="formData.purpose === 'Төсөлд'" 
+                class="form-input" 
+                @change="onProjectChange"
+                :disabled="formData.purpose !== 'Төсөлд'"
+              >
                 <option value="">Select Project</option>
                 <option v-for="project in activeProjects" :key="project.id" :value="project.id">
                   {{ project.id }} - {{ project.siteLocation }}
@@ -118,13 +146,13 @@
             </div>
             
             <div class="form-group">
-              <label>Requested By</label>
-              <input 
-                v-model="formData.requestedby" 
-                type="text" 
-                class="form-input"
-                placeholder="Employee name or department"
-              />
+              <label>Type *</label>
+              <select v-model="formData.type" required class="form-input">
+                <option value="">Select Type</option>
+                <option value="Бараа материал">Бараа материал</option>
+                <option value="Түлш">Түлш</option>
+                <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
+              </select>
             </div>
           </div>
 
@@ -139,17 +167,6 @@
                 class="form-input"
                 placeholder="0.00"
               />
-            </div>
-            
-            <div class="form-group">
-              <label>Type *</label>
-              <select v-model="formData.type" required class="form-input">
-                <option value="">Select Type</option>
-                <option value="Expense">Expense (Зардал)</option>
-                <option value="Income">Income (Орлого)</option>
-                <option value="Payment">Payment (Төлбөр)</option>
-                <option value="Refund">Refund (Буцаалт)</option>
-              </select>
             </div>
           </div>
 
@@ -182,10 +199,12 @@
 import { ref, computed, onMounted } from 'vue';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { useProjectsStore } from '../stores/projects';
+import { useEmployeesStore } from '../stores/employees';
 import { manageFinancialTransaction, syncFinancialTransToExcel, syncFromExcelToFinancialTrans } from '../services/api';
 
 const transactionsStore = useFinancialTransactionsStore();
 const projectsStore = useProjectsStore();
+const employeesStore = useEmployeesStore();
 
 const showList = ref(false);
 const showForm = ref(false);
@@ -205,6 +224,7 @@ const formData = ref({
   requestedby: '',
   amount: 0,
   type: '',
+  purpose: '',
 });
 
 const activeProjects = computed(() => {
@@ -214,6 +234,16 @@ const activeProjects = computed(() => {
       const idA = parseInt(a.id) || 0;
       const idB = parseInt(b.id) || 0;
       return idA - idB;
+    });
+});
+
+const sortedEmployees = computed(() => {
+  return employeesStore.employees
+    .filter(emp => emp.State !== 'Гарсан')
+    .sort((a, b) => {
+      const nameA = a.FirstName || '';
+      const nameB = b.FirstName || '';
+      return nameA.localeCompare(nameB);
     });
 });
 
@@ -271,6 +301,14 @@ function onProjectChange() {
   }
 }
 
+function onPurposeChange() {
+  // Clear project if purpose is not "Төсөлд"
+  if (formData.value.purpose !== 'Төсөлд') {
+    formData.value.projectID = '';
+    formData.value.projectLocation = '';
+  }
+}
+
 function handleAddItem() {
   isEditMode.value = false;
   formData.value = {
@@ -281,6 +319,7 @@ function handleAddItem() {
     requestedby: '',
     amount: 0,
     type: '',
+    purpose: '',
   };
   showForm.value = true;
 }
@@ -301,6 +340,7 @@ function closeForm() {
     requestedby: '',
     amount: 0,
     type: '',
+    purpose: '',
   };
 }
 
@@ -386,6 +426,7 @@ function showMessage(msg, type) {
 onMounted(async () => {
   await transactionsStore.fetchTransactions();
   await projectsStore.fetchProjects();
+  await employeesStore.fetchEmployees();
 });
 </script>
 

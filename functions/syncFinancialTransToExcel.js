@@ -64,6 +64,7 @@ exports.syncFinancialTransToExcel = functions
           data.requestedby || "",
           data.amount || 0,
           data.type || "",
+          data.purpose || "",
         ]);
       });
 
