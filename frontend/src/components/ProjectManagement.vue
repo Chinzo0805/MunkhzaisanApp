@@ -299,6 +299,28 @@
             </div>
           </div>
           
+          <!-- Additional (Нэмэлт) Section -->
+          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #f59e0b; font-weight: 600; border-bottom: 1px solid #f59e0b; padding-bottom: 3px;">Additional (Нэмэлт)</h6>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Additional Hour (Нэмэлт бусад цаг)</label>
+              <input v-model.number="form.additionalHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onAdditionalHourChange" />
+            </div>
+            <div class="form-group">
+              <label>Additional Owner</label>
+              <input v-model="form.AdditionalOwner" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Additional Value (calculated)</label>
+              <input :value="formatNumber(form.additionalValue)" type="text" readonly style="background-color: #f5f5f5;" />
+              <small style="color: #6b7280;">additionalHour × 65,000₮</small>
+            </div>
+          </div>
+          
           <!-- Expense Information Section -->
           <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #ef4444; font-weight: 600; border-bottom: 1px solid #ef4444; padding-bottom: 3px;">Expense Information</h6>
           
@@ -306,6 +328,7 @@
             <div class="form-group">
               <label>Expense HR</label>
               <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+              <small style="color: #6b7280;">Includes additionalValue</small>
             </div>
             <div class="form-group">
               <label>Expense Car</label>
@@ -370,7 +393,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useProjectsStore } from '../stores/projects';
 import { useCustomersStore } from '../stores/customers';
 import { useEmployeesStore } from '../stores/employees';
@@ -379,6 +402,16 @@ import { manageProject } from '../services/api';
 const projectsStore = useProjectsStore();
 const customersStore = useCustomersStore();
 const employeesStore = useEmployeesStore();
+
+// Ensure customers and employees are loaded
+onMounted(async () => {
+  if (customersStore.customers.length === 0) {
+    await customersStore.fetchCustomers();
+  }
+  if (employeesStore.employees.length === 0) {
+    await employeesStore.fetchEmployees();
+  }
+});
 
 const showList = ref(false);
 const showModal = ref(false);
@@ -414,6 +447,9 @@ const form = ref({
   NonEngineerWorkHour: 0,
   NonEngineerBounty: 0,
   HourPerformance: 0,
+  additionalHour: 0,
+  additionalValue: 0,
+  AdditionalOwner: '',
   IncomeHR: 0,
   ExpenceHR: 0,
   IncomeCar: 0,
@@ -550,6 +586,12 @@ function onIncomeHRChange() {
   calculateFinancials();
 }
 
+function onAdditionalHourChange() {
+  // When additionalHour changes, calculate additionalValue
+  form.value.additionalValue = (form.value.additionalHour || 0) * 65000;
+  calculateFinancials();
+}
+
 function calculateFinancials() {
   // TeamBounty = WosHour * 22500
   form.value.TeamBounty = (form.value.WosHour || 0) * 22500;
@@ -564,8 +606,10 @@ function calculateFinancials() {
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, baseAmount);
   // EngineerBounty = EngineerWorkHour * 12500 (basic calculation)
   form.value.EngineerBounty = (form.value.EngineerWorkHour || 0) * 12500;
-  // ProfitHR = IncomeHR - ExpenceHR
-  form.value.ProfitHR = (form.value.IncomeHR || 0) - (form.value.ExpenceHR || 0);
+  // ExpenseHR includes additionalValue
+  const totalExpenseHR = (form.value.ExpenceHR || 0) + (form.value.additionalValue || 0);
+  // ProfitHR = IncomeHR - (ExpenceHR + additionalValue)
+  form.value.ProfitHR = (form.value.IncomeHR || 0) - totalExpenseHR;
   // ProfitCar = IncomeCar - ExpenceCar
   form.value.ProfitCar = (form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0);
   // ProfitMaterial = IncomeMaterial - ExpenceMaterial
@@ -615,6 +659,9 @@ function editItem(project) {
     NonEngineerWorkHour: project.NonEngineerWorkHour || 0,
     NonEngineerBounty: project.NonEngineerBounty || 0,
     HourPerformance: project.HourPerformance || 0,
+    additionalHour: project.additionalHour || 0,
+    additionalValue: project.additionalValue || 0,
+    AdditionalOwner: project.AdditionalOwner || '',
     IncomeHR: project.IncomeHR || 0,
     ExpenceHR: project.ExpenceHR || 0,
     IncomeCar: project.IncomeCar || 0,
@@ -658,6 +705,9 @@ function closeModal() {
     NonEngineerWorkHour: 0,
     NonEngineerBounty: 0,
     HourPerformance: 0,
+    additionalHour: 0,
+    additionalValue: 0,
+    AdditionalOwner: '',
     IncomeHR: 0,
     ExpenceHR: 0,
     IncomeCar: 0,

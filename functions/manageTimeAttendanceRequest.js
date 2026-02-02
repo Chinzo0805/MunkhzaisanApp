@@ -31,7 +31,23 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
     if (action === 'add') {
       // Validate required fields
       if (!requestData.Day || !requestData.EmployeeID || !requestData.EmployeeLastName) {
-        return res.status(400).send({ error: 'Missing required fields: Day, EmployeeID, EmployeeLastName' });
+        const missing = [];
+        if (!requestData.Day) missing.push('Day');
+        if (!requestData.EmployeeID) missing.push('EmployeeID');
+        if (!requestData.EmployeeLastName) missing.push('EmployeeLastName');
+        
+        console.error('Validation failed:', { 
+          requestData, 
+          missing,
+          EmployeeID: requestData.EmployeeID,
+          Day: requestData.Day,
+          EmployeeLastName: requestData.EmployeeLastName 
+        });
+        
+        return res.status(400).send({ 
+          error: `Missing required fields: ${missing.join(', ')}`,
+          details: `Please ensure employee record has LastName field. Missing: ${missing.join(', ')}`
+        });
       }
       
       // First, check for ANY existing record on this day (both pending AND approved)

@@ -74,10 +74,12 @@ function calculatePlannedHours(wosHour) {
  * Calculate HR profit for a project
  * @param {number} incomeHR - HR income
  * @param {number} expenseHR - HR expense
+ * @param {number} additionalValue - Additional value to add to expense
  * @returns {number} HR profit
  */
-function calculateProfitHR(incomeHR, expenseHR) {
-  return (incomeHR || 0) - (expenseHR || 0);
+function calculateProfitHR(incomeHR, expenseHR, additionalValue = 0) {
+  const totalExpenseHR = (expenseHR || 0) + (additionalValue || 0);
+  return (incomeHR || 0) - totalExpenseHR;
 }
 
 /**
@@ -163,7 +165,7 @@ function applyProjectCalculations(record) {
   }
   
   // Calculate profits
-  calculated.ProfitHR = calculateProfitHR(calculated.IncomeHR, calculated.ExpenceHR);
+  calculated.ProfitHR = calculateProfitHR(calculated.IncomeHR, calculated.ExpenceHR, calculated.additionalValue);
   calculated.ProfitCar = calculateProfitCar(calculated.IncomeCar, calculated.ExpenceCar);
   calculated.ProfitMaterial = calculateProfitMaterial(calculated.IncomeMaterial, calculated.ExpenceMaterial);
   

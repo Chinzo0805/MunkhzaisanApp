@@ -155,6 +155,7 @@ import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
 import { useTimeAttendanceRequestsStore } from '../stores/timeAttendanceRequests';
 import { useTimeAttendanceStore } from '../stores/timeAttendance';
+import { useAuthStore } from '../stores/auth';
 import { manageTimeAttendanceRequest } from '../services/api';
 import { auth } from '../config/firebase';
 
@@ -162,6 +163,7 @@ const router = useRouter();
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
 const requestsStore = useTimeAttendanceRequestsStore();
+const authStore = useAuthStore();
 
 const requests = ref([]);
 const projects = ref([]);
@@ -211,9 +213,26 @@ onMounted(async () => {
       return idA - idB;
     });
   
-  const user = auth.currentUser;
-  if (user) {
-    currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email);
+  // Get current employee from user's employeeId stored in auth userData
+  const userData = authStore.userData;
+  if (userData && userData.employeeId) {
+    // Find employee by Id matching the user's employeeId
+    currentEmployee.value = employeesStore.employees.find(emp => 
+      emp.Id === userData.employeeId || emp.NumID === userData.employeeId
+    );
+    
+    // If not found in employees collection, use userData directly
+    if (!currentEmployee.value) {
+      console.log('Employee not found in collection, using userData');
+      currentEmployee.value = {
+        Id: userData.employeeId,
+        NumID: userData.employeeId,
+        FirstName: userData.employeeFirstName,
+        LastName: userData.employeeLastName,
+        Position: userData.position,
+        Email: userData.email
+      };
+    }
   }
   
   // Fetch my pending requests
@@ -546,8 +565,9 @@ async function submitAllRequests() {
         successCount++;
       } catch (error) {
         // Handle backend validation errors
-        if (error.response && error.response.status === 409) {
-          const errorMsg = error.response.data.message || error.response.data.error;
+        console.error('Backend error:', error.response?.data);
+        if (error.response && (error.response.status === 400 || error.response.status === 409)) {
+          const errorMsg = error.response.data.details || error.response.data.message || error.response.data.error;
           showMessage(errorMsg, 'error');
           submitting.value = false;
           return;

@@ -172,6 +172,23 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('No authenticated user');
     }
 
+    // Check for existing user with same employeeId to prevent duplicates
+    const { collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('employeeId', '==', employeeData.Id));
+    const existingUsersSnapshot = await getDocs(q);
+    
+    // If there's an existing user with this employeeId but different uid, remove the old one
+    if (!existingUsersSnapshot.empty) {
+      for (const existingDoc of existingUsersSnapshot.docs) {
+        if (existingDoc.id !== user.value.uid) {
+          console.log(`Found duplicate user with employeeId ${employeeData.Id}. Removing old user: ${existingDoc.id}`);
+          await deleteDoc(doc(db, 'users', existingDoc.id));
+          console.log(`Deleted duplicate user: ${existingDoc.id}`);
+        }
+      }
+    }
+
     const userInfo = {
       uid: user.value.uid,
       email: user.value.email || msalAccount.value?.username,
@@ -184,6 +201,7 @@ export const useAuthStore = defineStore('auth', () => {
       role: isSupervisor ? 'Supervisor' : 'Employee',
       isSupervisor,
       registeredAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     console.log('Saving user info to Firestore:', userInfo);
