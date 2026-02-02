@@ -32,6 +32,9 @@
           <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/project-summary')" class="btn-action project">
             📋 Төслийн нэгтгэл
           </button>
+          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/financial-transactions')" class="btn-action finance">
+            💵 Санхүүгийн гүйлгээ
+          </button>
         </div>
       </div>
 
@@ -477,6 +480,11 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
 }
 
+.btn-action.finance {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
+}
+
 .btn-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
@@ -492,6 +500,10 @@ function handleSaved(event) {
 
 .btn-action.project:hover {
   box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+
+.btn-action.finance:hover {
+  box-shadow: 0 4px 8px rgba(6, 182, 212, 0.4);
 }
 
 .time-attendance-section {

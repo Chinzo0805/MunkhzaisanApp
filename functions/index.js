@@ -44,6 +44,11 @@ exports.updateProjectRealHours = require("./updateProjectRealHours").updateProje
 exports.migrateProjectPerformance = require("./migrateProjectPerformance").migrateProjectPerformance;
 exports.migrateEngineerHandField = require("./migrateEngineerHandField").migrateEngineerHandField;
 
+// Financial Transaction functions
+exports.manageFinancialTransaction = require("./manageFinancialTransaction").manageFinancialTransaction;
+exports.syncFinancialTransToExcel = require("./syncFinancialTransToExcel").syncFinancialTransToExcel;
+exports.syncFromExcelToFinancialTrans = require("./syncFromExcelToFinancialTrans").syncFromExcelToFinancialTrans;
+
 // Time Attendance functions
 exports.manageTimeAttendanceRequest = require("./manageTimeAttendanceRequest").manageTimeAttendanceRequest;
 exports.approveTimeAttendanceRequest = require("./approveTimeAttendanceRequest").approveTimeAttendanceRequest;

@@ -213,4 +213,38 @@ export async function updateProjectRealHours() {
   }
 }
 
+// Financial Transaction Management
+export async function manageFinancialTransaction(action, transaction) {
+  try {
+    const response = await api.post('/manageFinancialTransaction', {
+      action,
+      transaction,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error managing financial transaction:', error);
+    throw error;
+  }
+}
+
+export async function syncFinancialTransToExcel() {
+  try {
+    const response = await api.post('/syncFinancialTransToExcel');
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing financial transactions to Excel:', error);
+    throw error;
+  }
+}
+
+export async function syncFromExcelToFinancialTrans() {
+  try {
+    const response = await api.post('/syncFromExcelToFinancialTrans');
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing from Excel to financial transactions:', error);
+    throw error;
+  }
+}
+
 export default api;

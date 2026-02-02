@@ -155,7 +155,6 @@ import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
 import { useTimeAttendanceRequestsStore } from '../stores/timeAttendanceRequests';
 import { useTimeAttendanceStore } from '../stores/timeAttendance';
-import { useAuthStore } from '../stores/auth';
 import { manageTimeAttendanceRequest } from '../services/api';
 import { auth } from '../config/firebase';
 
@@ -163,7 +162,6 @@ const router = useRouter();
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
 const requestsStore = useTimeAttendanceRequestsStore();
-const authStore = useAuthStore();
 
 const requests = ref([]);
 const projects = ref([]);
@@ -213,26 +211,9 @@ onMounted(async () => {
       return idA - idB;
     });
   
-  // Get current employee from user's employeeId stored in auth userData
-  const userData = authStore.userData;
-  if (userData && userData.employeeId) {
-    // Find employee by Id matching the user's employeeId
-    currentEmployee.value = employeesStore.employees.find(emp => 
-      emp.Id === userData.employeeId || emp.NumID === userData.employeeId
-    );
-    
-    // If not found in employees collection, use userData directly
-    if (!currentEmployee.value) {
-      console.log('Employee not found in collection, using userData');
-      currentEmployee.value = {
-        Id: userData.employeeId,
-        NumID: userData.employeeId,
-        FirstName: userData.employeeFirstName,
-        LastName: userData.employeeLastName,
-        Position: userData.position,
-        Email: userData.email
-      };
-    }
+  const user = auth.currentUser;
+  if (user) {
+    currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email);
   }
   
   // Fetch my pending requests

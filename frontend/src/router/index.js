@@ -8,6 +8,7 @@ import TimeAttendanceRequestForm from '../components/TimeAttendanceRequestForm.v
 import SalaryReport from '../views/SalaryReport.vue';
 import SupervisorTASummary from '../views/SupervisorTASummary.vue';
 import ProjectSummary from '../views/ProjectSummary.vue';
+import FinancialTransactionManagement from '../components/FinancialTransactionManagement.vue';
 
 const routes = [
   {
@@ -59,6 +60,12 @@ const routes = [
     path: '/project-summary',
     name: 'ProjectSummary',
     component: ProjectSummary,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/financial-transactions',
+    name: 'FinancialTransactions',
+    component: FinancialTransactionManagement,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];
