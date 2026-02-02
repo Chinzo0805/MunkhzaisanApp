@@ -5,8 +5,8 @@ service cloud.firestore {
     // Helper function to check if user is supervisor
     function isSupervisor() {
       return request.auth != null && 
-             exists(/databases/$(database)/documents/employees/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.Role == 'Supervisor';
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Supervisor';
     }
     
     // Allow authenticated users to read employees for registration
