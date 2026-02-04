@@ -9,6 +9,9 @@ import SalaryReport from '../views/SalaryReport.vue';
 import SupervisorTASummary from '../views/SupervisorTASummary.vue';
 import ProjectSummary from '../views/ProjectSummary.vue';
 import FinancialTransactionManagement from '../components/FinancialTransactionManagement.vue';
+import WarehouseManagement from '../components/WarehouseManagement.vue';
+import WarehouseTransactionManagement from '../components/WarehouseTransactionManagement.vue';
+import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
 
 const routes = [
   {
@@ -66,6 +69,24 @@ const routes = [
     path: '/financial-transactions',
     name: 'FinancialTransactions',
     component: FinancialTransactionManagement,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/warehouse',
+    name: 'Warehouse',
+    component: WarehouseManagement,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/warehouse-transactions',
+    name: 'WarehouseTransactions',
+    component: WarehouseTransactionManagement,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/warehouse-requests',
+    name: 'WarehouseRequests',
+    component: WarehouseRequestForm,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

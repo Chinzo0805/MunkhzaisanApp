@@ -247,4 +247,80 @@ export async function syncFromExcelToFinancialTrans(token) {
   }
 }
 
+// Warehouse Management
+export async function manageWarehouse(action, item) {
+  try {
+    const response = await api.post('/manageWarehouse', {
+      action,
+      item,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error managing warehouse item:', error);
+    throw error;
+  }
+}
+
+export async function syncWarehouseToExcel(token) {
+  try {
+    const response = await api.post('/syncWarehouseToExcel', { token });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing warehouse to Excel:', error);
+    throw error;
+  }
+}
+
+export async function syncFromExcelToWarehouse(token) {
+  try {
+    const response = await api.post('/syncFromExcelToWarehouse', { token });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing from Excel to warehouse:', error);
+    throw error;
+  }
+}
+
+// Warehouse Transaction Management
+export async function manageWarehouseTransaction(transaction) {
+  try {
+    const response = await api.post('/manageWarehouseTransaction', transaction);
+    return response.data;
+  } catch (error) {
+    console.error('Error managing warehouse transaction:', error);
+    throw error;
+  }
+}
+
+export async function syncWarehouseTransToExcel(token) {
+  try {
+    const response = await api.post('/syncWarehouseTransToExcel', { token });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing warehouse transactions to Excel:', error);
+    throw error;
+  }
+}
+
+export async function syncFromExcelToWarehouseTrans(token) {
+  try {
+    const response = await api.post('/syncFromExcelToWarehouseTrans', { token });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing from Excel to warehouse transactions:', error);
+    throw error;
+  }
+}
+
+// Warehouse Request Management (Employee requests for materials)
+export async function manageWarehouseRequest(data) {
+  try {
+    const response = await api.post('/manageWarehouseRequest', data);
+    return response.data;
+  } catch (error) {
+    console.error('Error managing warehouse request:', error);
+    throw error;
+  }
+}
+
 export default api;

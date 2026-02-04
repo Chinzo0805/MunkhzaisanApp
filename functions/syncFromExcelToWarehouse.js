@@ -3,9 +3,9 @@ const admin = require("firebase-admin");
 const fetch = require("node-fetch");
 
 /**
- * Sync financial transactions from Excel to Firestore
+ * Sync warehouse items from Excel to Firestore
  */
-exports.syncFromExcelToFinancialTrans = functions
+exports.syncFromExcelToWarehouse = functions
   .region("asia-east2")
   .https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
@@ -17,7 +17,7 @@ exports.syncFromExcelToFinancialTrans = functions
     }
 
     try {
-      console.log("Starting sync of financial transactions from Excel...");
+      console.log("Starting sync of warehouse items from Excel...");
 
       // Get token from request
       const { token } = req.body;
@@ -48,7 +48,7 @@ exports.syncFromExcelToFinancialTrans = functions
       const parentReference = file.parentReference;
       console.log(`Found file with ID: ${fileId}`);
 
-      const tableName = "FinancialTrans";
+      const tableName = "Warehouse";
 
       // Get table rows
       let getRowsEndpoint;
@@ -73,71 +73,95 @@ exports.syncFromExcelToFinancialTrans = functions
 
       const tableData = await tableResponse.json();
       const rows = tableData.value;
-      console.log(`Found ${rows.length} financial transactions in Excel`);
+      console.log(`Found ${rows.length} warehouse items in Excel`);
 
       if (rows.length === 0) {
         return res.status(200).json({
           success: true,
-          message: "No financial transactions found in Excel",
+          message: "No warehouse items found in Excel",
         });
       }
 
       const db = admin.firestore();
       const batch = db.batch();
       let syncCount = 0;
+      let createdCount = 0;
+      let updatedCount = 0;
 
-      // Expected columns: id, date, projectID, projectLocation, employeeID, employeeLastName, amount, type, purpose, ebarimt, НӨАТ, comment
+      // Expected columns: id, Name, Category, Status, Specs, unit, quantity, Location, Supplier, Date, code, unitPrice, Comment, CurrentProjectID, CurrentProjectName
       for (const row of rows) {
         const values = row.values[0];
-        const [id, date, projectID, projectLocation, employeeID, employeeFirstName, amount, type, purpose, ebarimt, НӨАТ, comment] = values;
+        const [id, Name, Category, Status, Specs, unit, quantity, Location, Supplier, Date, code, unitPrice, Comment, CurrentProjectID, CurrentProjectName] = values;
 
-        if (!id || !date || !amount || !purpose) {
-          console.log("Skipping row with missing required fields:", values);
+        // Skip rows without Name
+        if (!Name) {
+          console.log("Skipping row with missing Name:", values);
           continue;
         }
 
-        const docRef = db.collection("financialTransactions").doc(String(id));
+        // Auto-generate ID if not provided
+        let docId = id && String(id).trim() !== "" ? String(id) : null;
+        let docRef;
+        
+        if (docId) {
+          // Use existing ID
+          docRef = db.collection("warehouse").doc(docId);
+          updatedCount++;
+        } else {
+          // Generate new ID
+          docRef = db.collection("warehouse").doc();
+          createdCount++;
+        }
+
         batch.set(
           docRef,
           {
-            date: String(date),
-            projectID: String(projectID || ""),
-            projectLocation: String(projectLocation || ""),
-            employeeID: String(employeeID || ""),
-            employeeFirstName: String(employeeFirstName || ""),
-            amount: parseFloat(amount) || 0,
-            type: String(type || ""),
-            purpose: String(purpose),
-            ebarimt: String(ebarimt).toLowerCase() === "yes",
-            НӨАТ: String(НӨАТ).toLowerCase() === "yes",
-            comment: String(comment || ""),
-            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+            Name: String(Name),
+            Category: String(Category || ""),
+            Status: String(Status || ""),
+            Specs: String(Specs || ""),
+            unit: String(unit || ""),
+            quantity: parseFloat(quantity) || 0,
+            Location: String(Location || ""),
+            Supplier: String(Supplier || ""),
+            Date: String(Date || ""),
+            code: String(code || ""),
+            unitPrice: parseFloat(unitPrice) || 0,
+            Comment: String(Comment || ""),
+            CurrentProjectID: String(CurrentProjectID || ""),
+            CurrentProjectName: String(CurrentProjectName || ""),
+            syncedFromExcel: true,
+            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
 
         syncCount++;
 
-        // Commit batch every 500 operations
+        // Commit batch every 500 operations (Firestore limit)
         if (syncCount % 500 === 0) {
           await batch.commit();
-          console.log(`Committed batch of ${syncCount} transactions`);
+          console.log(`Committed batch of ${syncCount} warehouse items`);
         }
       }
 
-      // Commit remaining operations
+      // Commit any remaining operations
       if (syncCount % 500 !== 0) {
         await batch.commit();
       }
 
-      console.log(`Successfully synced ${syncCount} financial transactions from Excel`);
-      res.status(200).json({
+      console.log(`Successfully synced ${syncCount} warehouse items from Excel (${createdCount} created, ${updatedCount} updated)`);
+
+      return res.status(200).json({
         success: true,
-        message: `Synced ${syncCount} financial transactions from Excel to Firestore`,
+        message: `Successfully synced ${syncCount} warehouse items from Excel (${createdCount} created, ${updatedCount} updated)`,
+        syncedCount: syncCount,
+        created: createdCount,
+        updated: updatedCount,
       });
     } catch (error) {
-      console.error("Error syncing financial transactions from Excel:", error);
-      res.status(500).json({
+      console.error("Error syncing warehouse from Excel:", error);
+      return res.status(500).json({
         success: false,
         error: error.message,
       });

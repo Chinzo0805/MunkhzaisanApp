@@ -49,6 +49,19 @@ exports.manageFinancialTransaction = require("./manageFinancialTransaction").man
 exports.syncFinancialTransToExcel = require("./syncFinancialTransToExcel").syncFinancialTransToExcel;
 exports.syncFromExcelToFinancialTrans = require("./syncFromExcelToFinancialTrans").syncFromExcelToFinancialTrans;
 
+// Warehouse functions
+exports.manageWarehouse = require("./manageWarehouse").manageWarehouse;
+exports.syncWarehouseToExcel = require("./syncWarehouseToExcel").syncWarehouseToExcel;
+exports.syncFromExcelToWarehouse = require("./syncFromExcelToWarehouse").syncFromExcelToWarehouse;
+
+// Warehouse Transaction functions
+exports.manageWarehouseTransaction = require("./manageWarehouseTransaction").manageWarehouseTransaction;
+exports.syncWarehouseTransToExcel = require("./syncWarehouseTransToExcel").syncWarehouseTransToExcel;
+exports.syncFromExcelToWarehouseTrans = require("./syncFromExcelToWarehouseTrans").syncFromExcelToWarehouseTrans;
+
+// Warehouse Request functions
+exports.manageWarehouseRequest = require("./manageWarehouseRequest").manageWarehouseRequest;
+
 // Time Attendance functions
 exports.manageTimeAttendanceRequest = require("./manageTimeAttendanceRequest").manageTimeAttendanceRequest;
 exports.approveTimeAttendanceRequest = require("./approveTimeAttendanceRequest").approveTimeAttendanceRequest;

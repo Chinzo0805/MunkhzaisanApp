@@ -11,13 +11,10 @@
       <button @click="showSettings = true" class="action-btn settings-btn">
         ⚙️ Settings
       </button>
-      <button @click="showList = !showList" class="action-btn">
-        {{ showList ? 'Hide Transactions' : 'List Transactions' }}
-      </button>
     </div>
     
     <!-- Transaction List -->
-    <div v-if="showList" class="item-list">
+    <div class="item-list">
       <h5>Financial Transactions</h5>
       
       <div class="list-controls">
@@ -521,7 +518,17 @@ const totalAmount = computed(() => {
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
+  
+  // Check if it's an Excel serial number (numeric value > 1000)
+  if (typeof dateStr === 'number' && dateStr > 1000) {
+    // Convert Excel serial to JavaScript Date
+    const excelEpoch = new Date(1899, 11, 30); // December 30, 1899
+    const jsDate = new Date(excelEpoch.getTime() + dateStr * 86400000);
+    return `${jsDate.getFullYear()}.${String(jsDate.getMonth() + 1).padStart(2, '0')}.${String(jsDate.getDate()).padStart(2, '0')}`;
+  }
+  
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 }
 

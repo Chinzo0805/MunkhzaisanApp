@@ -23,6 +23,9 @@
           <button @click="$router.push('/time-attendance-request')" class="btn-action">
             📋 Ажиллах цагийн хүсэлт
           </button>
+          <button @click="$router.push('/warehouse-requests')" class="btn-action warehouse-request">
+            📦 Агуулахын хүсэлт
+          </button>
           <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
           </button>
@@ -34,6 +37,9 @@
           </button>
           <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/financial-transactions')" class="btn-action finance">
             💵 Санхүүгийн гүйлгээ
+          </button>
+          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/warehouse')" class="btn-action warehouse">
+            📦 Агуулах
           </button>
         </div>
       </div>
@@ -79,6 +85,10 @@
               <span class="icon">💵</span>
               {{ syncing && syncType === 'financial' ? 'Syncing...' : 'Sync Financial Trans' }}
             </button>
+            <button @click="openSyncDialog('warehouse')" class="sync-btn warehouse" :disabled="syncing">
+              <span class="icon">📦</span>
+              {{ syncing && syncType === 'warehouse' ? 'Syncing...' : 'Sync Warehouse' }}
+            </button>
           </div>
           
           <div v-if="syncResult" :class="['sync-result', syncResult.success ? 'success' : 'error']">
@@ -100,15 +110,23 @@
           </button>
           <TimeAttendanceApproval v-if="showTimeAttendance" />
         </div>
+        
+        <!-- Warehouse Request Approval (Supervisor only) - Collapsed by default -->
+        <div v-if="authStore.userData?.isSupervisor" class="warehouse-request-section">
+          <button @click="showWarehouseRequests = !showWarehouseRequests" class="expand-btn">
+            {{ showWarehouseRequests ? '▼' : '▶' }} Агуулахын хүсэлтүүд (Warehouse Requests)
+          </button>
+          <WarehouseRequestApproval v-if="showWarehouseRequests" />
+        </div>
       </div>
     </main>
     
     <!-- Sync Direction Dialog -->
     <div v-if="showSyncDialog" class="modal-overlay" @click.self="showSyncDialog = false">
       <div class="modal-content sync-dialog">
-        <h3>Sync {{ syncType === 'financial' ? 'Financial Transactions' : syncType.charAt(0).toUpperCase() + syncType.slice(1) + 's' }}</h3>
+        <h3>Sync {{ syncType === 'financial' ? 'Financial Transactions' : syncType === 'warehouse' ? 'Warehouse Items' : syncType.charAt(0).toUpperCase() + syncType.slice(1) + 's' }}</h3>
         <p>
-          Select which direction to sync {{ syncType === 'financial' ? 'financial transaction' : syncType }} data:
+          Select which direction to sync {{ syncType === 'financial' ? 'financial transaction' : syncType === 'warehouse' ? 'warehouse' : syncType }} data:
         </p>
         <div class="sync-options">
           <button @click="handleSyncDirection('toExcel')" class="sync-option-btn to-excel" :disabled="syncing">
@@ -138,12 +156,15 @@ import {
   syncEmployeesToExcel, syncFromExcelToFirestore,
   syncCustomersToExcel, syncFromExcelToCustomers,
   syncProjectsToExcel, syncFromExcelToProjects,
-  syncFinancialTransToExcel, syncFromExcelToFinancialTrans
+  syncFinancialTransToExcel, syncFromExcelToFinancialTrans,
+  syncWarehouseToExcel, syncFromExcelToWarehouse,
+  syncWarehouseTransToExcel, syncFromExcelToWarehouseTrans
 } from '../services/api';
 import EmployeeManagement from '../components/EmployeeManagement.vue';
 import CustomerManagement from '../components/CustomerManagement.vue';
 import ProjectManagement from '../components/ProjectManagement.vue';
 import TimeAttendanceApproval from '../components/TimeAttendanceApproval.vue';
+import WarehouseRequestApproval from '../components/WarehouseRequestApproval.vue';
 import EmployeeTimeAttendanceHistory from '../components/EmployeeTimeAttendanceHistory.vue';
 
 const router = useRouter();
@@ -158,6 +179,7 @@ const loading = ref(false);
 const showSyncDialog = ref(false);
 const syncType = ref('employee'); // 'employee', 'customer', or 'project'
 const showTimeAttendance = ref(false);
+const showWarehouseRequests = ref(false);
 let dismissTimer = null;
 
 // Auto-dismiss success messages after 8 seconds
@@ -343,6 +365,20 @@ async function handleSyncDirection(direction) {
           message: `✓ Synced financial transactions from Excel successfully`,
         };
       }
+    } else if (syncType.value === 'warehouse') {
+      if (direction === 'toExcel') {
+        result = await syncWarehouseToExcel(token);
+        syncResult.value = {
+          success: true,
+          message: `✓ Synced warehouse items to Excel successfully`,
+        };
+      } else {
+        result = await syncFromExcelToWarehouse(token);
+        syncResult.value = {
+          success: true,
+          message: `✓ Synced warehouse items from Excel successfully`,
+        };
+      }
     }
     
     showSyncDialog.value = false;
@@ -504,6 +540,16 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
 }
 
+.btn-action.warehouse {
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  box-shadow: 0 2px 4px rgba(251, 146, 60, 0.3);
+}
+
+.btn-action.warehouse-request {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
+}
+
 .btn-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
@@ -525,7 +571,19 @@ function handleSaved(event) {
   box-shadow: 0 4px 8px rgba(6, 182, 212, 0.4);
 }
 
+.btn-action.warehouse:hover {
+  box-shadow: 0 4px 8px rgba(251, 146, 60, 0.4);
+}
+
+.btn-action.warehouse-request:hover {
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+
 .time-attendance-section {
+  margin-top: 30px;
+}
+
+.warehouse-request-section {
   margin-top: 30px;
 }
 
@@ -636,6 +694,16 @@ function handleSaved(event) {
 
 .sync-btn.project {
   background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.sync-btn.financial {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  color: white;
+}
+
+.sync-btn.warehouse {
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
   color: white;
 }
 
