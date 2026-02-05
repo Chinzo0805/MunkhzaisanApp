@@ -223,6 +223,10 @@ export async function manageFinancialTransaction(action, transaction) {
     return response.data;
   } catch (error) {
     console.error('Error managing financial transaction:', error);
+    // If it's a 400 error with response data (validation errors, confirmations)
+    if (error.response && error.response.status === 400 && error.response.data) {
+      return error.response.data;
+    }
     throw error;
   }
 }

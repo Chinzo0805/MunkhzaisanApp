@@ -2,6 +2,152 @@
 
 ---
 
+## 2026.02.06 - Санхүүгийн гүйлгээний дүрэм, хяналт сайжруулалт
+
+### Хийсэн ажлууд
+
+#### 1. Хоол/Томилолтын бизнес дүрмүүд
+
+**А. Төсөл дээр үндэслэсэн хяналт:**
+- Хоолны мөнгө: Ажилтан нэг төсөлд өдөрт 2 удаа хүртэл авах боломжтой (баталгаажуулалттай)
+- Томилолтын мөнгө: Ажилтан нэг төсөлд өдөрт 1 удаа л авах боломжтой
+- Давхцал шалгах: EmployeeID + Date + Type + ProjectID
+
+**Б. Харилцан үгүйсэгч дүрэм:**
+- Ажилтан өдөрт зөвхөн НЭГИЙГ авах боломжтой:
+  - Хоолны мөнгө ЭСВЭЛ Томилолтын мөнгө
+  - Хоэрийг хамтад нь авах боломжгүй
+- Алдааны мессеж: "Энэ ажилтан тухайн өдөр [төрөл] аль хэдийн авсан байна. Өдөрт нэг төрлийн мөнгө л авах боломжтой"
+
+**В. Firestore баталгаажуулалт сайжруулалт:**
+- Type мэдээлэл (employeeID) тохируулга - string/number хувиргалт
+- Projectээр шүүх нэмэгдсэн
+- Огноог YYYY-MM-DD хэлбэрт тохируулсан
+
+#### 2. Хэрэглэгчийн интерфэйс сайжруулалт
+
+**А. Төсөл сонголт:**
+- Bulk form-д Project selection нэмэгдсэн (заавал)
+- Төслийн мэдээлэл харуулалт: "ID - siteLocation" (өмнө нь зөвхөн ProjectName байсан)
+- projectID болон projectLocation хадгалагдаж Excel руу sync хийгдэнэ
+
+**Б. Ажилтан хайх:**
+- Employee search box нэмэгдсэн
+- Нэр эсвэл ID-ээр хайх боломжтой
+- Real-time filtering
+- Form нээх үед автоматаар цэвэрлэгдэнэ
+
+**В. Давхар гүйлгээ үүсгэхээс сэргийлэх:**
+- Submit button disabled болох "Creating..." state-тэй
+- isSubmitting flag нэмж double-click сэргийлсэн
+- Button text өөрчлөгдөнө: "Create Transactions" → "Creating..."
+- Cancel button ч disabled болно submission хугацаанд
+
+#### 3. Firestore Security Rules
+
+**Settings collection-д хандах эрх:**
+```firestore
+match /settings/{settingId} {
+  allow read: if request.auth != null && isSupervisor();
+  allow write: if request.auth != null && isSupervisor();
+}
+```
+- Supervisor эрхтэй хэрэглэгч тохиргоо унших/бичих боломжтой
+- foodAmount, tripAmount тохиргоог Firestore-д хадгална
+
+#### 4. Cloud Functions
+
+**А. manageFinancialTransaction сайжруулалт:**
+- Гурван түвшний валидаци:
+  1. Харилцан үгүйсэгч шалгалт (хоол vs томилолт)
+  2. Төсөл дээр үндэслэсэн давхцал шалгалт
+  3. Баталгаажуулалт шаардлагатай мессеж (хоолны мөнгө 2 дахь удаа)
+- EmployeeID type handling (string ↔ number)
+- Projectээр шүүх нэмэгдсэн
+
+**Б. cleanupDuplicateFoodTrip (Шинэ):**
+```
+URL: https://us-central1-munkh-zaisan.cloudfunctions.net/cleanupDuplicateFoodTrip
+```
+- Хуучин давхар бүртгэлүүдийг цэвэрлэх (project-based validation өмнөх)
+- Grouping: employeeID + date + type
+- Хамгийн эхний (createdAt) бүртгэлийг хадгалж үлдсэнийг устгана
+- Batch operations (500 limit)
+- Statistics буцаана: total, duplicateGroups, deleted
+
+**В. cleanupAmountField:**
+- Буруу "Amount" field устгах (capital A)
+- Correct "amount" field (lowercase) хадгална
+
+**Г. updateFinancialAmounts:**
+- Field name залруулга: Type→type, Amount→amount
+- Хоолны мөнгө: 15,000₮
+- Томилолт: 55,000₮
+
+#### 5. Frontend сайжруулалт
+
+**А. API Error Handling:**
+- 400 status response data авах боломжтой болсон
+- Validation errors болон confirmations харуулна
+- Axios error.response.data дэмжлэг
+
+**Б. Bulk Submit Logic:**
+- Employee-ээр алдааны мэдээлэл цуглуулна
+- Formatted error display:
+  ```
+  ✅ 5 гүйлгээ амжилттай үүслээ
+  
+  ❌ 2 ажилтанд амжилтгүй:
+  1. Золбаяр
+     Энэ ажилтан тухайн өдөр...
+  2. Баатар
+     Энэ ажилтан тухайн өдөр...
+  ```
+- Warnings багцаар боловсруулна (confirmation dialog)
+- Finally block-оор isSubmitting цэвэрлэнэ
+
+**В. Computed Properties:**
+- filteredEmployeesForBulk: Search-ээр шүүсэн ажилтны жагсаалт
+- activeProjects: Зөвхөн ажиллаж байгаа төслүүд
+
+#### 6. Монгол хэл дээрх мессежүүд
+
+- Бүх алдааны мессеж Монгол хэл руу орчуулагдсан
+- Emoji нэмэгдсэн: ✅ (амжилт), ❌ (алдаа)
+- Баталгаажуулалтын мессежүүд сайжруулагдсан
+- Delete confirmation: "Энэ гүйлгээг устгахдаа итгэлтэй байна уу?"
+
+#### 7. Технологи сайжруулалт
+
+**Firestore Queries:**
+- Олон inequality operators асуудал шийдсэн
+- In-memory date filtering
+- Composite queries (employeeID + type + projectID)
+
+**State Management:**
+- isSubmitting flag double submission сэргийлэх
+- employeeSearchQuery reactive state
+- Button disabled states
+
+### Технологи дэлгэрэнгүй
+
+- **Backend**: Firebase Cloud Functions (Node.js 20)
+- **Frontend**: Vue 3, Vite
+- **Database**: Firestore
+- **Hosting**: Firebase Hosting
+- **Authentication**: MSAL + Firestore Rules
+
+### Deploy хийгдсэн
+
+```bash
+firebase deploy --only functions:manageFinancialTransaction
+firebase deploy --only functions:cleanupDuplicateFoodTrip  
+firebase deploy --only firestore:rules
+firebase deploy --only hosting
+```
+
+---
+
 ## 2026.02.02 - Санхүүгийн зардлын удирдлагын систем нэмэгдсэн
 
 ### Хийсэн ажлууд

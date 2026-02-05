@@ -282,9 +282,28 @@
 
           <div class="form-row">
             <div class="form-group full-width">
+              <label>Project *</label>
+              <select v-model="bulkFormData.projectID" @change="onBulkProjectChange" required class="form-input">
+                <option value="">Select Project</option>
+                <option v-for="project in activeProjects" :key="project.id" :value="project.id">
+                  {{ project.id }} - {{ project.siteLocation || 'No location' }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group full-width">
               <label>Select Employees *</label>
+              <input 
+                v-model="employeeSearchQuery" 
+                type="text" 
+                placeholder="Search employees..." 
+                class="form-input"
+                style="margin-bottom: 10px;"
+              />
               <div class="employee-list">
-                <div v-for="employee in sortedEmployeesByLastName" :key="employee.id" class="employee-checkbox">
+                <div v-for="employee in filteredEmployeesForBulk" :key="employee.id" class="employee-checkbox">
                   <label>
                     <input 
                       type="checkbox" 
@@ -299,10 +318,10 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn-submit">
-              Create Transactions
+            <button type="submit" class="btn-submit" :disabled="isSubmitting">
+              {{ isSubmitting ? 'Creating...' : 'Create Transactions' }}
             </button>
-            <button type="button" @click="closeBulkForm" class="btn-cancel">Cancel</button>
+            <button type="button" @click="closeBulkForm" class="btn-cancel" :disabled="isSubmitting">Cancel</button>
           </div>
         </form>
       </div>
@@ -376,7 +395,9 @@ const showForm = ref(false);
 const showBulkForm = ref(false);
 const showSettings = ref(false);
 const isEditMode = ref(false);
+const isSubmitting = ref(false);
 const searchQuery = ref('');
+const employeeSearchQuery = ref('');
 const filterType = ref('');
 const filterPurpose = ref('');
 const sortBy = ref('date');
@@ -388,6 +409,8 @@ const displayAmount = ref('0');
 const bulkFormData = ref({
   date: new Date().toISOString().split('T')[0],
   type: 'Хоолны мөнгө',
+  projectID: '',
+  projectLocation: '',
   selectedEmployees: [],
 });
 
@@ -439,6 +462,20 @@ const sortedEmployeesByLastName = computed(() => {
       const firstNameB = b.FirstName || '';
       return firstNameA.localeCompare(firstNameB);
     });
+});
+
+const filteredEmployeesForBulk = computed(() => {
+  let result = sortedEmployeesByLastName.value;
+  
+  if (employeeSearchQuery.value) {
+    const query = employeeSearchQuery.value.toLowerCase();
+    result = result.filter(emp => 
+      emp.FirstName?.toLowerCase().includes(query) ||
+      emp.Id?.toString().includes(query)
+    );
+  }
+  
+  return result;
 });
 
 const filteredTransactions = computed(() => {
@@ -656,7 +693,23 @@ async function handleSubmit() {
       showMessage(response.message, 'success');
       closeForm();
     } else {
-      showMessage(response.error || 'Operation failed', 'error');
+      // Check for duplicate food money warning
+      if (response.error === 'DUPLICATE_FOOD_WARNING' && response.needsConfirmation) {
+        const confirmed = confirm(response.message);
+        if (confirmed) {
+          // Retry with confirmation flag
+          formData.value.confirmDuplicate = true;
+          const retryResponse = await manageFinancialTransaction(action, formData.value);
+          if (retryResponse.success) {
+            showMessage(retryResponse.message, 'success');
+            closeForm();
+          } else {
+            showMessage(retryResponse.error || 'Operation failed', 'error');
+          }
+        }
+      } else {
+        showMessage(response.error || 'Operation failed', 'error');
+      }
     }
   } catch (error) {
     console.error('Error submitting transaction:', error);
@@ -665,7 +718,7 @@ async function handleSubmit() {
 }
 
 async function handleDelete() {
-  if (!confirm('Are you sure you want to delete this transaction?')) {
+  if (!confirm('Энэ гүйлгээг устгахдаа итгэлтэй байна уу?')) {
     return;
   }
 
@@ -688,9 +741,19 @@ function handleBulkFoodTrip() {
   bulkFormData.value = {
     date: new Date().toISOString().split('T')[0],
     type: 'Хоолны мөнгө',
+    projectID: '',
+    projectLocation: '',
     selectedEmployees: [],
   };
+  employeeSearchQuery.value = '';
   showBulkForm.value = true;
+}
+
+function onBulkProjectChange() {
+  const project = projectsStore.projects.find(p => p.id === bulkFormData.value.projectID);
+  if (project) {
+    bulkFormData.value.projectLocation = project.siteLocation || '';
+  }
 }
 
 function closeBulkForm() {
@@ -698,6 +761,8 @@ function closeBulkForm() {
   bulkFormData.value = {
     date: new Date().toISOString().split('T')[0],
     type: 'Хоолны мөнгө',
+    projectID: '',
+    projectLocation: '',
     selectedEmployees: [],
   };
 }
@@ -708,9 +773,17 @@ async function handleBulkSubmit() {
     return;
   }
 
+  // Prevent double submission
+  if (isSubmitting.value) {
+    return;
+  }
+
   try {
+    isSubmitting.value = true;
     let successCount = 0;
     let failCount = 0;
+    let warnings = [];
+    let errors = [];
 
     // Create a transaction for each selected employee
     for (const employeeId of bulkFormData.value.selectedEmployees) {
@@ -724,8 +797,8 @@ async function handleBulkSubmit() {
 
       const transaction = {
         date: bulkFormData.value.date,
-        projectID: '',
-        projectLocation: '',
+        projectID: bulkFormData.value.projectID,
+        projectLocation: bulkFormData.value.projectLocation,
         employeeID: employee.Id,
         employeeFirstName: employee.FirstName || '',
         amount: amount,
@@ -740,23 +813,68 @@ async function handleBulkSubmit() {
         const response = await manageFinancialTransaction('create', transaction);
         if (response.success) {
           successCount++;
+        } else if (response.error === 'DUPLICATE_FOOD_WARNING' && response.needsConfirmation) {
+          // Store warning for this employee
+          warnings.push({ employee, transaction });
         } else {
           failCount++;
+          // Store error with employee name
+          errors.push({ employeeName: employee.FirstName, error: response.error });
+          console.error(`Failed for ${employee.FirstName}: ${response.error}`);
         }
       } catch (error) {
         failCount++;
+        errors.push({ employeeName: employee.FirstName, error: error.message || 'Unknown error' });
+        console.error(`Error for ${employee.FirstName}:`, error);
       }
     }
 
+    // Handle warnings for duplicate food money
+    if (warnings.length > 0) {
+      const employeeNames = warnings.map(w => w.employee.FirstName).join(', ');
+      const confirmed = confirm(`Дараах ажилтнууд өнөөдөр хоолны мөнгө 1 удаа авсан байна:\n\n${employeeNames}\n\nТэдэнд дахин нэмэх үү?`);
+      
+      if (confirmed) {
+        for (const { employee, transaction } of warnings) {
+          transaction.confirmDuplicate = true;
+          try {
+            const response = await manageFinancialTransaction('create', transaction);
+            if (response.success) {
+              successCount++;
+            } else {
+              failCount++;
+              errors.push({ employeeName: employee.FirstName, error: response.error });
+            }
+          } catch (error) {
+            failCount++;
+            errors.push({ employeeName: employee.FirstName, error: error.message || 'Unknown error' });
+          }
+        }
+      }
+    }
+
+    // Show results
+    let resultMessage = '';
     if (successCount > 0) {
-      showMessage(`Created ${successCount} transactions successfully${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
+      resultMessage = `✅ ${successCount} гүйлгээ амжилттай үүслээ`;
+    }
+    
+    if (failCount > 0) {
+      const errorDetails = errors.map((e, i) => `${i + 1}. ${e.employeeName}\n   ${e.error}`).join('\n\n');
+      if (successCount > 0) {
+        alert(`${resultMessage}\n\n❌ ${failCount} ажилтанд амжилтгүй:\n\n${errorDetails}`);
+      } else {
+        alert(`❌ Гүйлгээ үүсгэхэд алдаа гарлаа:\n\n${errorDetails}`);
+      }
+    } else if (successCount > 0) {
+      showMessage(resultMessage, 'success');
       closeBulkForm();
-    } else {
-      showMessage('Failed to create transactions', 'error');
     }
   } catch (error) {
     console.error('Error creating bulk transactions:', error);
     showMessage(error.message || 'Failed to create bulk transactions', 'error');
+  } finally {
+    isSubmitting.value = false;
   }
 }
 

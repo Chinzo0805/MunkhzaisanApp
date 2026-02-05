@@ -33,11 +33,11 @@ exports.updateFinancialAmounts = functions.https.onRequest(async (req, res) => {
       const type = transaction.type; // lowercase 'type'
       
       if (type === 'Хоолны мөнгө') {
-        batch.update(doc.ref, { Amount: 15000 });
+        batch.update(doc.ref, { amount: 15000 }); // lowercase 'amount'
         foodUpdated++;
         batchCount++;
       } else if (type === 'Томилолт') {
-        batch.update(doc.ref, { Amount: 55000 });
+        batch.update(doc.ref, { amount: 55000 }); // lowercase 'amount'
         tripUpdated++;
         batchCount++;
       }

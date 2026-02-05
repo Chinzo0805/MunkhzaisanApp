@@ -50,6 +50,8 @@ exports.manageFinancialTransaction = require("./manageFinancialTransaction").man
 exports.syncFinancialTransToExcel = require("./syncFinancialTransToExcel").syncFinancialTransToExcel;
 exports.syncFromExcelToFinancialTrans = require("./syncFromExcelToFinancialTrans").syncFromExcelToFinancialTrans;
 exports.updateFinancialAmounts = require("./updateFinancialAmounts").updateFinancialAmounts;
+exports.cleanupAmountField = require("./cleanupAmountField").cleanupAmountField;
+exports.cleanupDuplicateFoodTrip = require("./cleanupDuplicateFoodTrip").cleanupDuplicateFoodTrip;
 
 // Warehouse functions
 exports.manageWarehouse = require("./manageWarehouse").manageWarehouse;
