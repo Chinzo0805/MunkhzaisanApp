@@ -61,6 +61,13 @@
         <input type="text" v-model="searchQuery" placeholder="Төслийн нэр эсвэл код..." />
       </div>
       
+      <div class="filter-group">
+        <label class="toggle-label">
+          <input type="checkbox" v-model="showFinancials" class="toggle-checkbox" />
+          <span class="toggle-text">{{ showFinancials ? '💰 Санхүү харуулж байна' : '💰 Санхүү харуулах' }}</span>
+        </label>
+      </div>
+      
       <button @click="loadProjects" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
@@ -104,6 +111,27 @@
             </th>
             <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
               Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('IncomeHR')" class="sortable financial-col">
+              Орлого HR {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('ExpenceHR')" class="sortable financial-col">
+              Зарлага HR {{ sortColumn === 'ExpenceHR' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('IncomeCar')" class="sortable financial-col">
+              Орлого Car {{ sortColumn === 'IncomeCar' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('ExpenceCar')" class="sortable financial-col">
+              Зарлага Car {{ sortColumn === 'ExpenceCar' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('IncomeMaterial')" class="sortable financial-col">
+              Орлого Material {{ sortColumn === 'IncomeMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('ExpenceMaterial')" class="sortable financial-col">
+              Зарлага Material {{ sortColumn === 'ExpenceMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th v-if="showFinancials" @click="sortBy('TotalProfit')" class="sortable financial-col">
+              Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th class="actions-col">Үйлдэл</th>
           </tr>
@@ -177,6 +205,36 @@
               <span v-else>{{ project.referenceIdfromCustomer || '-' }}</span>
             </td>
             
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.ExpenceHR ? project.ExpenceHR.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.IncomeCar ? project.IncomeCar.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.ExpenceCar ? project.ExpenceCar.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.IncomeMaterial ? project.IncomeMaterial.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span>{{ project.ExpenceMaterial ? project.ExpenceMaterial.toLocaleString() : '-' }}</span>
+            </td>
+            
+            <td v-if="showFinancials" class="number-cell financial-col">
+              <span :style="{ color: (project.TotalProfit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
+              </span>
+            </td>
+            
             <td class="actions-cell">
               <template v-if="editingId === project.id">
                 <button @click="saveEdit(project)" class="btn-save" :disabled="saving">💾</button>
@@ -217,6 +275,7 @@ const loading = ref(false);
 const allProjects = ref([]);
 const selectedStatus = ref('');
 const searchQuery = ref('');
+const showFinancials = ref(false);
 const projectManagementRef = ref(null);
 
 // Editing state
@@ -400,20 +459,39 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
+  const headers = showFinancials.value 
+    ? ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Орлого HR', 'Зарлага HR', 'Орлого Car', 'Зарлага Car', 'Орлого Material', 'Зарлага Material', 'Нийт ашиг']
+    : ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
   
   const data = [
     headers,
-    ...sortedProjects.value.map(proj => [
-      proj.id,
-      proj.customer || '-',
-      proj.siteLocation || '-',
-      proj.ResponsibleEmp || '-',
-      proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
-      proj.BaseAmount || '-',
-      proj.EngineerHand || '-',
-      proj.referenceIdfromCustomer || '-'
-    ])
+    ...sortedProjects.value.map(proj => {
+      const baseData = [
+        proj.id,
+        proj.customer || '-',
+        proj.siteLocation || '-',
+        proj.ResponsibleEmp || '-',
+        proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
+        proj.BaseAmount || '-',
+        proj.EngineerHand || '-',
+        proj.referenceIdfromCustomer || '-'
+      ];
+      
+      if (showFinancials.value) {
+        return [
+          ...baseData,
+          proj.IncomeHR || '-',
+          proj.ExpenceHR || '-',
+          proj.IncomeCar || '-',
+          proj.ExpenceCar || '-',
+          proj.IncomeMaterial || '-',
+          proj.ExpenceMaterial || '-',
+          proj.TotalProfit || '-'
+        ];
+      }
+      
+      return baseData;
+    })
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -604,6 +682,30 @@ onMounted(async () => {
   font-size: 14px;
   background: white;
   min-width: 180px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.toggle-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.financial-col {
+  background-color: #fef3c7;
 }
 
 .btn-refresh {
