@@ -237,19 +237,6 @@
           
           <div class="form-row">
             <div class="form-group">
-              <label>Инженерийн урамшуулал (гүйцэтгэлийн дагуу)</label>
-              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-              <small style="color: #6b7280;">Performance-adjusted bounty</small>
-            </div>
-            <div class="form-group">
-              <label>Инженер бус урамшуулал</label>
-              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
               <label>Planned Hour (calculated)</label>
               <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">WosHour × 3</small>
@@ -269,7 +256,7 @@
             </div>
             <div class="form-group">
               <label>Non-Engineer Work Hour</label>
-              <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #e9d5ff;" />
+              <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
               <small style="color: #6b7280;">Hours by Non-Engineers</small>
             </div>
           </div>
@@ -279,6 +266,19 @@
               <label>Цагийн гүйцэтгэл</label>
               <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
               <small style="color: #6b7280;">RealHour / PlannedHour × 100</small>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Инженерийн урамшуулал (гүйцэтгэлийн дагуу)</label>
+              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+              <small style="color: #6b7280;">Performance-adjusted bounty</small>
+            </div>
+            <div class="form-group">
+              <label>Инженер бус урамшуулал</label>
+              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
             </div>
           </div>
           
