@@ -224,10 +224,26 @@
           
           <div class="form-row">
             <div class="form-group">
+              <label>Base Amount (WosHour × 12,500)</label>
+              <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
+              <small style="color: #6b7280;">Base for performance calculation</small>
+            </div>
+            <div class="form-group">
+              <label>Engineer Bounty (Base)</label>
+              <input v-model.number="form.EngineerBounty" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              <small style="color: #6b7280;">Base engineer bounty amount</small>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
               <label>Инженерийн урамшуулал (гүйцэтгэлийн дагуу)</label>
               <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
               <small style="color: #6b7280;">Performance-adjusted bounty</small>
             </div>
+          </div>
+          
+          <div class="form-row">
             <div class="form-group">
               <label>Багийн урамшуулал</label>
               <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #e9d5ff;" />
@@ -438,6 +454,7 @@ const form = ref({
   referenceIdfromCustomer: '',
   Status: 'Active',
   WosHour: 0,
+  BaseAmount: 0,
   EngineerHand: 0,
   TeamBounty: 0,
   EngineerBounty: 0,
@@ -592,7 +609,8 @@ function onAdditionalHourChange() {
   calculateFinancials();
 }
 
-function calculateFinancials() {
+functBaseAmount = WosHour * 12500
+  form.value.BaseAmount = (form.value.WosHour || 0) * 12500;
   // TeamBounty = WosHour * 22500
   form.value.TeamBounty = (form.value.WosHour || 0) * 22500;
   // PlannedHour = WosHour * 3
@@ -601,8 +619,8 @@ function calculateFinancials() {
   form.value.NonEngineerBounty = (form.value.NonEngineerWorkHour || 0) * 5000;
   // HourPerformance = (RealHour / PlannedHour) * 100
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-  // EngineerHand = Performance-adjusted bounty (WosHour * 12500 * (200 - performance%) / 100)
-  const baseAmount = (form.value.WosHour || 0) * 12500;
+  // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
+  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.B
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, baseAmount);
   // EngineerBounty = EngineerWorkHour * 12500 (basic calculation)
   form.value.EngineerBounty = (form.value.EngineerWorkHour || 0) * 12500;
@@ -650,6 +668,7 @@ function editItem(project) {
     referenceIdfromCustomer: project.referenceIdfromCustomer || '',
     Status: project.Status || 'Төлөвлсөн',
     WosHour: project.WosHour || 0,
+    BaseAmount: project.BaseAmount || ((project.WosHour || 0) * 12500),
     EngineerHand: project.EngineerHand || 0,
     TeamBounty: project.TeamBounty || 0,
     EngineerBounty: project.EngineerBounty || 0,
