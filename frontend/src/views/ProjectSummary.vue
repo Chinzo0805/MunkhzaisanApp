@@ -96,8 +96,8 @@
             <th @click="sortBy('HourPerformance')" class="sortable">
               Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('EngineerBounty')" class="sortable">
-              Инженер урамшуулал {{ sortColumn === 'EngineerBounty' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="sortBy('BaseAmount')" class="sortable">
+              Base Amount {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th @click="sortBy('EngineerHand')" class="sortable">
               Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -154,13 +154,7 @@
             </td>
             
             <td class="number-cell">
-              <input 
-                v-if="editingId === project.id"
-                v-model.number="editForm.EngineerBounty"
-                type="number"
-                class="edit-input"
-              />
-              <span v-else>{{ project.EngineerBounty ? project.EngineerBounty.toLocaleString() : '-' }}</span>
+              <span>{{ project.BaseAmount ? project.BaseAmount.toLocaleString() : '-' }}</span>
             </td>
             
             <td class="number-cell">
@@ -233,7 +227,6 @@ const editForm = ref({
   siteLocation: '',
   ResponsibleEmp: '',
   HourPerformance: 0,
-  EngineerBounty: 0,
   EngineerHand: 0,
   referenceIdfromCustomer: ''
 });
@@ -348,7 +341,6 @@ function startEdit(project) {
     siteLocation: project.siteLocation || '',
     ResponsibleEmp: project.ResponsibleEmp || '',
     HourPerformance: project.HourPerformance || 0,
-    EngineerBounty: project.EngineerBounty || 0,
     EngineerHand: project.EngineerHand || 0,
     referenceIdfromCustomer: project.referenceIdfromCustomer || ''
   };
@@ -367,7 +359,6 @@ function cancelEdit() {
     siteLocation: '',
     ResponsibleEmp: '',
     HourPerformance: 0,
-    EngineerBounty: 0,
     EngineerHand: 0,
     referenceIdfromCustomer: ''
   };
@@ -382,7 +373,6 @@ async function saveEdit(project) {
       siteLocation: editForm.value.siteLocation,
       ResponsibleEmp: editForm.value.ResponsibleEmp,
       HourPerformance: Number(editForm.value.HourPerformance),
-      EngineerBounty: Number(editForm.value.EngineerBounty),
       EngineerHand: Number(editForm.value.EngineerHand),
       referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
       updatedAt: new Date().toISOString()
@@ -410,7 +400,7 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
+  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Base Amount', 'Инженер гар', 'Лавлах дугаар'];
   
   const data = [
     headers,
@@ -420,7 +410,7 @@ function exportToExcel() {
       proj.siteLocation || '-',
       proj.ResponsibleEmp || '-',
       proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
-      proj.EngineerBounty || '-',
+      proj.BaseAmount || '-',
       proj.EngineerHand || '-',
       proj.referenceIdfromCustomer || '-'
     ])
