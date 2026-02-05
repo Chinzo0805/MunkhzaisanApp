@@ -228,11 +228,6 @@
               <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
               <small style="color: #6b7280;">Base for performance calculation</small>
             </div>
-            <div class="form-group">
-              <label>Engineer Bounty (Base)</label>
-              <input v-model.number="form.EngineerBounty" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
-              <small style="color: #6b7280;">Base engineer bounty amount</small>
-            </div>
           </div>
           
           <div class="form-row">
@@ -457,7 +452,6 @@ const form = ref({
   BaseAmount: 0,
   EngineerHand: 0,
   TeamBounty: 0,
-  EngineerBounty: 0,
   PlannedHour: 0,
   RealHour: 0,
   EngineerWorkHour: 0,
@@ -622,8 +616,6 @@ function calculateFinancials() {
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
   // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
-  // EngineerBounty = EngineerWorkHour * 12500 (basic calculation)
-  form.value.EngineerBounty = (form.value.EngineerWorkHour || 0) * 12500;
   // ExpenseHR includes additionalValue
   const totalExpenseHR = (form.value.ExpenceHR || 0) + (form.value.additionalValue || 0);
   // ProfitHR = IncomeHR - (ExpenceHR + additionalValue)
@@ -671,7 +663,6 @@ function editItem(project) {
     BaseAmount: project.BaseAmount || ((project.WosHour || 0) * 12500),
     EngineerHand: project.EngineerHand || 0,
     TeamBounty: project.TeamBounty || 0,
-    EngineerBounty: project.EngineerBounty || 0,
     PlannedHour: project.PlannedHour || 0,
     RealHour: project.RealHour || 0,
     EngineerWorkHour: project.EngineerWorkHour || 0,

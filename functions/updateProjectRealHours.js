@@ -126,6 +126,7 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
             OvertimeHours: hours.overtimeHours,
             EngineerWorkHour: hours.engineerHours,
             NonEngineerWorkHour: hours.nonEngineerHours,
+            BaseAmount: baseAmount,
             EngineerHand: engineerHand,
             TeamBounty: teamBounty,
             NonEngineerBounty: nonEngineerBounty,

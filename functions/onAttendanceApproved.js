@@ -128,6 +128,7 @@ async function updateProjectMetrics(projectId) {
         OvertimeHours: overtimeHours,
         EngineerWorkHour: engineerHours,
         NonEngineerWorkHour: nonEngineerHours,
+        BaseAmount: baseAmount,
         EngineerHand: engineerHand,
         TeamBounty: teamBounty,
         NonEngineerBounty: nonEngineerBounty,

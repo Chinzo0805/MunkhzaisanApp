@@ -24,7 +24,6 @@ This document describes the exact field structure for all Firestore collections 
 | `Status` | String | Project status | Yes | `"In Progress"` |
 | `WosHour` | Number | Work hours (base for calculations) | Yes | `8` |
 | `PlannedHour` | Number | Planned hours (should be WosHour × 3) | Yes | `24` |
-| `EngineerBounty` | Number | Base engineer bounty | No | `100000` |
 | `TotalProfit` | Number | Total profit for project | No | `500000` |
 
 ### Auto-Calculated Hour Tracking Fields
@@ -62,12 +61,12 @@ This document describes the exact field structure for all Firestore collections 
 
 | Field Name | Type | Formula | Rate | Description |
 |------------|------|---------|------|-------------|
+| `BaseAmount` | Number | `WosHour × 12,500` | 12,500 MNT/hour | Foundation for performance calculation |
 | `TeamBounty` | Number | `WosHour × 22,500` | 22,500 MNT/hour | Team incentive (fixed) |
 | `EngineerHand` | Number | `BaseAmount × (200 - HourPerformance) / 100` | Performance-adjusted | Engineer bounty (performance-based) |
 | `NonEngineerBounty` | Number | `NonEngineerWorkHour × 5,000` | 5,000 MNT/hour | Non-engineer incentive |
 
-**Where:**
-- `BaseAmount = WosHour × 12,500`
+**Where:****
 - All values rounded to whole numbers
 
 **Calculation Locations:**
@@ -103,9 +102,9 @@ This document describes the exact field structure for all Firestore collections 
   "EngineerWorkHour": 18,
   "NonEngineerWorkHour": 4.5,
   "HourPerformance": 93.75,
+  "BaseAmount": 100000,
   "TeamBounty": 180000,
   "EngineerHand": 106250,
-  "EngineerBounty": 100000,
   "NonEngineerBounty": 22500,
   "TotalProfit": 500000,
   "createdAt": "2026-01-15T09:30:00.000Z",
@@ -451,6 +450,7 @@ This document describes the exact field structure for all Firestore collections 
 | `EngineerWorkHour` | `updateProjectRealHours`, `onAttendanceApproved` | TA approval |
 | `NonEngineerWorkHour` | `updateProjectRealHours`, `onAttendanceApproved` | TA approval |
 | `HourPerformance` | `manageProject`, `updateProjectRealHours`, `onAttendanceApproved` | Project edit or TA approval |
+| `BaseAmount` | `manageProject`, `updateProjectRealHours`, `onAttendanceApproved` | Project edit or TA approval |
 | `TeamBounty` | `manageProject`, `updateProjectRealHours`, `onAttendanceApproved` | Project edit or TA approval |
 | `EngineerHand` | `manageProject`, `updateProjectRealHours`, `onAttendanceApproved` | Project edit or TA approval |
 | `NonEngineerBounty` | `manageProject`, `updateProjectRealHours`, `onAttendanceApproved` | Project edit or TA approval |

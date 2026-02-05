@@ -104,8 +104,8 @@ function calculateProjectMetrics(projectData) {
   const plannedHour = parseFloat(data.PlannedHour) || 0;
   const wosHour = parseFloat(data.WosHour) || 0;
   
-  // Calculate base amount (WosHour * 12500) - rounded to whole number
-  const baseAmount = Math.round(wosHour * 12500);
+  // Calculate base amount (WosHour * 12500) - rounded to whole number and save to Firestore
+  data.BaseAmount = Math.round(wosHour * 12500);
   
   // Calculate TeamBounty - rounded to whole number
   data.TeamBounty = Math.round(wosHour * 22500);
@@ -126,11 +126,11 @@ function calculateProjectMetrics(projectData) {
   // At 100% performance: 200 - 100 = 100% bounty
   // At 60% performance: 200 - 60 = 140% bounty
   // At 120% performance: 200 - 120 = 80% bounty
-  if (plannedHour > 0 && baseAmount > 0) {
+  if (plannedHour > 0 && data.BaseAmount > 0) {
     const bountyPercentage = 200 - data.HourPerformance;
-    data.EngineerHand = Math.round((baseAmount * bountyPercentage) / 100);
+    data.EngineerHand = Math.round((data.BaseAmount * bountyPercentage) / 100);
   } else {
-    data.EngineerHand = baseAmount;
+    data.EngineerHand = data.BaseAmount;
   }
   
   return data;
