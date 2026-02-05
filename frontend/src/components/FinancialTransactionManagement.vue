@@ -360,6 +360,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
@@ -390,8 +392,8 @@ const bulkFormData = ref({
 });
 
 const settingsData = ref({
-  foodAmount: 10000,
-  tripAmount: 75000,
+  foodAmount: 15000,
+  tripAmount: 55000,
 });
 
 const formData = ref({
@@ -762,9 +764,16 @@ function closeSettings() {
   showSettings.value = false;
 }
 
-function saveSettings() {
-  showMessage('Settings saved successfully', 'success');
-  closeSettings();
+async function saveSettings() {
+  try {
+    const settingsRef = doc(db, 'settings', 'financialTransaction');
+    await setDoc(settingsRef, settingsData.value, { merge: true });
+    showMessage('Settings saved successfully', 'success');
+    closeSettings();
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    showMessage('Failed to save settings: ' + error.message, 'error');
+  }
 }
 
 function showMessage(msg, type) {
@@ -779,6 +788,23 @@ onMounted(async () => {
   await transactionsStore.fetchTransactions();
   await projectsStore.fetchProjects();
   await employeesStore.fetchEmployees();
+  
+  // Load settings
+  try {
+    const settingsRef = doc(db, 'settings', 'financialTransaction');
+    const settingsDoc = await getDoc(settingsRef);
+    if (settingsDoc.exists()) {
+      const data = settingsDoc.data();
+      settingsData.value.foodAmount = data.foodAmount || 15000;
+      settingsData.value.tripAmount = data.tripAmount || 55000;
+    } else {
+      // Set default values
+      settingsData.value.foodAmount = 15000;
+      settingsData.value.tripAmount = 55000;
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
 });
 </script>
 

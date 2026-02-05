@@ -123,8 +123,9 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
           // Calculate Income HR and Profit HR with new formulas
           const additionalHour = parseFloat(projectData.additionalHour) || 0;
           const additionalValue = parseFloat(projectData.additionalValue) || 0;
+          const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
           const incomeHR = Math.round((wosHour + additionalHour) * 110000);
-          const profitHR = Math.round(incomeHR - (engineerHand + nonEngineerBounty + additionalValue));
+          const profitHR = Math.round(incomeHR - (engineerHand + nonEngineerBounty + additionalValue + expenceHR));
           
           await projectDoc.ref.update({
             RealHour: hours.totalHours,

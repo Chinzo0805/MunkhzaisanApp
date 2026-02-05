@@ -359,7 +359,7 @@
             <div class="form-group">
               <label>Profit HR (calculated)</label>
               <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue)</small>
+              <small style="color: #6b7280;">IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)</small>
             </div>
             <div class="form-group">
               <label>Profit Car (calculated)</label>
@@ -614,8 +614,8 @@ function calculateFinancials() {
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
   // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
-  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue)
-  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.additionalValue || 0);
+  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)
+  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0);
   form.value.ProfitHR = (form.value.IncomeHR || 0) - totalExpenseHR;
   // ProfitCar = IncomeCar - ExpenceCar
   form.value.ProfitCar = (form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0);

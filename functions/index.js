@@ -49,6 +49,7 @@ exports.recalculateAllProjects = require("./recalculateAllProjects").recalculate
 exports.manageFinancialTransaction = require("./manageFinancialTransaction").manageFinancialTransaction;
 exports.syncFinancialTransToExcel = require("./syncFinancialTransToExcel").syncFinancialTransToExcel;
 exports.syncFromExcelToFinancialTrans = require("./syncFromExcelToFinancialTrans").syncFromExcelToFinancialTrans;
+exports.updateFinancialAmounts = require("./updateFinancialAmounts").updateFinancialAmounts;
 
 // Warehouse functions
 exports.manageWarehouse = require("./manageWarehouse").manageWarehouse;
