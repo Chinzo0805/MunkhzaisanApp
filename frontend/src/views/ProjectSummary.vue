@@ -144,6 +144,9 @@
               <th @click="sortBy('ProfitMaterial')" class="sortable financial-material">
                 Ашиг Material {{ sortColumn === 'ProfitMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
+              <th @click="sortBy('additionalValue')" class="sortable" style="background-color: #fef3c7;">
+                Нэмэлт үнэ {{ sortColumn === 'additionalValue' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
               <th @click="sortBy('TotalProfit')" class="sortable financial-total">
                 Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
@@ -260,6 +263,10 @@
                 </span>
               </td>
               
+              <td class="number-cell" style="background-color: #fef3c7;">
+                <span>{{ project.additionalValue ? project.additionalValue.toLocaleString() : '-' }}</span>
+              </td>
+              
               <td class="number-cell financial-total">
                 <span :style="{ color: (project.TotalProfit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
                   {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
@@ -302,6 +309,9 @@
               <span :style="{ color: totalProfitMaterial >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
                 {{ totalProfitMaterial.toLocaleString() }}
               </span>
+            </td>
+            <td class="number-cell" style="background-color: #fef3c7;">
+              <span style="font-weight: 700;">{{ totalAdditionalValue.toLocaleString() }}</span>
             </td>
             <td class="number-cell financial-total">
               <span :style="{ color: grandTotalProfit >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
@@ -436,6 +446,10 @@ const totalExpenceMaterial = computed(() =>
 
 const totalProfitMaterial = computed(() => 
   filteredProjects.value.reduce((sum, p) => sum + (p.ProfitMaterial || 0), 0)
+);
+
+const totalAdditionalValue = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.additionalValue || 0), 0)
 );
 
 const grandTotalProfit = computed(() => 
