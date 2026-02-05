@@ -30,7 +30,7 @@ exports.updateFinancialAmounts = functions.https.onRequest(async (req, res) => {
     
     for (const doc of snapshot.docs) {
       const transaction = doc.data();
-      const type = transaction.Type;
+      const type = transaction.type; // lowercase 'type'
       
       if (type === 'Хоолны мөнгө') {
         batch.update(doc.ref, { Amount: 15000 });
