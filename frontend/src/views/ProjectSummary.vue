@@ -279,6 +279,38 @@
             </td>
           </tr>
         </tbody>
+        <tfoot v-if="showFinancials">
+          <tr class="totals-row">
+            <td colspan="4" class="totals-label">Нийт дүн:</td>
+            <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
+            <td class="number-cell financial-hr">{{ totalExpenceHR.toLocaleString() }}</td>
+            <td class="number-cell financial-hr">
+              <span :style="{ color: totalProfitHR >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                {{ totalProfitHR.toLocaleString() }}
+              </span>
+            </td>
+            <td class="number-cell financial-car">{{ totalIncomeCar.toLocaleString() }}</td>
+            <td class="number-cell financial-car">{{ totalExpenceCar.toLocaleString() }}</td>
+            <td class="number-cell financial-car">
+              <span :style="{ color: totalProfitCar >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                {{ totalProfitCar.toLocaleString() }}
+              </span>
+            </td>
+            <td class="number-cell financial-material">{{ totalIncomeMaterial.toLocaleString() }}</td>
+            <td class="number-cell financial-material">{{ totalExpenceMaterial.toLocaleString() }}</td>
+            <td class="number-cell financial-material">
+              <span :style="{ color: totalProfitMaterial >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                {{ totalProfitMaterial.toLocaleString() }}
+              </span>
+            </td>
+            <td class="number-cell financial-total">
+              <span :style="{ color: grandTotalProfit >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                {{ grandTotalProfit.toLocaleString() }}
+              </span>
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
 
@@ -368,6 +400,47 @@ const sortedProjects = computed(() => {
   
   return data;
 });
+
+// Financial totals
+const totalIncomeHR = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.IncomeHR || 0), 0)
+);
+
+const totalExpenceHR = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceHR || 0), 0)
+);
+
+const totalProfitHR = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ProfitHR || 0), 0)
+);
+
+const totalIncomeCar = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.IncomeCar || 0), 0)
+);
+
+const totalExpenceCar = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceCar || 0), 0)
+);
+
+const totalProfitCar = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ProfitCar || 0), 0)
+);
+
+const totalIncomeMaterial = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.IncomeMaterial || 0), 0)
+);
+
+const totalExpenceMaterial = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceMaterial || 0), 0)
+);
+
+const totalProfitMaterial = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ProfitMaterial || 0), 0)
+);
+
+const grandTotalProfit = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.TotalProfit || 0), 0)
+);
 
 // Get count for a specific status
 function getStatusCount(status) {
@@ -900,6 +973,23 @@ onMounted(async () => {
 
 .summary-table tbody tr:hover {
   background: #f9fafb;
+}
+
+.summary-table tfoot {
+  border-top: 3px solid #374151;
+}
+
+.totals-row {
+  background: #f9fafb !important;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.totals-label {
+  text-align: right;
+  font-weight: 700;
+  color: #1f2937;
+  padding-right: 16px !important;
 }
 
 .project-id-cell {
