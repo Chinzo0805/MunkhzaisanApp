@@ -557,7 +557,7 @@ onMounted(async () => {
 
 <style scoped>
 .project-summary-container {
-  max-width: 1400px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 24px;
 }
@@ -830,7 +830,8 @@ onMounted(async () => {
   background: white;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .table-header {
@@ -862,18 +863,20 @@ onMounted(async () => {
 
 .summary-table {
   width: 100%;
+  min-width: fit-content;
   border-collapse: collapse;
   font-size: 14px;
 }
 
 .summary-table th {
   background: #f3f4f6;
-  padding: 14px 16px;
+  padding: 12px 10px;
   text-align: left;
   font-weight: 600;
   color: #374151;
   border-bottom: 2px solid #e5e7eb;
   white-space: nowrap;
+  font-size: 13px;
 }
 
 .summary-table th.sortable {
@@ -890,8 +893,9 @@ onMounted(async () => {
 }
 
 .summary-table td {
-  padding: 14px 16px;
+  padding: 12px 10px;
   border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
 }
 
 .summary-table tbody tr:hover {
