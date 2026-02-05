@@ -100,39 +100,55 @@
             <th @click="sortBy('ResponsibleEmp')" class="sortable">
               Хариуцах {{ sortColumn === 'ResponsibleEmp' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('HourPerformance')" class="sortable">
-              Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="sortBy('BaseAmount')" class="sortable">
-              Инженер урамшуулал {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="sortBy('EngineerHand')" class="sortable">
-              Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
-              Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('IncomeHR')" class="sortable financial-col">
-              Орлого HR {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('ExpenceHR')" class="sortable financial-col">
-              Зарлага HR {{ sortColumn === 'ExpenceHR' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('IncomeCar')" class="sortable financial-col">
-              Орлого Car {{ sortColumn === 'IncomeCar' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('ExpenceCar')" class="sortable financial-col">
-              Зарлага Car {{ sortColumn === 'ExpenceCar' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('IncomeMaterial')" class="sortable financial-col">
-              Орлого Material {{ sortColumn === 'IncomeMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('ExpenceMaterial')" class="sortable financial-col">
-              Зарлага Material {{ sortColumn === 'ExpenceMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th v-if="showFinancials" @click="sortBy('TotalProfit')" class="sortable financial-col">
-              Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
+            
+            <template v-if="!showFinancials">
+              <th @click="sortBy('HourPerformance')" class="sortable">
+                Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('BaseAmount')" class="sortable">
+                Инженер урамшуулал {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('EngineerHand')" class="sortable">
+                Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
+                Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+            </template>
+            
+            <template v-else>
+              <th @click="sortBy('IncomeHR')" class="sortable financial-hr">
+                Орлого HR {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceHR')" class="sortable financial-hr">
+                Зарлага HR {{ sortColumn === 'ExpenceHR' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ProfitHR')" class="sortable financial-hr">
+                Ашиг HR {{ sortColumn === 'ProfitHR' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('IncomeCar')" class="sortable financial-car">
+                Орлого Car {{ sortColumn === 'IncomeCar' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceCar')" class="sortable financial-car">
+                Зарлага Car {{ sortColumn === 'ExpenceCar' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ProfitCar')" class="sortable financial-car">
+                Ашиг Car {{ sortColumn === 'ProfitCar' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('IncomeMaterial')" class="sortable financial-material">
+                Орлого Material {{ sortColumn === 'IncomeMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceMaterial')" class="sortable financial-material">
+                Зарлага Material {{ sortColumn === 'ExpenceMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ProfitMaterial')" class="sortable financial-material">
+                Ашиг Material {{ sortColumn === 'ProfitMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('TotalProfit')" class="sortable financial-total">
+                Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+            </template>
+            
             <th class="actions-col">Үйлдэл</th>
           </tr>
         </thead>
@@ -170,70 +186,86 @@
               <span v-else>{{ project.ResponsibleEmp || '-' }}</span>
             </td>
             
-            <td class="number-cell">
-              <input 
-                v-if="editingId === project.id"
-                v-model.number="editForm.HourPerformance"
-                type="number"
-                step="0.01"
-                class="edit-input"
-              />
-              <span v-else>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
-            </td>
+            <template v-if="!showFinancials">
+              <td class="number-cell">
+                <input 
+                  v-if="editingId === project.id"
+                  v-model.number="editForm.HourPerformance"
+                  type="number"
+                  step="0.01"
+                  class="edit-input"
+                />
+                <span v-else>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
+              </td>
+              
+              <td class="number-cell">
+                <span>{{ project.BaseAmount ? project.BaseAmount.toLocaleString() : '-' }}</span>
+              </td>
+              
+              <td class="number-cell">
+                <input 
+                  v-if="editingId === project.id"
+                  v-model.number="editForm.EngineerHand"
+                  type="number"
+                  class="edit-input"
+                />
+                <span v-else>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
+              </td>
+              
+              <td>
+                <input 
+                  v-if="editingId === project.id"
+                  v-model="editForm.referenceIdfromCustomer"
+                  type="text"
+                  class="edit-input"
+                />
+                <span v-else>{{ project.referenceIdfromCustomer || '-' }}</span>
+              </td>
+            </template>
             
-            <td class="number-cell">
-              <span>{{ project.BaseAmount ? project.BaseAmount.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td class="number-cell">
-              <input 
-                v-if="editingId === project.id"
-                v-model.number="editForm.EngineerHand"
-                type="number"
-                class="edit-input"
-              />
-              <span v-else>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td>
-              <input 
-                v-if="editingId === project.id"
-                v-model="editForm.referenceIdfromCustomer"
-                type="text"
-                class="edit-input"
-              />
-              <span v-else>{{ project.referenceIdfromCustomer || '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.ExpenceHR ? project.ExpenceHR.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.IncomeCar ? project.IncomeCar.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.ExpenceCar ? project.ExpenceCar.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.IncomeMaterial ? project.IncomeMaterial.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span>{{ project.ExpenceMaterial ? project.ExpenceMaterial.toLocaleString() : '-' }}</span>
-            </td>
-            
-            <td v-if="showFinancials" class="number-cell financial-col">
-              <span :style="{ color: (project.TotalProfit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
-                {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
-              </span>
-            </td>
+            <template v-else>
+              <td class="number-cell financial-hr">
+                <span>{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-hr">
+                <span>{{ project.ExpenceHR ? project.ExpenceHR.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-hr">
+                <span :style="{ color: (project.ProfitHR || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                  {{ project.ProfitHR ? project.ProfitHR.toLocaleString() : '-' }}
+                </span>
+              </td>
+              
+              <td class="number-cell financial-car">
+                <span>{{ project.IncomeCar ? project.IncomeCar.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-car">
+                <span>{{ project.ExpenceCar ? project.ExpenceCar.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-car">
+                <span :style="{ color: (project.ProfitCar || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                  {{ project.ProfitCar ? project.ProfitCar.toLocaleString() : '-' }}
+                </span>
+              </td>
+              
+              <td class="number-cell financial-material">
+                <span>{{ project.IncomeMaterial ? project.IncomeMaterial.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-material">
+                <span>{{ project.ExpenceMaterial ? project.ExpenceMaterial.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-material">
+                <span :style="{ color: (project.ProfitMaterial || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                  {{ project.ProfitMaterial ? project.ProfitMaterial.toLocaleString() : '-' }}
+                </span>
+              </td>
+              
+              <td class="number-cell financial-total">
+                <span :style="{ color: (project.TotalProfit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                  {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
+                </span>
+              </td>
+            </template>
             
             <td class="actions-cell">
               <template v-if="editingId === project.id">
@@ -704,8 +736,20 @@ onMounted(async () => {
   color: #374151;
 }
 
-.financial-col {
-  background-color: #fef3c7;
+.financial-hr {
+  background-color: #dbeafe !important; /* Light blue for HR */
+}
+
+.financial-car {
+  background-color: #d1fae5 !important; /* Light green for Car */
+}
+
+.financial-material {
+  background-color: #fed7aa !important; /* Light orange for Material */
+}
+
+.financial-total {
+  background-color: #e9d5ff !important; /* Light purple for Total */
 }
 
 .btn-refresh {
