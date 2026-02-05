@@ -289,7 +289,7 @@
             <div class="form-group">
               <label>Income HR (calculated)</label>
               <input :value="formatNumber(form.IncomeHR)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">From WosHour or manual entry</small>
+              <small style="color: #6b7280;">(WosHour + additionalHour) × 110,000</small>
             </div>
             <div class="form-group">
               <label>Income Car</label>
@@ -359,7 +359,7 @@
             <div class="form-group">
               <label>Profit HR (calculated)</label>
               <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">IncomeHR - ExpenseHR</small>
+              <small style="color: #6b7280;">IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue)</small>
             </div>
             <div class="form-group">
               <label>Profit Car (calculated)</label>
@@ -581,19 +581,23 @@ function getStatusColor(status) {
 
 function onWosHourChange() {
   // When WosHour changes, calculate IncomeHR
-  form.value.IncomeHR = (form.value.WosHour || 0) * 110000;
+  // IncomeHR = (WosHour + additionalHour) * 110000
+  form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
   calculateFinancials();
 }
 
 function onIncomeHRChange() {
-  // When IncomeHR changes manually, calculate WosHour
-  form.value.WosHour = form.value.IncomeHR ? (form.value.IncomeHR / 110000) : 0;
+  // When IncomeHR changes manually, calculate WosHour (keep additionalHour separate)
+  const additionalHour = form.value.additionalHour || 0;
+  form.value.WosHour = form.value.IncomeHR ? ((form.value.IncomeHR / 110000) - additionalHour) : 0;
   calculateFinancials();
 }
 
 function onAdditionalHourChange() {
-  // When additionalHour changes, calculate additionalValue
+  // When additionalHour changes, calculate additionalValue and update IncomeHR
   form.value.additionalValue = (form.value.additionalHour || 0) * 65000;
+  // Recalculate IncomeHR with new additionalHour
+  form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
   calculateFinancials();
 }
 
@@ -610,9 +614,8 @@ function calculateFinancials() {
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
   // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
-  // ExpenseHR includes additionalValue
-  const totalExpenseHR = (form.value.ExpenceHR || 0) + (form.value.additionalValue || 0);
-  // ProfitHR = IncomeHR - (ExpenceHR + additionalValue)
+  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue)
+  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.additionalValue || 0);
   form.value.ProfitHR = (form.value.IncomeHR || 0) - totalExpenseHR;
   // ProfitCar = IncomeCar - ExpenceCar
   form.value.ProfitCar = (form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0);

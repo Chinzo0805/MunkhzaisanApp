@@ -43,6 +43,7 @@ exports.manageProject = require("./manageProject").manageProject;
 exports.updateProjectRealHours = require("./updateProjectRealHours").updateProjectRealHours;
 exports.migrateProjectPerformance = require("./migrateProjectPerformance").migrateProjectPerformance;
 exports.migrateEngineerHandField = require("./migrateEngineerHandField").migrateEngineerHandField;
+exports.recalculateAllProjects = require("./recalculateAllProjects").recalculateAllProjects;
 
 // Financial Transaction functions
 exports.manageFinancialTransaction = require("./manageFinancialTransaction").manageFinancialTransaction;

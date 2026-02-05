@@ -122,6 +122,12 @@ async function updateProjectMetrics(projectId) {
         }
       }
       
+      // Calculate Income HR and Profit HR with new formulas
+      const additionalHour = parseFloat(projectData.additionalHour) || 0;
+      const additionalValue = parseFloat(projectData.additionalValue) || 0;
+      const incomeHR = Math.round((wosHour + additionalHour) * 110000);
+      const profitHR = Math.round(incomeHR - (engineerHand + nonEngineerBounty + additionalValue));
+      
       await projectDoc.ref.update({
         RealHour: totalHours,
         WorkingHours: workingHours,
@@ -133,6 +139,8 @@ async function updateProjectMetrics(projectId) {
         TeamBounty: teamBounty,
         NonEngineerBounty: nonEngineerBounty,
         HourPerformance: hourPerformance,
+        IncomeHR: incomeHR,
+        ProfitHR: profitHR,
         lastRealHourUpdate: new Date().toISOString()
       });
       

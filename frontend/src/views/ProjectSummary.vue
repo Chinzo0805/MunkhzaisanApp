@@ -71,6 +71,10 @@
       <button @click="loadProjects" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
+      
+      <button @click="recalculateAll" class="btn-recalculate" :disabled="recalculating">
+        {{ recalculating ? 'Тооцоолж байна...' : '🧮 Бүгдийг дахин тооцоолох' }}
+      </button>
     </div>
 
     <!-- Loading State -->
@@ -346,6 +350,7 @@ import * as XLSX from 'xlsx';
 
 const projectsStore = useProjectsStore();
 const loading = ref(false);
+const recalculating = ref(false);
 const allProjects = ref([]);
 const selectedStatus = ref('');
 const searchQuery = ref('');
@@ -467,6 +472,37 @@ function getStatusCount(status) {
 // Filter by status
 function filterByStatus(status) {
   selectedStatus.value = status;
+}
+
+async function recalculateAll() {
+  if (!confirm('Бүх төслүүдийн тооцоог шинэчлэх үү? (Income HR болон Profit HR дахин тооцоогдоно)')) {
+    return;
+  }
+  
+  recalculating.value = true;
+  try {
+    const response = await fetch('https://us-central1-munkh-zaisan.cloudfunctions.net/recalculateAllProjects', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to recalculate projects');
+    }
+    
+    const result = await response.json();
+    alert(`✅ Амжилттай! ${result.updated} төсөл шинэчлэгдсэн`);
+    
+    // Reload projects to show updated data
+    await loadProjects();
+  } catch (error) {
+    console.error('Error recalculating projects:', error);
+    alert('❌ Алдаа гарлаа: ' + error.message);
+  } finally {
+    recalculating.value = false;
+  }
 }
 
 async function loadProjects() {
@@ -857,6 +893,28 @@ onMounted(async () => {
 }
 
 .btn-refresh:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-recalculate {
+  padding: 10px 20px;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.2s;
+  height: 38px;
+}
+
+.btn-recalculate:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-recalculate:disabled {
   background: #9ca3af;
   cursor: not-allowed;
 }
