@@ -609,7 +609,8 @@ function onAdditionalHourChange() {
   calculateFinancials();
 }
 
-functBaseAmount = WosHour * 12500
+function calculateFinancials() {
+  // BaseAmount = WosHour * 12500
   form.value.BaseAmount = (form.value.WosHour || 0) * 12500;
   // TeamBounty = WosHour * 22500
   form.value.TeamBounty = (form.value.WosHour || 0) * 22500;
@@ -620,8 +621,7 @@ functBaseAmount = WosHour * 12500
   // HourPerformance = (RealHour / PlannedHour) * 100
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
   // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
-  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.B
-  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, baseAmount);
+  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
   // EngineerBounty = EngineerWorkHour * 12500 (basic calculation)
   form.value.EngineerBounty = (form.value.EngineerWorkHour || 0) * 12500;
   // ExpenseHR includes additionalValue
