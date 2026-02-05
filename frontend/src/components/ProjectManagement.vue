@@ -228,6 +228,11 @@
               <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
               <small style="color: #6b7280;">Base for performance calculation</small>
             </div>
+            <div class="form-group">
+              <label>Багийн урамшуулал</label>
+              <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
+              <small style="color: #6b7280;">WosHour × 22,500 MNT</small>
+            </div>
           </div>
           
           <div class="form-row">
@@ -236,13 +241,10 @@
               <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
               <small style="color: #6b7280;">Performance-adjusted bounty</small>
             </div>
-          </div>
-          
-          <div class="form-row">
             <div class="form-group">
-              <label>Багийн урамшуулал</label>
-              <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #e9d5ff;" />
-              <small style="color: #6b7280;">WosHour × 22,500 MNT</small>
+              <label>Инженер бус урамшуулал</label>
+              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
             </div>
           </div>
           
@@ -269,14 +271,6 @@
               <label>Non-Engineer Work Hour</label>
               <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #e9d5ff;" />
               <small style="color: #6b7280;">Hours by Non-Engineers</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Инженер бус урамшуулал</label>
-              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #fde68a;" />
-              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
             </div>
           </div>
           
