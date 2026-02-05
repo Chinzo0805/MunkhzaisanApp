@@ -224,7 +224,7 @@
           
           <div class="form-row">
             <div class="form-group">
-              <label>Base Amount (WosHour × 12,500)</label>
+              <label>Инженер урамшуулал (WosHour × 12,500)</label>
               <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
               <small style="color: #6b7280;">Base for performance calculation</small>
             </div>

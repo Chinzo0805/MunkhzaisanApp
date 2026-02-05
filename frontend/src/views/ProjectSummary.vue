@@ -97,7 +97,7 @@
               Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th @click="sortBy('BaseAmount')" class="sortable">
-              Base Amount {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
+              Инженер урамшуулал {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th @click="sortBy('EngineerHand')" class="sortable">
               Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -400,7 +400,7 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Base Amount', 'Инженер гар', 'Лавлах дугаар'];
+  const headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
   
   const data = [
     headers,
