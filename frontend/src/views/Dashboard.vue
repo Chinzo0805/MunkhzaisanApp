@@ -471,7 +471,7 @@ function handleSaved(event) {
 }
 
 .dashboard-content {
-  max-width: 1400px;
+  max-width: 95%;
   margin: 0 auto;
   padding: 30px;
   width: 100%;

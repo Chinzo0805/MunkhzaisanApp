@@ -1,0 +1,524 @@
+﻿diff --git a/frontend/src/views/ProjectSummary.vue b/frontend/src/views/ProjectSummary.vue
+index b2a713d..4b116ef 100644
+--- a/frontend/src/views/ProjectSummary.vue
++++ b/frontend/src/views/ProjectSummary.vue
+@@ -195,14 +195,8 @@
+             
+             <template v-if="!showFinancials">
+               <td class="number-cell">
+-                <input 
+-                  v-if="editingId === project.id"
+-                  v-model.number="editForm.HourPerformance"
+-                  type="number"
+-                  step="0.01"
+-                  class="edit-input"
+-                />
+-                <span v-else>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
++                <!-- HourPerformance is calculated - display only -->
++                <span>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
+               </td>
+               
+               <td class="number-cell">
+@@ -210,13 +204,8 @@
+               </td>
+               
+               <td class="number-cell">
+-                <input 
+-                  v-if="editingId === project.id"
+-                  v-model.number="editForm.EngineerHand"
+-                  type="number"
+-                  class="edit-input"
+-                />
+-                <span v-else>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
++                <!-- EngineerHand is calculated - display only -->
++                <span>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
+               </td>
+               
+               <td>
+@@ -286,6 +275,7 @@
+               <template v-else>
+                 <button @click="viewProject(project)" class="btn-view" title="╨ö╤ì╨╗╨│╤ì╤Ç╤ì╨╜╨│╥»╨╣ ╥»╨╖╤ì╤à">≡ƒæü∩╕Å</button>
+                 <button @click="startEdit(project)" class="btn-edit" title="╨ù╨░╤ü╨░╤à">Γ£Å∩╕Å</button>
++                <button @click="viewTimeAttendance(project)" class="btn-ta" title="╨ª╨░╨│ ╨▒╥»╤Ç╤é╨│╤ì╨╗ ╤à╨░╤Ç╨░╤à">≡ƒòÆ</button>
+               </template>
+             </td>
+           </tr>
+@@ -338,15 +328,86 @@
+       <ProjectManagement ref="projectManagementRef" />
+     </div>
+   </div>
++
++  <!-- Time Attendance Modal -->
++  <div v-if="showTAModal" class="modal-overlay">
++    <div class="ta-modal" @click.stop>
++      <div class="ta-modal-header">
++        <h3>≡ƒòÆ ╨ª╨░╨│ ╨▒╥»╤Ç╤é╨│╤ì╨╗ - {{ selectedProjectForTA?.id }}</h3>
++        <button @click="closeTAModal" class="btn-close-modal">Γ£û</button>
++      </div>
++      
++      <div class="ta-modal-body">
++        <div class="ta-filters">
++          <input 
++            type="text" 
++            v-model="taSearchQuery" 
++            placeholder="╨É╨╢╨╕╨╗╤é╨╜╤ï ╨╜╤ì╤Ç╤ì╤ì╤Ç ╤à╨░╨╣╤à..."
++            class="ta-search-input"
++          />
++        </div>
++
++        <div v-if="loadingTA" class="ta-loading">╨ª╨░╨│ ╨▒╥»╤Ç╤é╨│╤ì╨╗ ╤â╨╜╤ê╨╕╨╢ ╨▒╨░╨╣╨╜╨░...</div>
++        
++        <div v-else-if="filteredTAList.length > 0" class="ta-table-container">
++          <table class="ta-table">
++            <thead>
++              <tr>
++                <th @click="sortTABy('date')" class="sortable">
++                  ╨₧╨│╨╜╨╛╨╛ {{ taSortColumn === 'date' ? (taSortAsc ? 'Γåæ' : 'Γåô') : '' }}
++                </th>
++                <th @click="sortTABy('employeeName')" class="sortable">
++                  ╨É╨╢╨╕╨╗╤é╨░╨╜ {{ taSortColumn === 'employeeName' ? (taSortAsc ? 'Γåæ' : 'Γåô') : '' }}
++                </th>
++                <th @click="sortTABy('position')" class="sortable">
++                  ╨É╨╗╨▒╨░╨╜ ╤é╤â╤ê╨░╨░╨╗ {{ taSortColumn === 'position' ? (taSortAsc ? 'Γåæ' : 'Γåô') : '' }}
++                </th>
++                <th @click="sortTABy('workingHour')" class="sortable number-col">
++                  ╨É╨╢╨╕╨╗╨╗╨░╤ü╨░╨╜ ╤å╨░╨│ {{ taSortColumn === 'workingHour' ? (taSortAsc ? 'Γåæ' : 'Γåô') : '' }}
++                </th>
++                <th @click="sortTABy('overtimeHour')" class="sortable number-col">
++                  ╨ÿ╨╗╥»╥» ╤å╨░╨│ {{ taSortColumn === 'overtimeHour' ? (taSortAsc ? 'Γåæ' : 'Γåô') : '' }}
++                </th>
++                <th class="number-col">╨¥╨╕╨╣╤é ╤å╨░╨│</th>
++              </tr>
++            </thead>
++            <tbody>
++              <tr v-for="ta in sortedTAList" :key="ta.id">
++                <td>{{ formatDate(ta.date) }}</td>
++                <td>{{ ta.employeeName || '-' }}</td>
++                <td>{{ ta.position || '-' }}</td>
++                <td class="number-cell">{{ ta.workingHour || 0 }}</td>
++                <td class="number-cell">{{ ta.overtimeHour || 0 }}</td>
++                <td class="number-cell total-cell">{{ (ta.workingHour || 0) + (ta.overtimeHour || 0) }}</td>
++              </tr>
++            </tbody>
++            <tfoot>
++              <tr class="ta-totals-row">
++                <td colspan="3" class="ta-totals-label">╨¥╨╕╨╣╤é ╨┤╥»╨╜:</td>
++                <td class="number-cell ta-total-value">{{ totalWorkingHours.toFixed(2) }}</td>
++                <td class="number-cell ta-total-value">{{ totalOvertimeHours.toFixed(2) }}</td>
++                <td class="number-cell ta-total-value">{{ (totalWorkingHours + totalOvertimeHours).toFixed(2) }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        </div>
++        
++        <div v-else class="ta-no-data">
++          ╨æ╨░╤é╨╗╨░╨│╨┤╤ü╨░╨╜ ╤å╨░╨│ ╨▒╥»╤Ç╤é╨│╤ì╨╗ ╨╛╨╗╨┤╤ü╨╛╨╜╨│╥»╨╣
++        </div>
++      </div>
++    </div>
++  </div>
+ </template>
+ 
+ <script setup>
+ import { ref, computed, onMounted } from 'vue';
+-import { doc, updateDoc } from 'firebase/firestore';
+-import { db } from '../config/firebase';
+ import { useProjectsStore } from '../stores/projects';
+ import ProjectManagement from '../components/ProjectManagement.vue';
+ import * as XLSX from 'xlsx';
++import { manageProject } from '../services/api';
++import { db } from '../config/firebase';
++import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+ 
+ const projectsStore = useProjectsStore();
+ const loading = ref(false);
+@@ -364,11 +425,19 @@ const editForm = ref({
+   customer: '',
+   siteLocation: '',
+   ResponsibleEmp: '',
+-  HourPerformance: 0,
+-  EngineerHand: 0,
+   referenceIdfromCustomer: ''
++  // HourPerformance and EngineerHand are calculated fields
+ });
+ 
++// Time Attendance modal state
++const showTAModal = ref(false);
++const selectedProjectForTA = ref(null);
++const timeAttendanceList = ref([]);
++const loadingTA = ref(false);
++const taSearchQuery = ref('');
++const taSortColumn = ref('date');
++const taSortAsc = ref(false);
++
+ // Sorting
+ const sortColumn = ref('id');
+ const sortAsc = ref(false); // Default to descending
+@@ -554,9 +623,8 @@ function startEdit(project) {
+     customer: project.customer || '',
+     siteLocation: project.siteLocation || '',
+     ResponsibleEmp: project.ResponsibleEmp || '',
+-    HourPerformance: project.HourPerformance || 0,
+-    EngineerHand: project.EngineerHand || 0,
+     referenceIdfromCustomer: project.referenceIdfromCustomer || ''
++    // Note: HourPerformance and EngineerHand are calculated fields, not editable
+   };
+ }
+ 
+@@ -572,8 +640,9 @@ function cancelEdit() {
+     customer: '',
+     siteLocation: '',
+     ResponsibleEmp: '',
+-    HourPerformance: 0,
+-    EngineerHand: 0,
++    referenceIdfromCustomer: ''
++  };
++}
+     referenceIdfromCustomer: ''
+   };
+ }
+@@ -581,25 +650,32 @@ function cancelEdit() {
+ async function saveEdit(project) {
+   saving.value = true;
+   try {
+-    const projectRef = doc(db, 'projects', project.docId);
+-    await updateDoc(projectRef, {
++    // Use backend API to update project
++    // Send all fields needed for recalculation (don't send calculated fields directly)
++    const projectData = {
+       customer: editForm.value.customer,
+       siteLocation: editForm.value.siteLocation,
+       ResponsibleEmp: editForm.value.ResponsibleEmp,
+-      HourPerformance: Number(editForm.value.HourPerformance),
+-      EngineerHand: Number(editForm.value.EngineerHand),
+       referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
+-      updatedAt: new Date().toISOString()
+-    });
++      // Include required fields for backend calculations
++      WosHour: project.WosHour || 0,
++      RealHour: project.RealHour || 0,
++      PlannedHour: project.PlannedHour || 0,
++      EngineerWorkHour: project.EngineerWorkHour || 0,
++      NonEngineerWorkHour: project.NonEngineerWorkHour || 0,
++      additionalHour: project.additionalHour || 0,
++      additionalValue: project.additionalValue || 0,
++      // Don't send HourPerformance and EngineerHand - let backend calculate them
++    };
+     
+-    // Update local data
+-    const index = allProjects.value.findIndex(p => p.id === project.id);
+-    if (index !== -1) {
+-      Object.assign(allProjects.value[index], editForm.value);
+-    }
++    await manageProject('update', projectData, project.docId);
+     
+     console.log('Project updated successfully');
++    alert('Γ£à ╨ó╙⌐╤ü╙⌐╨╗ ╨░╨╝╨╢╨╕╨╗╤é╤é╨░╨╣ ╤ê╨╕╨╜╤ì╤ç╨╗╤ì╨│╨┤╨╗╤ì╤ì');
+     cancelEdit();
++    
++    // Reload projects to get updated data
++    await loadProjects();
+   } catch (error) {
+     console.error('Error updating project:', error);
+     alert('╨É╨╗╨┤╨░╨░ ╨│╨░╤Ç╨╗╨░╨░: ' + error.message);
+@@ -673,6 +749,99 @@ function exportToExcel() {
+   link.click();
+ }
+ 
++// Time Attendance Modal Functions
++async function viewTimeAttendance(project) {
++  selectedProjectForTA.value = project;
++  showTAModal.value = true;
++  loadingTA.value = true;
++  
++  try {
++    const taCollection = collection(db, 'timeAttendance');
++    const q = query(
++      taCollection,
++      where('projectId', '==', project.id),
++      where('status', '==', 'approved'),
++      orderBy('date', 'desc')
++    );
++    
++    const snapshot = await getDocs(q);
++    timeAttendanceList.value = snapshot.docs.map(doc => ({
++      id: doc.id,
++      ...doc.data()
++    }));
++    
++    console.log(`Loaded ${timeAttendanceList.value.length} approved time attendance records for project ${project.id}`);
++  } catch (error) {
++    console.error('Error loading time attendance:', error);
++    alert('╨ª╨░╨│ ╨▒╥»╤Ç╤é╨│╤ì╨╗ ╤â╨╜╤ê╨╕╤à╨░╨┤ ╨░╨╗╨┤╨░╨░ ╨│╨░╤Ç╨╗╨░╨░: ' + error.message);
++  } finally {
++    loadingTA.value = false;
++  }
++}
++
++function closeTAModal() {
++  showTAModal.value = false;
++  selectedProjectForTA.value = null;
++  timeAttendanceList.value = [];
++  taSearchQuery.value = '';
++  taSortColumn.value = 'date';
++  taSortAsc.value = false;
++}
++
++function sortTABy(column) {
++  if (taSortColumn.value === column) {
++    taSortAsc.value = !taSortAsc.value;
++  } else {
++    taSortColumn.value = column;
++    taSortAsc.value = true;
++  }
++}
++
++// Filtered TA list based on search
++const filteredTAList = computed(() => {
++  let filtered = [...timeAttendanceList.value];
++  
++  if (taSearchQuery.value.trim()) {
++    const query = taSearchQuery.value.toLowerCase();
++    filtered = filtered.filter(ta => 
++      ta.employeeName?.toLowerCase().includes(query) ||
++      ta.position?.toLowerCase().includes(query) ||
++      ta.date?.toLowerCase().includes(query)
++    );
++  }
++  
++  return filtered;
++});
++
++// Sorted TA list
++const sortedTAList = computed(() => {
++  const data = [...filteredTAList.value];
++  
++  data.sort((a, b) => {
++    const aVal = a[taSortColumn.value] || '';
++    const bVal = b[taSortColumn.value] || '';
++    
++    if (typeof aVal === 'number' && typeof bVal === 'number') {
++      return taSortAsc.value ? aVal - bVal : bVal - aVal;
++    }
++    
++    return taSortAsc.value ? 
++      String(aVal).localeCompare(String(bVal), 'mn') : 
++      String(bVal).localeCompare(String(aVal), 'mn');
++  });
++  
++  return data;
++});
++
++// TA totals
++const totalWorkingHours = computed(() => 
++  filteredTAList.value.reduce((sum, ta) => sum + (ta.workingHour || 0), 0)
++);
++
++const totalOvertimeHours = computed(() => 
++  filteredTAList.value.reduce((sum, ta) => sum + (ta.overtimeHour || 0), 0)
++);
++
+ onMounted(async () => {
+   await loadProjects();
+ });
+@@ -1224,4 +1393,199 @@ onMounted(async () => {
+   background: #dc2626;
+   transform: scale(1.1);
+ }
+-</style>
++
++.btn-ta {
++  background: #f59e0b;
++  color: white;
++  padding: 6px 12px;
++  margin: 0 4px;
++  border: none;
++  border-radius: 4px;
++  cursor: pointer;
++  font-size: 16px;
++  transition: all 0.2s;
++}
++
++.btn-ta:hover {
++  background: #d97706;
++  transform: scale(1.1);
++}
++
++/* Time Attendance Modal Styles */
++.modal-overlay {
++  position: fixed;
++  top: 0;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  background: rgba(0, 0, 0, 0.5);
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  z-index: 1000;
++  backdrop-filter: blur(4px);
++}
++
++.ta-modal {
++  background: white;
++  border-radius: 12px;
++  width: 90%;
++  max-width: 1000px;
++  max-height: 85vh;
++  display: flex;
++  flex-direction: column;
++  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
++}
++
++.ta-modal-header {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  padding: 20px 24px;
++  border-bottom: 2px solid #e5e7eb;
++  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
++  color: white;
++  border-radius: 12px 12px 0 0;
++}
++
++.ta-modal-header h3 {
++  margin: 0;
++  font-size: 20px;
++  font-weight: 700;
++}
++
++.btn-close-modal {
++  background: rgba(255, 255, 255, 0.2);
++  color: white;
++  border: none;
++  padding: 8px 16px;
++  border-radius: 6px;
++  cursor: pointer;
++  font-size: 18px;
++  font-weight: 700;
++  transition: all 0.2s;
++}
++
++.btn-close-modal:hover {
++  background: rgba(255, 255, 255, 0.3);
++  transform: scale(1.05);
++}
++
++.ta-modal-body {
++  padding: 24px;
++  overflow-y: auto;
++  flex: 1;
++}
++
++.ta-filters {
++  margin-bottom: 20px;
++}
++
++.ta-search-input {
++  width: 100%;
++  padding: 12px 16px;
++  border: 2px solid #e5e7eb;
++  border-radius: 8px;
++  font-size: 14px;
++  transition: all 0.2s;
++}
++
++.ta-search-input:focus {
++  outline: none;
++  border-color: #f59e0b;
++  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
++}
++
++.ta-loading {
++  text-align: center;
++  padding: 60px;
++  color: #6b7280;
++  font-size: 16px;
++}
++
++.ta-no-data {
++  text-align: center;
++  padding: 60px;
++  color: #6b7280;
++  font-size: 16px;
++}
++
++.ta-table-container {
++  overflow-x: auto;
++  border-radius: 8px;
++  border: 1px solid #e5e7eb;
++}
++
++.ta-table {
++  width: 100%;
++  border-collapse: collapse;
++  background: white;
++}
++
++.ta-table thead {
++  background: #f9fafb;
++  position: sticky;
++  top: 0;
++  z-index: 10;
++}
++
++.ta-table th {
++  padding: 14px 12px;
++  text-align: left;
++  font-size: 13px;
++  font-weight: 600;
++  color: #374151;
++  border-bottom: 2px solid #e5e7eb;
++  white-space: nowrap;
++}
++
++.ta-table th.sortable {
++  cursor: pointer;
++  user-select: none;
++  transition: background 0.2s;
++}
++
++.ta-table th.sortable:hover {
++  background: #e5e7eb;
++}
++
++.ta-table th.number-col {
++  text-align: right;
++}
++
++.ta-table td {
++  padding: 12px;
++  border-bottom: 1px solid #e5e7eb;
++  font-size: 13px;
++}
++
++.ta-table tbody tr:hover {
++  background: #fef3c7;
++}
++
++.ta-table tfoot {
++  border-top: 3px solid #f59e0b;
++  background: #fef3c7;
++}
++
++.ta-totals-row {
++  font-weight: 700;
++  font-size: 14px;
++}
++
++.ta-totals-label {
++  text-align: right;
++  color: #1f2937;
++  padding-right: 16px !important;
++}
++
++.ta-total-value {
++  color: #d97706;
++  font-weight: 700;
++  font-size: 15px;
++}
++
++.total-cell {
++  font-weight: 700;
++  color: #059669;
++}

@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
+const { calculateProjectMetrics } = require("./projectCalculations");
 
 try {
   initializeApp();
@@ -9,10 +10,10 @@ try {
 const db = getFirestore();
 
 /**
- * HTTP Cloud Function to calculate and update Real Hours for all projects
+ * HTTP Cloud Function to calculate and update Real Hours for active projects
  * Real Hour = Total man/hours worked on the project from TimeAttendance
  * 
- * Example: Project-1, 5 employees worked 2 days each with 8 hours = 5*2*8 = 80 man/hours
+ * Now filters to only update projects not in "Дууссан" (Done) status
  */
 exports.updateProjectRealHours = functions.region('asia-east2').runWith({
   timeoutSeconds: 540,
@@ -27,165 +28,58 @@ exports.updateProjectRealHours = functions.region('asia-east2').runWith({
   }
 
   try {
-    console.log('Starting Real Hours calculation for all projects');
+    console.log('Starting Real Hours calculation for active projects');
     
-    // Get all time attendance records
-    const taSnapshot = await db.collection('timeAttendance').get();
+    // Get all projects that are not "Дууссан" (Done)
+    const projectsSnapshot = await db.collection('projects')
+      .where('Status', '!=', 'Дууссан')
+      .get();
     
-    // Get all employees to map positions
-    const employeesSnapshot = await db.collection('employees').get();
-    const employeePositions = {};
-    employeesSnapshot.forEach(doc => {
-      const emp = doc.data();
-      if (emp.FirstName) {
-        employeePositions[emp.FirstName] = emp.Position;
-      }
-    });
-    
-    // Group by ProjectID and sum WorkingHour and OvertimeHour
-    const projectHours = {};
-    
-    taSnapshot.forEach(doc => {
-      const record = doc.data();
-      const projectId = record.ProjectID;
-      const workingHour = parseFloat(record.WorkingHour) || 0;
-      const overtimeHour = parseFloat(record.overtimeHour) || 0;
-      const employeeName = record.EmployeeFirstName;
-      const position = employeePositions[employeeName] || '';
-      
-      if (projectId) {
-        if (!projectHours[projectId]) {
-          projectHours[projectId] = {
-            totalHours: 0,
-            workingHours: 0,
-            overtimeHours: 0,
-            engineerHours: 0,
-            nonEngineerHours: 0
-          };
-        }
-        
-        const totalHour = workingHour + overtimeHour;
-        projectHours[projectId].workingHours += workingHour;
-        projectHours[projectId].overtimeHours += overtimeHour;
-        projectHours[projectId].totalHours += totalHour;
-        
-        // Split by engineer vs non-engineer
-        if (position === 'Инженер') {
-          projectHours[projectId].engineerHours += totalHour;
-        } else {
-          projectHours[projectId].nonEngineerHours += totalHour;
-        }
-      }
-    });
-    
-    console.log(`Calculated hours for ${Object.keys(projectHours).length} projects`);
+    console.log(`Found ${projectsSnapshot.size} active projects to update`);
     
     // Update each project's Real Hour field
     const updates = [];
     const errors = [];
     
-    for (const [projectId, hours] of Object.entries(projectHours)) {
+    for (const projectDoc of projectsSnapshot.docs) {
       try {
-        // Find project by id field (matches Excel ProjectID)
-        // Convert projectId to number for comparison since Excel IDs are numeric
-        const projectIdNum = parseInt(projectId, 10);
-        const projectQuery = await db.collection('projects')
-          .where('id', '==', projectIdNum)
-          .limit(1)
-          .get();
+        const projectData = projectDoc.data();
+        const projectId = projectData.id;
         
-        if (!projectQuery.empty) {
-          const projectDoc = projectQuery.docs[0];
-          const projectData = projectDoc.data();
-          
-          // Calculate HourPerformance and EngineerHand (performance-adjusted)
-          const realHour = hours.totalHours;
-          const plannedHour = parseFloat(projectData.PlannedHour) || 0;
-          const wosHour = parseFloat(projectData.WosHour) || 0;
-          
-          // Calculate base amount and TeamBounty - rounded to whole numbers
-          const baseAmount = Math.round(wosHour * 12500);
-          const teamBounty = Math.round(wosHour * 22500);
-          const nonEngineerBounty = Math.round(hours.nonEngineerHours * 5000);
-          
-          let hourPerformance = 0;
-          let engineerHand = baseAmount;
-          
-          if (plannedHour > 0) {
-            hourPerformance = (realHour / plannedHour) * 100;
-            
-            if (baseAmount > 0) {
-              const bountyPercentage = 200 - hourPerformance;
-              engineerHand = Math.round((baseAmount * bountyPercentage) / 100);
-            }
-          }
-          
-          // Calculate Income HR and Profit HR with new formulas
-          const additionalHour = parseFloat(projectData.additionalHour) || 0;
-          const additionalValue = parseFloat(projectData.additionalValue) || 0;
-          const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
-          const incomeHR = Math.round((wosHour + additionalHour) * 110000);
-          const profitHR = Math.round(incomeHR - (engineerHand + nonEngineerBounty + additionalValue + expenceHR));
-          
-          await projectDoc.ref.update({
-            RealHour: hours.totalHours,
-            WorkingHours: hours.workingHours,
-            OvertimeHours: hours.overtimeHours,
-            EngineerWorkHour: hours.engineerHours,
-            NonEngineerWorkHour: hours.nonEngineerHours,
-            BaseAmount: baseAmount,
-            EngineerHand: engineerHand,
-            TeamBounty: teamBounty,
-            NonEngineerBounty: nonEngineerBounty,
-            HourPerformance: hourPerformance,
-            IncomeHR: incomeHR,
-            ProfitHR: profitHR,
-            lastRealHourUpdate: new Date().toISOString()
-          });
-          updates.push({ 
-            projectId, 
-            totalHours: hours.totalHours,
-            workingHours: hours.workingHours,
-            overtimeHours: hours.overtimeHours,
-            engineerHours: hours.engineerHours,
-            nonEngineerHours: hours.nonEngineerHours
-          });
-          console.log(`✓ Updated ${projectId}: Total=${hours.totalHours}, Eng=${hours.engineerHours}, NonEng=${hours.nonEngineerHours}, Perf=${hourPerformance.toFixed(2)}%`);
-        } else {
-          errors.push(`Project ${projectId} not found in projects collection`);
+        if (!projectId) {
+          errors.push(`Project ${projectDoc.id} has no numeric id field`);
+          continue;
         }
-      } catch (error) {
-        errors.push(`Failed to update ${projectId}: ${error.message}`);
-      }
-    }
-    
-    // Also set Real Hour = 0 for projects with no TA records
-    const allProjectsSnapshot = await db.collection('projects').get();
-    let zeroUpdates = 0;
-    
-    for (const doc of allProjectsSnapshot.docs) {
-      const projectId = doc.data().id;
-      if (!projectHours[projectId]) {
-        await doc.ref.update({
-          RealHour: 0,
-          WorkingHours: 0,
-          OvertimeHours: 0,
-          HourPerformance: 0,
-          EngineerHand: 0,
-          lastRealHourUpdate: new Date().toISOString()
+        
+        // Use centralized calculation function
+        console.log(`Calculating project ${projectId}...`);
+        const calculations = await calculateProjectMetrics(projectId.toString(), projectData, db);
+        
+        // Update project with calculated values
+        await projectDoc.ref.update(calculations);
+        
+        updates.push({ 
+          projectId, 
+          totalHours: calculations.RealHour,
+          engineerHours: calculations.EngineerWorkHour,
+          nonEngineerHours: calculations.NonEngineerWorkHour,
+          performance: calculations.HourPerformance.toFixed(2) + '%'
         });
-        zeroUpdates++;
+        
+        console.log(`✓ Updated ${projectId}: Total=${calculations.RealHour}, Perf=${calculations.HourPerformance.toFixed(2)}%`);
+      } catch (error) {
+        errors.push(`Failed to update project: ${error.message}`);
+        console.error(`Error updating project:`, error);
       }
     }
     
-    console.log(`Update complete: ${updates.length} updated, ${zeroUpdates} set to zero, ${errors.length} errors`);
+    console.log(`Update complete: ${updates.length} updated, ${errors.length} errors`);
     
     res.status(200).send({
       success: true,
-      message: 'Real Hours updated successfully',
-      totalProjects: Object.keys(projectHours).length,
+      message: 'Real Hours updated successfully for active projects',
+      totalProjects: projectsSnapshot.size,
       updated: updates.length,
-      zeroUpdates,
       errors: errors.length > 0 ? errors : undefined,
       details: updates
     });

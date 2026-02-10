@@ -62,10 +62,12 @@
       </div>
       
       <div class="filter-group">
-        <label class="toggle-label">
-          <input type="checkbox" v-model="showFinancials" class="toggle-checkbox" />
-          <span class="toggle-text">{{ showFinancials ? '💰 Санхүү харуулж байна' : '💰 Санхүү харуулах' }}</span>
-        </label>
+        <label>Харагдац:</label>
+        <select v-model="viewMode" class="view-selector">
+          <option value="default">Үндсэн харагдац</option>
+          <option value="financial">💰 Санхүү</option>
+          <option value="summary">📊 Нийтлэл</option>
+        </select>
       </div>
       
       <button @click="loadProjects" class="btn-refresh" :disabled="loading">
@@ -105,7 +107,7 @@
               Хариуцах {{ sortColumn === 'ResponsibleEmp' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             
-            <template v-if="!showFinancials">
+            <template v-if="viewMode === 'default'">
               <th @click="sortBy('HourPerformance')" class="sortable">
                 Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
@@ -120,12 +122,18 @@
               </th>
             </template>
             
-            <template v-else>
+            <template v-else-if="viewMode === 'financial'">
               <th @click="sortBy('IncomeHR')" class="sortable financial-hr">
                 Орлого HR {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
               <th @click="sortBy('ExpenceHR')" class="sortable financial-hr">
                 Зарлага HR {{ sortColumn === 'ExpenceHR' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceHRBonus')" class="sortable financial-hr">
+                Нийт урамшуулал {{ sortColumn === 'ExpenceHRBonus' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenseHRFromTrx')" class="sortable financial-hr wrap-text">
+                Хоол/Томилолт/Бусдад өгөх ажлын хөлс {{ sortColumn === 'ExpenseHRFromTrx' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
               <th @click="sortBy('ProfitHR')" class="sortable financial-hr">
                 Ашиг HR {{ sortColumn === 'ProfitHR' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -153,6 +161,33 @@
               </th>
               <th @click="sortBy('TotalProfit')" class="sortable financial-total">
                 Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+            </template>
+            
+            <template v-else-if="viewMode === 'summary'">
+              <th @click="sortBy('TotalIncome')" class="sortable summary-main">
+                Нийт орлого {{ sortColumn === 'TotalIncome' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('TotalExpence')" class="sortable summary-main">
+                Нийт зарлага {{ sortColumn === 'TotalExpence' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('TotalProfit')" class="sortable summary-main">
+                Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('TotalHRExpence')" class="sortable summary-detail">
+                Нийт цалин {{ sortColumn === 'TotalHRExpence' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceCar')" class="sortable summary-detail">
+                Нийт тээврийн зардал {{ sortColumn === 'ExpenceCar' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceMaterial')" class="sortable summary-detail">
+                Нийт материалын зардал {{ sortColumn === 'ExpenceMaterial' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('ExpenceHSE')" class="sortable summary-detail">
+                ХАБЭА зардал {{ sortColumn === 'ExpenceHSE' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('additionalValue')" class="sortable summary-detail">
+                Нэмэлт {{ sortColumn === 'additionalValue' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
             </template>
             
@@ -193,7 +228,7 @@
               <span v-else>{{ project.ResponsibleEmp || '-' }}</span>
             </td>
             
-            <template v-if="!showFinancials">
+            <template v-if="viewMode === 'default'">
               <td class="number-cell">
                 <input 
                   v-if="editingId === project.id"
@@ -230,12 +265,18 @@
               </td>
             </template>
             
-            <template v-else>
+            <template v-else-if="viewMode === 'financial'">
               <td class="number-cell financial-hr">
                 <span>{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</span>
               </td>
               <td class="number-cell financial-hr">
                 <span>{{ project.ExpenceHR ? project.ExpenceHR.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-hr">
+                <span>{{ project.ExpenceHRBonus ? project.ExpenceHRBonus.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell financial-hr">
+                <span>{{ project.ExpenseHRFromTrx ? project.ExpenseHRFromTrx.toLocaleString() : '-' }}</span>
               </td>
               <td class="number-cell financial-hr">
                 <span :style="{ color: (project.ProfitHR || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
@@ -278,6 +319,35 @@
               </td>
             </template>
             
+            <template v-else-if="viewMode === 'summary'">
+              <td class="number-cell summary-main">
+                <span style="color: #10b981; font-weight: 600;">{{ project.TotalIncome ? project.TotalIncome.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-main">
+                <span style="color: #ef4444; font-weight: 600;">{{ project.TotalExpence ? project.TotalExpence.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-main">
+                <span :style="{ color: (project.TotalProfit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }">
+                  {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
+                </span>
+              </td>
+              <td class="number-cell summary-detail">
+                <span>{{ project.TotalHRExpence ? project.TotalHRExpence.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-detail">
+                <span>{{ project.ExpenceCar ? project.ExpenceCar.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-detail">
+                <span>{{ project.ExpenceMaterial ? project.ExpenceMaterial.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-detail">
+                <span>{{ project.ExpenceHSE ? project.ExpenceHSE.toLocaleString() : '-' }}</span>
+              </td>
+              <td class="number-cell summary-detail">
+                <span>{{ project.additionalValue ? project.additionalValue.toLocaleString() : '-' }}</span>
+              </td>
+            </template>
+            
             <td class="actions-cell">
               <template v-if="editingId === project.id">
                 <button @click="saveEdit(project)" class="btn-save" :disabled="saving">💾</button>
@@ -286,15 +356,18 @@
               <template v-else>
                 <button @click="viewProject(project)" class="btn-view" title="Дэлгэрэнгүй үзэх">👁️</button>
                 <button @click="startEdit(project)" class="btn-edit" title="Засах">✏️</button>
+                <button @click="showTAModal = true; selectedProjectId = project.id" class="btn-ta" title="Цаг бүртгэл харах">🕒</button>
               </template>
             </td>
           </tr>
         </tbody>
-        <tfoot v-if="showFinancials">
+        <tfoot v-if="viewMode === 'financial'">
           <tr class="totals-row">
             <td colspan="4" class="totals-label">Нийт дүн:</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHR.toLocaleString() }}</td>
+            <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
+            <td class="number-cell financial-hr">{{ totalExpenseHRFromTrx.toLocaleString() }}</td>
             <td class="number-cell financial-hr">
               <span :style="{ color: totalProfitHR >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
                 {{ totalProfitHR.toLocaleString() }}
@@ -325,6 +398,28 @@
             <td></td>
           </tr>
         </tfoot>
+        <tfoot v-else-if="viewMode === 'summary'">
+          <tr class="totals-row">
+            <td colspan="4" class="totals-label">Нийт дүн:</td>
+            <td class="number-cell summary-main">
+              <span style="color: #10b981; font-weight: 700;">{{ sumTotalIncome.toLocaleString() }}</span>
+            </td>
+            <td class="number-cell summary-main">
+              <span style="color: #ef4444; font-weight: 700;">{{ sumTotalExpence.toLocaleString() }}</span>
+            </td>
+            <td class="number-cell summary-main">
+              <span :style="{ color: grandTotalProfit >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                {{ grandTotalProfit.toLocaleString() }}
+              </span>
+            </td>
+            <td class="number-cell summary-detail">{{ sumTotalHRExpence.toLocaleString() }}</td>
+            <td class="number-cell summary-detail">{{ totalExpenceCar.toLocaleString() }}</td>
+            <td class="number-cell summary-detail">{{ totalExpenceMaterial.toLocaleString() }}</td>
+            <td class="number-cell summary-detail">{{ sumExpenceHSE.toLocaleString() }}</td>
+            <td class="number-cell summary-detail">{{ totalAdditionalValue.toLocaleString() }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
 
@@ -338,6 +433,13 @@
       <ProjectManagement ref="projectManagementRef" />
     </div>
   </div>
+
+  <!-- Time Attendance Modal -->
+  <TimeAttendanceModal 
+    :show="showTAModal" 
+    :projectId="selectedProjectId" 
+    @close="showTAModal = false; selectedProjectId = null" 
+  />
 </template>
 
 <script setup>
@@ -346,6 +448,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
 import ProjectManagement from '../components/ProjectManagement.vue';
+import TimeAttendanceModal from '../components/TimeAttendanceModal.vue';
 import * as XLSX from 'xlsx';
 
 const projectsStore = useProjectsStore();
@@ -354,8 +457,12 @@ const recalculating = ref(false);
 const allProjects = ref([]);
 const selectedStatus = ref('');
 const searchQuery = ref('');
-const showFinancials = ref(false);
+const viewMode = ref('default'); // 'default', 'financial', 'summary'
 const projectManagementRef = ref(null);
+
+// Time Attendance Modal state
+const showTAModal = ref(false);
+const selectedProjectId = ref(null);
 
 // Editing state
 const editingId = ref(null);
@@ -425,6 +532,14 @@ const totalExpenceHR = computed(() =>
   filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceHR || 0), 0)
 );
 
+const totalExpenceHRBonus = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceHRBonus || 0), 0)
+);
+
+const totalExpenseHRFromTrx = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenseHRFromTrx || 0), 0)
+);
+
 const totalProfitHR = computed(() => 
   filteredProjects.value.reduce((sum, p) => sum + (p.ProfitHR || 0), 0)
 );
@@ -459,6 +574,23 @@ const totalAdditionalValue = computed(() =>
 
 const grandTotalProfit = computed(() => 
   filteredProjects.value.reduce((sum, p) => sum + (p.TotalProfit || 0), 0)
+);
+
+// Summary view totals
+const sumTotalIncome = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.TotalIncome || 0), 0)
+);
+
+const sumTotalExpence = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.TotalExpence || 0), 0)
+);
+
+const sumTotalHRExpence = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.TotalHRExpence || 0), 0)
+);
+
+const sumExpenceHSE = computed(() => 
+  filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceHSE || 0), 0)
 );
 
 // Get count for a specific status
@@ -614,9 +746,14 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = showFinancials.value 
-    ? ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Орлого HR', 'Зарлага HR', 'Орлого Car', 'Зарлага Car', 'Орлого Material', 'Зарлага Material', 'Нийт ашиг']
-    : ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
+  let headers;
+  if (viewMode.value === 'financial') {
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Орлого HR', 'Зарлага HR', 'Нийт урамшуулал', 'Орлого Car', 'Зарлага Car', 'Орлого Material', 'Зарлага Material', 'Нийт ашиг'];
+  } else if (viewMode.value === 'summary') {
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Нийт орлого', 'Нийт зарлага', 'Нийт ашиг', 'Нийт цалин', 'Тээврийн зардал', 'Материалын зардал', 'ХАБЭА зардал', 'Нэмэлт'];
+  } else {
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
+  }
   
   const data = [
     headers,
@@ -625,27 +762,46 @@ function exportToExcel() {
         proj.id,
         proj.customer || '-',
         proj.siteLocation || '-',
-        proj.ResponsibleEmp || '-',
-        proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
-        proj.BaseAmount || '-',
-        proj.EngineerHand || '-',
-        proj.referenceIdfromCustomer || '-'
+        proj.ResponsibleEmp || '-'
       ];
       
-      if (showFinancials.value) {
+      if (viewMode.value === 'financial') {
         return [
           ...baseData,
+          proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
+          proj.BaseAmount || '-',
+          proj.EngineerHand || '-',
+          proj.referenceIdfromCustomer || '-',
           proj.IncomeHR || '-',
           proj.ExpenceHR || '-',
+          proj.ExpenceHRBonus || '-',
           proj.IncomeCar || '-',
           proj.ExpenceCar || '-',
           proj.IncomeMaterial || '-',
           proj.ExpenceMaterial || '-',
           proj.TotalProfit || '-'
         ];
+      } else if (viewMode.value === 'summary') {
+        return [
+          ...baseData,
+          proj.TotalIncome || '-',
+          proj.TotalExpence || '-',
+          proj.TotalProfit || '-',
+          proj.TotalHRExpence || '-',
+          proj.ExpenceCar || '-',
+          proj.ExpenceMaterial || '-',
+          proj.ExpenceHSE || '-',
+          proj.additionalValue || '-'
+        ];
+      } else {
+        return [
+          ...baseData,
+          proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
+          proj.BaseAmount || '-',
+          proj.EngineerHand || '-',
+          proj.referenceIdfromCustomer || '-'
+        ];
       }
-      
-      return baseData;
     })
   ];
   
@@ -875,6 +1031,34 @@ onMounted(async () => {
   background-color: #e9d5ff !important; /* Light purple for Total */
 }
 
+.financial-summary {
+  background-color: #fef3c7 !important; /* Light yellow for Summary */
+}
+
+.summary-main {
+  background-color: #dbeafe !important; /* Light blue for main summary columns */
+}
+
+.summary-detail {
+  background-color: #f3f4f6 !important; /* Light gray for detail columns */
+}
+
+.view-selector {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white;
+  cursor: pointer;
+  min-width: 180px;
+}
+
+.view-selector:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
 .btn-refresh {
   padding: 10px 20px;
   background: #3b82f6;
@@ -1031,6 +1215,12 @@ onMounted(async () => {
 
 .summary-table th.sortable:hover {
   background: #e5e7eb;
+}
+
+.summary-table th.wrap-text {
+  white-space: normal;
+  max-width: 120px;
+  line-height: 1.3;
 }
 
 .summary-table th.number-col {
@@ -1222,6 +1412,23 @@ onMounted(async () => {
 
 .btn-cancel:hover {
   background: #dc2626;
+  transform: scale(1.1);
+}
+
+.btn-ta {
+  background: #f59e0b;
+  color: white;
+  padding: 6px 12px;
+  margin: 0 4px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.btn-ta:hover {
+  background: #d97706;
   transform: scale(1.1);
 }
 </style>

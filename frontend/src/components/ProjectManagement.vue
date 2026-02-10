@@ -102,7 +102,7 @@
     
     <!-- Add/Edit/View Modal -->
     <Teleport to="body">
-      <div v-if="showModal || editingItem" class="modal-overlay" @click.self="closeModal">
+      <div v-if="showModal || editingItem" class="modal-overlay" @click.self="handleOverlayClick">
       <div class="modal-content">
         <h3>{{ editingItem && !isEditMode ? 'View Project' : editingItem ? 'Edit Project' : 'Add New Project' }}</h3>
         
@@ -681,6 +681,14 @@ function editItem(project) {
     ProfitMaterial: project.ProfitMaterial || 0,
     TotalProfit: project.TotalProfit || 0,
   };
+}
+
+function handleOverlayClick() {
+  // Don't close if user is in edit mode to prevent accidental data loss
+  if (isEditMode.value) {
+    return;
+  }
+  closeModal();
 }
 
 function closeModal() {
