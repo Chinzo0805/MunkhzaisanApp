@@ -273,8 +273,13 @@ const filteredDisplayedRecords = computed(() => {
   }
   // Sort by date descending (most recent first)
   return records.slice().sort((a, b) => {
-    const dateA = new Date(a.Day || a.Date || 0);
-    const dateB = new Date(b.Day || b.Date || 0);
+    const dayA = a.Day || a.Date;
+    const dayB = b.Day || b.Date;
+    if (!dayA || !dayB) return 0;
+    const [yearA, monthA, dayNumA] = dayA.split('-').map(Number);
+    const [yearB, monthB, dayNumB] = dayB.split('-').map(Number);
+    const dateA = new Date(yearA, monthA - 1, dayNumA);
+    const dateB = new Date(yearB, monthB - 1, dayNumB);
     return dateB - dateA;
   });
 });

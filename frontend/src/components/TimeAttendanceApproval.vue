@@ -431,10 +431,26 @@ const filteredRequests = computed(() => {
   // Apply sorting
   results.sort((a, b) => {
     switch (sortBy.value) {
-      case 'date-asc':
-        return new Date(a.Day || a.Date) - new Date(b.Day || b.Date);
-      case 'date-desc':
-        return new Date(b.Day || b.Date) - new Date(a.Day || a.Date);
+      case 'date-asc': {
+        const dayA = a.Day || a.Date;
+        const dayB = b.Day || b.Date;
+        if (!dayA || !dayB) return 0;
+        const [yearA, monthA, dayNumA] = dayA.split('-').map(Number);
+        const [yearB, monthB, dayNumB] = dayB.split('-').map(Number);
+        const dateA = new Date(yearA, monthA - 1, dayNumA);
+        const dateB = new Date(yearB, monthB - 1, dayNumB);
+        return dateA - dateB;
+      }
+      case 'date-desc': {
+        const dayA = a.Day || a.Date;
+        const dayB = b.Day || b.Date;
+        if (!dayA || !dayB) return 0;
+        const [yearA, monthA, dayNumA] = dayA.split('-').map(Number);
+        const [yearB, monthB, dayNumB] = dayB.split('-').map(Number);
+        const dateA = new Date(yearA, monthA - 1, dayNumA);
+        const dateB = new Date(yearB, monthB - 1, dayNumB);
+        return dateB - dateA;
+      }
       case 'employee':
         return ((a.EmployeeFirstName || a.EmployeeLastName || a.FirstName || a.LastName) || '').localeCompare((b.EmployeeFirstName || b.EmployeeLastName || b.FirstName || b.LastName) || '');
       case 'project':

@@ -60,3 +60,7 @@ exports.fullSyncExcelToFirestore = require("./fullSyncExcelToFirestore").fullSyn
 // Production scheduled function and test endpoint
 exports.scheduledTACheck = require("./scheduledTACheck").scheduledTACheck;
 exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTACheck;
+
+// Public data access functions (password-protected)
+exports.getPublicTASummary = require("./getPublicTASummary").getPublicTASummary;
+exports.getPublicProjects = require("./getPublicProjects").getPublicProjects;

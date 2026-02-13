@@ -12,11 +12,25 @@ import FinancialTransactionManagement from '../components/FinancialTransactionMa
 import WarehouseManagement from '../components/WarehouseManagement.vue';
 import WarehouseTransactionManagement from '../components/WarehouseTransactionManagement.vue';
 import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
+import PublicProjects from '../views/PublicProjects.vue';
+import PublicTASummary from '../views/PublicTASummary.vue';
 
 const routes = [
   {
     path: '/',
     redirect: '/login',
+  },
+  {
+    path: '/public-projects',
+    name: 'PublicProjects',
+    component: PublicProjects,
+    meta: { public: true },
+  },
+  {
+    path: '/public-ta-summary',
+    name: 'PublicTASummary',
+    component: PublicTASummary,
+    meta: { public: true },
   },
   {
     path: '/login',
@@ -99,6 +113,12 @@ const router = createRouter({
 // Navigation guards
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
+  
+  // Allow public routes without authentication
+  if (to.meta.public) {
+    next();
+    return;
+  }
   
   // Wait for auth to initialize
   while (authStore.loading) {

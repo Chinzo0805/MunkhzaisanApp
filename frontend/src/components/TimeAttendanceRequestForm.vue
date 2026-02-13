@@ -228,12 +228,16 @@ function addRow() {
   const random = Math.random().toString(36).substring(2, 8);
   const uniqueId = `${timestamp}-${random}`;
   
-  const today = new Date().toISOString().split('T')[0];
+  const todayDate = new Date();
+  const year = todayDate.getFullYear();
+  const month = String(todayDate.getMonth() + 1).padStart(2, '0');
+  const day = String(todayDate.getDate()).padStart(2, '0');
+  const today = `${year}-${month}-${day}`;
   
   requests.value.push({
     ID: uniqueId,
     Day: today,
-    WeekDay: weekDaysMongolian[new Date().getDay()],
+    WeekDay: weekDaysMongolian[todayDate.getDay()],
     EmployeeID: currentEmployee.value?.Id || currentEmployee.value?.NumID || null,
     FirstName: currentEmployee.value?.FirstName || '',
     LastName: currentEmployee.value?.LastName || '',
@@ -303,7 +307,9 @@ function calculateRow(index) {
   const request = requests.value[index];
   
   if (request.Day) {
-    const date = new Date(request.Day);
+    // Parse date manually to avoid timezone issues
+    const [year, month, day] = request.Day.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     request.WeekDay = weekDaysMongolian[date.getDay()];
     request.Week = getWeekNumber(date);
   }
