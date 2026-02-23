@@ -152,6 +152,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '../stores/projects';
+import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
 import { useTimeAttendanceRequestsStore } from '../stores/timeAttendanceRequests';
 import { useTimeAttendanceStore } from '../stores/timeAttendance';
@@ -159,6 +160,7 @@ import { manageTimeAttendanceRequest } from '../services/api';
 import { auth } from '../config/firebase';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
 const requestsStore = useTimeAttendanceRequestsStore();
@@ -213,7 +215,21 @@ onMounted(async () => {
   
   const user = auth.currentUser;
   if (user) {
-    currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email);
+    // Primary: match by employeeId from users collection (immune to email changes)
+    const employeeId = authStore.userData?.employeeId;
+    if (employeeId != null) {
+      currentEmployee.value = employeesStore.employees.find(
+        emp => emp.Id == employeeId || emp.NumID == employeeId
+      );
+    }
+    // Fallback: match by email
+    if (!currentEmployee.value) {
+      currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email);
+      // If found via email fallback, also sync the email into the employees record
+      if (currentEmployee.value && currentEmployee.value.Email !== user.email) {
+        employeesStore.updateEmployeeEmail(currentEmployee.value.id, user.email);
+      }
+    }
   }
   
   // Fetch my pending requests

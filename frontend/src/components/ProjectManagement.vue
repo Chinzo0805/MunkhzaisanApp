@@ -532,7 +532,7 @@ function formatNumber(num) {
 
 function calculateTimePerformance(realHour, plannedHour) {
   if (!plannedHour || plannedHour === 0) return 0;
-  return (realHour / plannedHour) * 100;
+  return Math.round((realHour / plannedHour) * 100);
 }
 
 function calculateAdjustedBounty(realHour, plannedHour, engineerHand) {
@@ -545,7 +545,7 @@ function calculateAdjustedBounty(realHour, plannedHour, engineerHand) {
   // At 120% performance: 200 - 120 = 80% bounty (worse performance, lower bounty)
   const bountyPercentage = 200 - performance;
   
-  return (engineerHand * bountyPercentage) / 100;
+  return Math.round((engineerHand * bountyPercentage) / 100);
 }
 
 function getPerformanceClass(realHour, plannedHour) {
@@ -595,34 +595,34 @@ function onIncomeHRChange() {
 
 function onAdditionalHourChange() {
   // When additionalHour changes, calculate additionalValue and update IncomeHR
-  form.value.additionalValue = (form.value.additionalHour || 0) * 65000;
+  form.value.additionalValue = Math.round((form.value.additionalHour || 0) * 65000);
   // Recalculate IncomeHR with new additionalHour
-  form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
+  form.value.IncomeHR = Math.round(((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000);
   calculateFinancials();
 }
 
 function calculateFinancials() {
   // BaseAmount = WosHour * 12500
-  form.value.BaseAmount = (form.value.WosHour || 0) * 12500;
+  form.value.BaseAmount = Math.round((form.value.WosHour || 0) * 12500);
   // TeamBounty = WosHour * 22500
-  form.value.TeamBounty = (form.value.WosHour || 0) * 22500;
+  form.value.TeamBounty = Math.round((form.value.WosHour || 0) * 22500);
   // PlannedHour = WosHour * 3
-  form.value.PlannedHour = (form.value.WosHour || 0) * 3;
+  form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
   // NonEngineerBounty = NonEngineerWorkHour * 5000
-  form.value.NonEngineerBounty = (form.value.NonEngineerWorkHour || 0) * 5000;
+  form.value.NonEngineerBounty = Math.round((form.value.NonEngineerWorkHour || 0) * 5000);
   // HourPerformance = (RealHour / PlannedHour) * 100
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
   // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
   form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
   // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)
   const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0);
-  form.value.ProfitHR = (form.value.IncomeHR || 0) - totalExpenseHR;
+  form.value.ProfitHR = Math.round((form.value.IncomeHR || 0) - totalExpenseHR);
   // ProfitCar = IncomeCar - ExpenceCar
-  form.value.ProfitCar = (form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0);
+  form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
   // ProfitMaterial = IncomeMaterial - ExpenceMaterial
-  form.value.ProfitMaterial = (form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0);
+  form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
   // TotalProfit = ProfitHR + ProfitCar + ProfitMaterial - ExpenceHSE
-  form.value.TotalProfit = (form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0);
+  form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
 }
 
 function handleAddItem() {

@@ -79,7 +79,7 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
-    calculations.HourPerformance = (realHour / plannedHour) * 100;
+    calculations.HourPerformance = Math.round((realHour / plannedHour) * 100);
   } else {
     calculations.HourPerformance = 0;
   }
@@ -187,7 +187,7 @@ function calculateBasicMetrics(projectData) {
   
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
-    calculations.HourPerformance = (realHour / plannedHour) * 100;
+    calculations.HourPerformance = Math.round((realHour / plannedHour) * 100);
   } else {
     calculations.HourPerformance = 0;
   }
