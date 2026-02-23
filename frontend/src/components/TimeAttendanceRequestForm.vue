@@ -366,8 +366,9 @@ function calculateRow(index) {
 }
 
 function parseTime(timeString) {
+  if (!timeString) return NaN;
   const [hours, minutes] = timeString.split(':').map(Number);
-  return hours + minutes / 60;
+  return hours + (minutes || 0) / 60;
 }
 
 function getWeekNumber(date) {
@@ -405,6 +406,8 @@ async function submitAllRequests() {
       
       // Only check if same day and different projects
       if (r1.Day === r2.Day && r1.ProjectID !== r2.ProjectID) {
+        // Skip if either row has no times (e.g. Чөлөөтэй/Амралт)
+        if (!r1.startTime || !r1.endTime || !r2.startTime || !r2.endTime) continue;
         const start1 = parseTime(r1.startTime);
         const end1 = parseTime(r1.endTime);
         const start2 = parseTime(r2.startTime);
@@ -518,6 +521,10 @@ async function submitAllRequests() {
         }
         
         // Same day, same employee - check time overlap regardless of project
+        // Skip if either record has no times (e.g. Чөлөөтэй/Амралт)
+        if (!request.startTime || !request.endTime || !existing.startTime || !existing.endTime) {
+          return false;
+        }
         const start1 = parseTime(request.startTime);
         const end1 = parseTime(request.endTime);
         const start2 = parseTime(existing.startTime);
@@ -539,6 +546,11 @@ async function submitAllRequests() {
       // Check for time overlaps with existing PENDING requests on same day for same employee
       const timeOverlap = existingRequests.find(existing => {
         if (existing.Day !== request.Day || existing.EmployeeLastName !== request.EmployeeLastName) {
+          return false;
+        }
+        
+        // Skip if either record has no times (e.g. Чөлөөтэй/Амралт)
+        if (!request.startTime || !request.endTime || !existing.startTime || !existing.endTime) {
           return false;
         }
         
