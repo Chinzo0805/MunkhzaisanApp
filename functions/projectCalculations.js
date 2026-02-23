@@ -54,12 +54,12 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   
   console.log(`Project ${projectId} aggregation: Total=${totalHours}, Engineer=${engineerHours}, NonEngineer=${nonEngineerHours}`);
   
-  // Store aggregated hours
-  calculations.RealHour = totalHours;
-  calculations.WorkingHours = workingHours;
-  calculations.OvertimeHours = overtimeHours;
-  calculations.EngineerWorkHour = engineerHours;
-  calculations.NonEngineerWorkHour = nonEngineerHours;
+  // Store aggregated hours - rounded to whole numbers
+  calculations.RealHour = Math.round(totalHours);
+  calculations.WorkingHours = Math.round(workingHours);
+  calculations.OvertimeHours = Math.round(overtimeHours);
+  calculations.EngineerWorkHour = Math.round(engineerHours);
+  calculations.NonEngineerWorkHour = Math.round(nonEngineerHours);
   
   // Get values from projectData
   const realHour = totalHours; // From TA aggregation

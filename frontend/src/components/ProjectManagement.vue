@@ -526,7 +526,7 @@ function formatNumber(num) {
   if (!num && num !== 0) return '';
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 0
   }).format(num);
 }
 
