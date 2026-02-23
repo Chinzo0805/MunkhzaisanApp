@@ -505,6 +505,51 @@ async function submitAllRequests() {
         showMessage(`${request.Day} өдөр ${request.ProjectID} төсөлд аль хэдийн зөвшөөрөгдсөн ирц байна`, 'error');
         return;
       }
+
+      // Check if there's a тасалсан or Чөлөөтэй/Амралт approved record on the same day
+      const sameEmployee = emp => emp.EmployeeLastName === request.EmployeeLastName || emp.LastName === request.EmployeeLastName;
+      const approvedBlocker = approvedRecords.find(existing =>
+        existing.Day === request.Day &&
+        sameEmployee(existing) &&
+        (existing.Status === 'тасалсан' || existing.Status === 'Чөлөөтэй/Амралт')
+      );
+      if (approvedBlocker && request.Status !== 'тасалсан' && request.Status !== 'Чөлөөтэй/Амралт') {
+        showMessage(`${request.Day} өдөр аль хэдийн "${approvedBlocker.Status}" зөвшөөрөгдсөн байна. Ажлын хүсэлт илгээх боломжгүй`, 'error');
+        return;
+      }
+
+      // Check if there's a тасалсан or Чөлөөтэй/Амралт pending request on the same day
+      const pendingBlocker = existingRequests.find(existing =>
+        existing.Day === request.Day &&
+        existing.EmployeeLastName === request.EmployeeLastName &&
+        (existing.Status === 'тасалсан' || existing.Status === 'Чөлөөтэй/Амралт')
+      );
+      if (pendingBlocker && request.Status !== 'тасалсан' && request.Status !== 'Чөлөөтэй/Амралт') {
+        showMessage(`${request.Day} өдөр аль хэдийн "${pendingBlocker.Status}" хүсэлт илгээсэн байна. Ажлын хүсэлт илгээх боломжгүй`, 'error');
+        return;
+      }
+
+      // Reverse: if submitting тасалсан/Чөлөөтэй/Амралт but work records exist on same day
+      if (request.Status === 'тасалсан' || request.Status === 'Чөлөөтэй/Амралт') {
+        const workApproved = approvedRecords.find(existing =>
+          existing.Day === request.Day &&
+          sameEmployee(existing) &&
+          existing.Status !== 'тасалсан' && existing.Status !== 'Чөлөөтэй/Амралт'
+        );
+        if (workApproved) {
+          showMessage(`${request.Day} өдөр аль хэдийн "${workApproved.Status}" зөвшөөрөгдсөн ирц байна. "${request.Status}" илгээх боломжгүй`, 'error');
+          return;
+        }
+        const workPending = existingRequests.find(existing =>
+          existing.Day === request.Day &&
+          existing.EmployeeLastName === request.EmployeeLastName &&
+          existing.Status !== 'тасалсан' && existing.Status !== 'Чөлөөтэй/Амралт'
+        );
+        if (workPending) {
+          showMessage(`${request.Day} өдөр аль хэдийн "${workPending.Status}" хүсэлт байна. "${request.Status}" илгээх боломжгүй`, 'error');
+          return;
+        }
+      }
       
       // For approved records, check TIME OVERLAP on same day (allow different projects)
       const approvedTimeOverlap = approvedRecords.find(existing => {
