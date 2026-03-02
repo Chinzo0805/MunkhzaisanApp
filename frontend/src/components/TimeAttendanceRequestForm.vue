@@ -19,7 +19,30 @@
           </select>
         </div>
       </div>
-      <div class="requests-table-wrapper">
+      <!-- Mobile: card list -->
+      <div v-if="isMobile" class="req-cards">
+        <div v-for="req in filteredMyRequests" :key="req.docId" class="req-card">
+          <div class="req-card-top">
+            <div class="req-card-date">
+              <span class="req-date-main">{{ formatDate(req.Day) }}</span>
+              <span class="req-weekday">{{ req.WeekDay }}</span>
+            </div>
+            <span :class="['status-badge', getStatusClass(req.Status)]">{{ req.Status }}</span>
+          </div>
+          <div class="req-card-info">
+            <div v-if="req.ProjectID">📁 {{ req.ProjectID }} · {{ req.ProjectName }}</div>
+            <div v-if="req.startTime">⏰ {{ req.startTime }} – {{ req.endTime }} · {{ req.WorkingHour }}ц</div>
+            <div v-if="req.comment" class="req-comment">💬 {{ req.comment }}</div>
+          </div>
+          <div class="req-card-actions">
+            <button @click="editRequest(req)" class="btn-edit">✎ Засах</button>
+            <button @click="deleteRequest(req.docId)" class="btn-delete-req">🗑 Устгах</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desktop: table -->
+      <div v-else class="requests-table-wrapper">
         <table class="my-requests-table">
           <thead>
             <tr>
@@ -68,7 +91,78 @@
       <div v-if="message" :class="['message', messageType]">
         {{ message }}
       </div>
-      <div class="table-wrapper">
+      <!-- Mobile: card-based form entries -->
+      <div v-if="isMobile" class="form-cards">
+        <div v-for="(request, index) in requests" :key="index" class="form-card">
+          <div class="form-card-header">
+            <span class="form-card-title">{{ request.WeekDay || '–' }} · {{ request.Day }}</span>
+            <button @click="removeRow(index)" class="btn-delete">×</button>
+          </div>
+          <div class="fields-grid">
+            <div class="field-group span-full">
+              <label>Огноо</label>
+              <input type="date" v-model="request.Day" @change="calculateRow(index)" class="input-field" />
+            </div>
+            <div class="field-group span-full">
+              <label>Статус</label>
+              <select v-model="request.Status" @change="calculateRow(index)" class="input-field">
+                <option value="">Сонгох</option>
+                <option value="Ирсэн">Ирсэн</option>
+                <option value="Томилолт">Томилолт</option>
+                <option value="Чөлөөтэй/Амралт">Чөлөөтэй/Амралт</option>
+              </select>
+            </div>
+            <div class="field-group span-full">
+              <label>Үүрэг</label>
+              <select v-model="request.Role" class="input-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'">
+                <option value="">Сонгох</option>
+                <option value="Инженер">Инженер</option>
+                <option value="Техникч">Техникч</option>
+                <option value="Ажилтан">Ажилтан</option>
+              </select>
+            </div>
+            <div class="field-group span-full">
+              <label>Төсөл</label>
+              <select v-model="request.ProjectID" @change="onProjectChange(index)" class="input-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'">
+                <option value="">Сонгох</option>
+                <option v-for="project in projects" :key="project.id" :value="project.id">
+                  {{ project.id }} - {{ project.siteLocation }}
+                </option>
+              </select>
+            </div>
+            <div class="field-group span-full">
+              <label>Байршил</label>
+              <input type="text" v-model="request.ProjectName" class="input-field" placeholder="Байршил (авто дүүргэнэ)" :disabled="request.Status === 'Чөлөөтэй/Амралт'" />
+            </div>
+            <div class="field-group">
+              <label>Эхлэх цаг</label>
+              <input type="time" v-model="request.startTime" @change="calculateRow(index)" class="input-field" step="60" :disabled="request.Status === 'Чөлөөтэй/Амралт'" />
+            </div>
+            <div class="field-group">
+              <label>Дуусах цаг</label>
+              <input type="time" v-model="request.endTime" @change="calculateRow(index)" class="input-field" step="60" :disabled="request.Status === 'Чөлөөтэй/Амралт'" />
+            </div>
+            <div class="field-group">
+              <label>Ажилласан цаг</label>
+              <input type="number" v-model="request.WorkingHour" readonly class="input-field" step="0.5" />
+            </div>
+            <div class="field-group">
+              <label>Илүү цаг</label>
+              <div class="overtime-row">
+                <input type="checkbox" v-model="request.isOvertimeRequest" @change="calculateRow(index)" class="checkbox-field" />
+                <input type="number" v-model="request.overtimeHour" readonly class="input-field" step="0.5" />
+              </div>
+            </div>
+            <div class="field-group span-full">
+              <label>Юу хийсэн <span class="required">*</span></label>
+              <textarea v-model="request.comment" class="textarea-field" placeholder="Юу хийсэн талаар бичнэ үү..." rows="3" required></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desktop: table -->
+      <div v-else class="table-wrapper">
         <table class="attendance-table">
           <thead>
             <tr>
@@ -149,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '../stores/projects';
 import { useAuthStore } from '../stores/auth';
@@ -173,6 +267,9 @@ const message = ref('');
 const messageType = ref('');
 const myPendingRequests = ref([]);
 const statusFilter = ref('');
+
+const isMobile = ref(window.innerWidth < 640);
+function handleResize() { isMobile.value = window.innerWidth < 640; }
 
 const weekDaysMongolian = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
 
@@ -201,6 +298,7 @@ function getStatusClass(status) {
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', handleResize);
   await projectsStore.fetchProjects();
   await employeesStore.fetchEmployees();
   
@@ -237,6 +335,8 @@ onMounted(async () => {
 
   addRow();
 });
+
+onUnmounted(() => { window.removeEventListener('resize', handleResize); });
 
 function addRow() {
   // Generate a unique ID using timestamp and random string
@@ -1004,86 +1104,185 @@ function showMessage(text, type) {
   background: #c82333;
 }
 
-@media (max-width: 768px) {
-  .attendance-form-page {
-    padding: 10px;
-  }
-  
-  .form-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .form-header h2 {
-    text-align: center;
-  }
-  
-  .btn-back {
-    width: 100%;
-  }
-  
-  .form-container {
-    padding: 15px;
-  }
-  
-  .add-row-section {
-    flex-direction: column;
-  }
-  
-  .btn-add,
-  .btn-submit {
-    width: 100%;
-    min-width: unset;
-  }
-  
-  .attendance-table th,
-  .attendance-table td {
-    padding: 6px 4px;
-    font-size: 11px;
-  }
-  
-  .input-field {
-    padding: 4px 6px;
-    font-size: 12px;
-  }
-  
-  .textarea-field {
-    padding: 4px 6px;
-    font-size: 12px;
-    min-width: 150px;
-  }
-  
-  .btn-delete {
-    width: 28px;
-    height: 28px;
-    font-size: 18px;
-  }
+/* ── Mobile card styles ─────────────────────────────── */
+
+/* My-requests card list */
+.req-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-@media (max-width: 480px) {
-  .attendance-table {
-    min-width: 800px;
-  }
-  
-  .attendance-table th,
-  .attendance-table td {
-    padding: 4px 2px;
-    font-size: 10px;
-  }
-  
-  .input-field {
-    padding: 3px 4px;
-    font-size: 11px;
-  }
-  
-  .textarea-field {
-    padding: 3px 4px;
-    font-size: 11px;
-    min-width: 120px;
-  }
-  
-  .overtime-input {
-    width: 50px;
-  }
+.req-card {
+  background: white;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.req-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.req-card-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.req-date-main {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.req-weekday {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.req-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.req-comment {
+  color: #6b7280;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.req-card-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.req-card-actions .btn-edit,
+.req-card-actions .btn-delete-req {
+  flex: 1;
+  padding: 9px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* New-request form cards */
+.form-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.form-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.form-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: #1d4ed8;
+  color: white;
+}
+
+.form-card-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form-card-header .btn-delete {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 14px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-group.span-full {
+  grid-column: 1 / -1;
+}
+
+.field-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.field-group .input-field,
+.field-group .textarea-field {
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: white;
+}
+
+.field-group .input-field:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.overtime-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overtime-row .checkbox-field {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.required {
+  color: #dc2626;
+}
+
+/* keep table-level responsive for desktop */
+@media (max-width: 768px) {
+  .attendance-form-page { padding: 10px; }
+  .form-header { flex-direction: column; align-items: stretch; }
+  .form-header h2 { text-align: center; }
+  .btn-back { width: 100%; }
+  .form-container { padding: 12px; }
+  .add-row-section { flex-direction: column; }
+  .btn-add, .btn-submit { width: 100%; min-width: unset; }
 }
 </style>
