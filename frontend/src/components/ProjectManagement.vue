@@ -52,6 +52,7 @@
               <th @click="toggleListSort('type')" class="sortable th-type">
                 Төрөл {{ listSortField === 'type' ? (listSortAsc ? '↑' : '↓') : '' }}
               </th>
+              <th class="th-ptype">Урамшуулал</th>
               <th @click="toggleListSort('status')" class="sortable th-status">
                 Статус {{ listSortField === 'status' ? (listSortAsc ? '↑' : '↓') : '' }}
               </th>
@@ -88,6 +89,11 @@
               <td class="td-type">
                 <div>{{ project.type }}</div>
                 <small v-if="project.subtype" class="tbl-sub">{{ project.subtype }}</small>
+              </td>
+              <td class="td-ptype">
+                <span class="ptype-badge" :class="project.projectType === 'unpaid' ? 'ptype-unpaid' : 'ptype-paid'">
+                  {{ project.projectType === 'unpaid' ? '🚫 Үгүй' : '✅ Тийм' }}
+                </span>
               </td>
               <td class="td-status">
                 <span class="status-badge" :class="project.Status">{{ project.Status }}</span>
@@ -143,6 +149,7 @@
               @click="editItem(project)"
             >
               <div class="kcard-location">📍 {{ project.siteLocation }}</div>
+              <span v-if="project.projectType === 'unpaid'" class="kcard-unpaid-badge">🚫 Урамшуулалгүй</span>
               <div class="kcard-type">
                 {{ project.type }}<span v-if="project.subtype"> · {{ project.subtype }}</span>
               </div>
@@ -248,6 +255,19 @@
             </div>
           </div>
           
+          <div class="form-row">
+            <div class="form-group">
+              <label>Урамшуулал тооцох эсэх</label>
+              <select v-model="form.projectType" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                <option value="paid">✅ Тийм — ажилтан урамшуулал авна</option>
+                <option value="unpaid">🚫 Үгүй — зөвхөн суурь цалин</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <!-- spacer -->
+            </div>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
               <label>Status</label>
@@ -583,6 +603,7 @@ async function onDrop(status, event) {
   try {
     const updatedData = {
       id: project.id, customer: project.customer, type: project.type, subtype: project.subtype,
+      projectType: project.projectType || 'paid',
       siteLocation: project.siteLocation, StartDate: project.StartDate, EndDate: project.EndDate,
       ResponsibleEmp: project.ResponsibleEmp, Detail: project.Detail, Comment: project.Comment,
       referenceIdfromCustomer: project.referenceIdfromCustomer, Status: status,
@@ -609,6 +630,7 @@ const form = ref({
   customer: '',
   type: '',
   subtype: '',
+  projectType: 'paid',
   siteLocation: '',
   StartDate: '',
   EndDate: '',
@@ -844,6 +866,7 @@ function editItem(project) {
     customer: project.customer || '',
     type: project.type || '',
     subtype: project.subtype || '',
+    projectType: project.projectType || 'paid',
     siteLocation: project.siteLocation || '',
     StartDate: excelSerialToDate(project.StartDate),
     EndDate: excelSerialToDate(project.EndDate),
@@ -898,6 +921,7 @@ function closeModal() {
     customer: '',
     type: '',
     subtype: '',
+    projectType: 'paid',
     siteLocation: '',
     StartDate: '',
     EndDate: '',
@@ -1612,6 +1636,18 @@ defineExpose({
 .kprofit-pos { color: #16a34a; }
 .kprofit-neg { color: #dc2626; }
 
+.kcard-unpaid-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
 .kanban-empty {
   font-size: 12px;
   color: #9ca3af;
@@ -1697,6 +1733,10 @@ defineExpose({
 .td-location .tbl-ref { font-size: 11px; color: #9ca3af; }
 .td-customer { color: #4b5563; min-width: 120px; }
 .td-type small.tbl-sub { color: #9ca3af; display: block; }
+.td-ptype { white-space: nowrap; }
+.ptype-badge { font-size: 11px; padding: 2px 7px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+.ptype-paid    { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
+.ptype-unpaid  { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
 .td-status { white-space: nowrap; }
 .td-date { white-space: nowrap; font-size: 12px; color: #6b7280; }
 .td-hours { text-align: right; font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -1709,6 +1749,7 @@ defineExpose({
 .th-location { min-width: 160px; }
 .th-customer { min-width: 130px; }
 .th-type { min-width: 120px; }
+.th-ptype { min-width: 90px; white-space: nowrap; }
 .th-status { min-width: 140px; }
 .th-date { min-width: 90px; }
 .th-hours { min-width: 80px; text-align: right; }

@@ -1448,3 +1448,27 @@ firebase deploy --only functions:updateProjectRealHours
 **Хөгжүүлэгч:** AI Assistant + Chinzo
 **Статус:**  Амжилттай дууссан
 **Дараагийн ажил:** Ажилтны цалингийн тооцоо харуулах
+
+## 2026.03.02 (continued)  Supervisor Salary Report
+
+### Added: SupervisorSalaryReport.vue
+- New supervisor-only page at /supervisor-salary
+- Filter by month + period (full / 1-15 / 16-31)
+- Two salary components:
+  1. Fixed monthly salary: grossSalary = employee.Salary * periodFactor * min(1, workedDays/expectedWorkingDays)
+  2. Project bounty: Engineer = hours * (EngineerHand / EngineerWorkHour); Non-engineer = hours * 5,000 MNT
+- Deductions: НДШ 10% and ХАОАТ = (gross - НДШ) * 10%
+- Дадлагжигч trainees: grossSalary = 0, bounty only
+- Summary stat cards: employee count, gross, НДШ+ХАОАТ, bounty, total pay
+- Sortable 8-column table with totals footer
+- Per-employee expandable row showing deduction breakdown and per-project bounty detail
+- Excel export (XLSX)
+- Mongolian public holiday calendar (2024-2027) for accurate working day count
+
+### Router / Dashboard
+- Added /supervisor-salary route in router/index.js
+- Added Цалингийн тооцоо button in Dashboard.vue supervisor nav (isSupervisor only)
+
+### Deployed
+- firebase deploy --only hosting  https://munkh-zaisan.web.app
+- Commit: 005ef7b

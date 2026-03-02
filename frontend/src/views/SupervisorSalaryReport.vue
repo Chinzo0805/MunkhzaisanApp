@@ -401,6 +401,17 @@ async function loadData() {
       for (const [projId, empHours] of ta.projectHours.entries()) {
         if (!projId) continue;
         const proj = projMap.get(projId);
+        // Skip bounty for unpaid projects
+        if (proj?.projectType === 'unpaid') {
+          projectDetails.push({
+            projectId: projId,
+            location: proj?.siteLocation || proj?.customer || '—',
+            hours: empHours,
+            bounty: 0,
+            rateLabel: '🚫 Урамшуулалгүй (unpaid)',
+          });
+          continue;
+        }
         let projBounty = 0;
         let rateLabel = '';
         if (isEngineer(position)) {
