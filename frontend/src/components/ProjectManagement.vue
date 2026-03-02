@@ -33,73 +33,83 @@
           <option value="Урамшуулал олгох">Урамшуулал олгох</option>
           <option value="Дууссан">Дууссан</option>
         </select>
-        <select v-model="sortBy" class="sort-select">
-          <option value="customer">Sort by Customer</option>
-          <option value="status">Sort by Status</option>
-          <option value="profit">Sort by Profit</option>
-          <option value="date">Sort by Date</option>
-        </select>
+        <span class="list-count">{{ filteredProjects.length }} project</span>
       </div>
-      
-      <div class="item-grid">
-        <div 
-          v-for="project in filteredProjects" 
-          :key="project.id"
-          class="item-card project-card-item"
-          @click="editItem(project)"
-        >
-          <div class="card-header">
-            <div class="item-badge">{{ project.id }}</div>
-            <span class="status-badge" :class="project.Status">{{ project.Status }}</span>
-          </div>
-          <div class="project-location">📍 {{ project.siteLocation }}</div>
-          <div class="project-customer">{{ project.customer }}</div>
-          <div class="project-info">{{ project.type }} - {{ project.subtype }}</div>
-          <div class="project-stats">
-            <div class="stat-item">
-              <span class="stat-label">Planned:</span>
-              <span class="stat-value">{{ formatNumber(project.PlannedHour) }}ц</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Real:</span>
-              <span class="stat-value real">{{ formatNumber(project.RealHour) }}ц</span>
-            </div>
-            <div class="stat-item" v-if="project.EngineerWorkHour > 0">
-              <span class="stat-label">Engineer:</span>
-              <span class="stat-value engineer">{{ formatNumber(project.EngineerWorkHour) }}ц</span>
-            </div>
-            <div class="stat-item" v-if="project.NonEngineerWorkHour > 0">
-              <span class="stat-label">Non-Engineer:</span>
-              <span class="stat-value non-engineer">{{ formatNumber(project.NonEngineerWorkHour) }}ц</span>
-            </div>
-          </div>
-          <div class="progress-section">
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: getStatusProgress(project.Status) + '%', backgroundColor: getStatusColor(project.Status) }"></div>
-              <span class="progress-text">{{ getStatusProgress(project.Status) }}%</span>
-            </div>
-          </div>
-          <div class="time-performance" v-if="project.PlannedHour > 0">
-            <span class="perf-label">Цагийн гүйцэтгэл:</span>
-            <span class="perf-value" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ formatNumber(calculateTimePerformance(project.RealHour, project.PlannedHour)) }}%</span>
-          </div>
-          <div class="engineer-bounty" v-if="project.EngineerHand && project.EngineerHand > 0">
-            <span class="bounty-label">Инженерийн урамшуулал:</span>
-            <span class="bounty-value">{{ formatNumber(project.EngineerHand) }}₮</span>
-          </div>
-          <div class="team-bounty" v-if="project.TeamBounty && project.TeamBounty > 0">
-            <span class="team-bounty-label">Багийн урамшуулал:</span>
-            <span class="team-bounty-value">{{ formatNumber(project.TeamBounty) }}₮</span>
-          </div>
-          <div class="non-engineer-bounty" v-if="project.NonEngineerBounty && project.NonEngineerBounty > 0">
-            <span class="non-engineer-bounty-label">Инженер бус урамшуулал:</span>
-            <span class="non-engineer-bounty-value">{{ formatNumber(project.NonEngineerBounty) }}₮</span>
-          </div>
-          <div class="profit-display" :class="{ 'profit-positive': (project.TotalProfit || 0) > 0, 'profit-negative': (project.TotalProfit || 0) < 0 }">
-            <span class="profit-label">Total Profit:</span>
-            <span class="profit-value">{{ formatNumber(project.TotalProfit || 0) }}₮</span>
-          </div>
-        </div>
+
+      <div class="project-table-container">
+        <table class="project-table">
+          <thead>
+            <tr>
+              <th @click="toggleListSort('id')" class="sortable th-id">
+                # {{ listSortField === 'id' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('location')" class="sortable th-location">
+                Байршил {{ listSortField === 'location' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('customer')" class="sortable th-customer">
+                Захиалагч {{ listSortField === 'customer' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('type')" class="sortable th-type">
+                Төрөл {{ listSortField === 'type' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('status')" class="sortable th-status">
+                Статус {{ listSortField === 'status' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('date')" class="sortable th-date">
+                Эхлэх {{ listSortField === 'date' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('planned')" class="sortable th-hours">
+                Төлөвлөсөн {{ listSortField === 'planned' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('real')" class="sortable th-hours">
+                Бодит {{ listSortField === 'real' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('perf')" class="sortable th-perf">
+                Гүйцэтгэл {{ listSortField === 'perf' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="toggleListSort('profit')" class="sortable th-profit">
+                Ашиг {{ listSortField === 'profit' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              v-for="project in filteredProjects" 
+              :key="project.id"
+              class="project-row"
+              @click="editItem(project)"
+            >
+              <td class="td-id">{{ project.id }}</td>
+              <td class="td-location">
+                <div class="tbl-location">📍 {{ project.siteLocation }}</div>
+                <div class="tbl-ref" v-if="project.referenceIdfromCustomer">{{ project.referenceIdfromCustomer }}</div>
+              </td>
+              <td class="td-customer">{{ project.customer }}</td>
+              <td class="td-type">
+                <div>{{ project.type }}</div>
+                <small v-if="project.subtype" class="tbl-sub">{{ project.subtype }}</small>
+              </td>
+              <td class="td-status">
+                <span class="status-badge" :class="project.Status">{{ project.Status }}</span>
+              </td>
+              <td class="td-date">{{ excelSerialToDate(project.StartDate) || '—' }}</td>
+              <td class="td-hours">{{ project.PlannedHour ? formatNumber(project.PlannedHour) + 'ц' : '—' }}</td>
+              <td class="td-hours">
+                <span v-if="project.RealHour" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ formatNumber(project.RealHour) }}ц</span>
+                <span v-else>—</span>
+              </td>
+              <td class="td-perf">
+                <span v-if="project.PlannedHour > 0" :class="getPerformanceClass(project.RealHour, project.PlannedHour)">
+                  {{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%
+                </span>
+                <span v-else>—</span>
+              </td>
+              <td class="td-profit" :class="{ 'profit-pos': (project.TotalProfit||0) > 0, 'profit-neg': (project.TotalProfit||0) < 0 }">
+                {{ (project.TotalProfit || project.TotalProfit === 0) ? formatNumber(project.TotalProfit) + '₮' : '—' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -132,19 +142,35 @@
               @dragend="onDragEnd"
               @click="editItem(project)"
             >
-              <div class="kcard-top">
+              <div class="kcard-location">📍 {{ project.siteLocation }}</div>
+              <div class="kcard-type">
+                {{ project.type }}<span v-if="project.subtype"> · {{ project.subtype }}</span>
+              </div>
+              <div class="kcard-meta-row">
+                <span v-if="!isInternalCustomer(project.customer)" class="kcard-customer-tag">{{ project.customer }}</span>
+                <span v-if="project.ResponsibleEmp" class="kcard-resp">👤 {{ project.ResponsibleEmp }}</span>
+              </div>
+              <div class="kcard-dates" v-if="project.StartDate || project.EndDate">
+                <span v-if="project.StartDate">{{ excelSerialToDate(project.StartDate) }}</span>
+                <span v-if="project.StartDate && project.EndDate"> → </span>
+                <span v-if="project.EndDate">{{ excelSerialToDate(project.EndDate) }}</span>
+              </div>
+              <div class="kcard-hours-row" v-if="project.PlannedHour > 0">
+                <div class="kcard-hours-bar">
+                  <div class="kcard-hours-fill" :style="{ width: Math.min(100, (project.RealHour / project.PlannedHour) * 100) + '%', background: getPerformanceClass(project.RealHour, project.PlannedHour) === 'perf-good' ? '#10b981' : '#ef4444' }"></div>
+                </div>
+                <div class="kcard-hours-labels">
+                  <span>{{ formatNumber(project.RealHour) }} / {{ formatNumber(project.PlannedHour) }}ц</span>
+                  <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%</span>
+                </div>
+              </div>
+              <div class="kcard-footer">
                 <span class="kcard-id">#{{ project.id }}</span>
-                <span class="kcard-location">📍 {{ project.siteLocation }}</span>
-              </div>
-              <div class="kcard-customer">{{ project.customer }}</div>
-              <div class="kcard-type">{{ project.type }}<span v-if="project.subtype"> · {{ project.subtype }}</span></div>
-              <div class="kcard-hours" v-if="project.PlannedHour > 0">
-                <span>📅 {{ formatNumber(project.PlannedHour) }}ц</span>
-                <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">▶ {{ formatNumber(project.RealHour) }}ц</span>
-              </div>
-              <div class="kcard-profit" v-if="project.TotalProfit || project.TotalProfit === 0"
-                :class="{ 'kprofit-pos': (project.TotalProfit||0) > 0, 'kprofit-neg': (project.TotalProfit||0) < 0 }">
-                {{ formatNumber(project.TotalProfit || 0) }}₮
+                <span class="kcard-profit"
+                  v-if="project.TotalProfit || project.TotalProfit === 0"
+                  :class="{ 'kprofit-pos': (project.TotalProfit||0) > 0, 'kprofit-neg': (project.TotalProfit||0) < 0 }">
+                  {{ formatNumber(project.TotalProfit || 0) }}₮
+                </span>
               </div>
             </div>
             <div v-if="projectsInColumn(status).length === 0" class="kanban-empty">— хоосон —</div>
@@ -478,9 +504,28 @@ const editingDocId = ref(null);
 const isEditMode = ref(false);
 const searchQuery = ref('');
 const filterStatus = ref('');
-const sortBy = ref('customer');
 const saving = ref(false);
 const formError = ref('');
+
+// List sort state
+const listSortField = ref('location');
+const listSortAsc = ref(true);
+
+function toggleListSort(field) {
+  if (listSortField.value === field) {
+    listSortAsc.value = !listSortAsc.value;
+  } else {
+    listSortField.value = field;
+    listSortAsc.value = true;
+  }
+}
+
+// Helper: detect if the project belongs to our own company (hide customer name in kanban)
+function isInternalCustomer(name) {
+  if (!name) return false;
+  const n = name.toLowerCase();
+  return n.includes('мунхзайсан') || n.includes('munkhzaisan') || n.includes('munkh zaisan') || n.includes('munkhzaisan');
+}
 
 // Kanban board state
 const showKanban = ref(false);
@@ -626,20 +671,41 @@ const filteredProjects = computed(() => {
     items = items.filter(p => p.Status === filterStatus.value);
   }
   
-  // Sort
+  // Sort by listSortField
   items.sort((a, b) => {
-    if (sortBy.value === 'customer') {
-      const customerA = (a.customer || '').toLowerCase();
-      const customerB = (b.customer || '').toLowerCase();
-      return customerA < customerB ? -1 : customerA > customerB ? 1 : 0;
-    } else if (sortBy.value === 'status') {
-      return (a.Status || '').localeCompare(b.Status || '');
-    } else if (sortBy.value === 'profit') {
-      return (b.TotalProfit || 0) - (a.TotalProfit || 0);
-    } else if (sortBy.value === 'date') {
-      return (b.StartDate || '').localeCompare(a.StartDate || '');
+    let aVal, bVal;
+    if (listSortField.value === 'id') {
+      aVal = parseInt(a.id) || 0; bVal = parseInt(b.id) || 0;
+    } else if (listSortField.value === 'location') {
+      aVal = (a.siteLocation || '').toLowerCase(); bVal = (b.siteLocation || '').toLowerCase();
+    } else if (listSortField.value === 'customer') {
+      aVal = (a.customer || '').toLowerCase(); bVal = (b.customer || '').toLowerCase();
+    } else if (listSortField.value === 'type') {
+      aVal = (a.type || '').toLowerCase(); bVal = (b.type || '').toLowerCase();
+    } else if (listSortField.value === 'status') {
+      aVal = (a.Status || ''); bVal = (b.Status || '');
+    } else if (listSortField.value === 'date') {
+      aVal = a.StartDate || ''; bVal = b.StartDate || '';
+    } else if (listSortField.value === 'planned') {
+      aVal = a.PlannedHour || 0; bVal = b.PlannedHour || 0;
+    } else if (listSortField.value === 'real') {
+      aVal = a.RealHour || 0; bVal = b.RealHour || 0;
+    } else if (listSortField.value === 'perf') {
+      aVal = calculateTimePerformance(a.RealHour, a.PlannedHour);
+      bVal = calculateTimePerformance(b.RealHour, b.PlannedHour);
+    } else if (listSortField.value === 'profit') {
+      aVal = a.TotalProfit || 0; bVal = b.TotalProfit || 0;
+    } else {
+      aVal = (a.siteLocation || '').toLowerCase(); bVal = (b.siteLocation || '').toLowerCase();
     }
-    return 0;
+
+    let cmp = 0;
+    if (typeof aVal === 'number') {
+      cmp = aVal - bVal;
+    } else {
+      cmp = String(aVal).localeCompare(String(bVal));
+    }
+    return listSortAsc.value ? cmp : -cmp;
   });
   
   return items;
@@ -1398,8 +1464,8 @@ defineExpose({
 }
 
 .kanban-column {
-  flex: 0 0 230px;
-  min-width: 200px;
+  flex: 0 0 270px;
+  min-width: 240px;
   background: #f8fafc;
   border-radius: 8px;
   border: 2px dashed transparent;
@@ -1453,9 +1519,9 @@ defineExpose({
 
 .kanban-card {
   background: white;
-  border-radius: 6px;
-  padding: 10px 10px 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  padding: 12px 12px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   cursor: grab;
   border-left: 3px solid #e5e7eb;
   transition: box-shadow 0.15s, transform 0.15s;
@@ -1463,8 +1529,8 @@ defineExpose({
 }
 
 .kanban-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  transform: translateY(-2px);
 }
 
 .kanban-card:active {
@@ -1472,62 +1538,94 @@ defineExpose({
   opacity: 0.8;
 }
 
-.kcard-top {
+.kcard-location {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 3px;
+  line-height: 1.3;
+}
+
+.kcard-type {
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.kcard-meta-row {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.kcard-customer-tag {
+  font-size: 11px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+}
+
+.kcard-resp {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.kcard-dates {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-bottom: 6px;
+}
+
+.kcard-hours-row {
+  margin-bottom: 6px;
+}
+
+.kcard-hours-bar {
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+
+.kcard-hours-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.kcard-hours-labels {
+  display: flex;
   justify-content: space-between;
-  margin-bottom: 4px;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.kcard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid #f3f4f6;
 }
 
 .kcard-id {
   font-size: 10px;
   font-weight: 700;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: #9ca3af;
+  background: #f9fafb;
   padding: 1px 5px;
   border-radius: 4px;
 }
 
-.kcard-location {
-  font-size: 10px;
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 130px;
-}
-
-.kcard-customer {
-  font-size: 12px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kcard-type {
-  font-size: 11px;
-  color: #6b7280;
-  margin-bottom: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kcard-hours {
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-  color: #4b5563;
-  margin-bottom: 4px;
-}
-
 .kcard-profit {
   font-size: 12px;
-  font-weight: 600;
-  text-align: right;
+  font-weight: 700;
 }
 
 .kprofit-pos { color: #16a34a; }
@@ -1542,9 +1640,98 @@ defineExpose({
 
 @media (max-width: 640px) {
   .kanban-column {
-    flex: 0 0 180px;
-    min-width: 160px;
+    flex: 0 0 200px;
+    min-width: 180px;
   }
 }
+
+/* ── Project List Table ──────────────────────────────────────── */
+.list-count {
+  font-size: 13px;
+  color: #6b7280;
+  margin-left: 4px;
+  padding: 6px 10px;
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.project-table-container {
+  overflow-x: auto;
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.project-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.project-table thead th {
+  background: #f8fafc;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.project-table thead th.sortable {
+  cursor: pointer;
+}
+
+.project-table thead th.sortable:hover {
+  background: #f1f5f9;
+  color: #1d4ed8;
+}
+
+.project-table tbody .project-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.project-table tbody .project-row:hover {
+  background: #eff6ff;
+}
+
+.project-table tbody .project-row:nth-child(even) {
+  background: #fafafa;
+}
+
+.project-table tbody .project-row:nth-child(even):hover {
+  background: #eff6ff;
+}
+
+.project-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+
+.td-id { color: #9ca3af; font-size: 12px; font-weight: 600; min-width: 36px; }
+.td-location .tbl-location { font-weight: 600; color: #111827; }
+.td-location .tbl-ref { font-size: 11px; color: #9ca3af; }
+.td-customer { color: #4b5563; min-width: 120px; }
+.td-type small.tbl-sub { color: #9ca3af; display: block; }
+.td-status { white-space: nowrap; }
+.td-date { white-space: nowrap; font-size: 12px; color: #6b7280; }
+.td-hours { text-align: right; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.td-perf { text-align: right; font-weight: 600; white-space: nowrap; }
+.td-profit { text-align: right; font-weight: 700; white-space: nowrap; }
+.profit-pos { color: #16a34a; }
+.profit-neg { color: #dc2626; }
+
+.th-id { width: 50px; }
+.th-location { min-width: 160px; }
+.th-customer { min-width: 130px; }
+.th-type { min-width: 120px; }
+.th-status { min-width: 140px; }
+.th-date { min-width: 90px; }
+.th-hours { min-width: 80px; text-align: right; }
+.th-perf { min-width: 90px; text-align: right; }
+.th-profit { min-width: 110px; text-align: right; }
 </style>
 
