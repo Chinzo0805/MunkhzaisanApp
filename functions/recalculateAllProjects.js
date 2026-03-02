@@ -6,10 +6,19 @@ const { calculateProjectMetrics } = require('./projectCalculations');
  * Recalculate all non-finished projects from TimeAttendance data
  * Uses centralized calculateProjectMetrics function
  * - Calculates RealHour, EngineerWorkHour, NonEngineerWorkHour from TA records
- * - ExpenceHRBonus = NonEngineerBounty + EngineerHand
- * - Income HR = (WosHour + additionalHour) × 110,000
- * - Profit HR = Income HR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)
  * - Skips projects with Status = "Дууссан"
+ *
+ * projectType = "paid" (default):
+ *   - IncomeHR = (WosHour + additionalHour) × 110,000
+ *   - BaseAmount = WosHour × 12,500
+ *   - EngineerHand = performance-adjusted bounty (BaseAmount × (200 − performance%) / 100)
+ *   - NonEngineerBounty = NonEngineerWorkHour × 5,000
+ *   - ProfitHR = IncomeHR − (EngineerHand + NonEngineerBounty + ExpenseHRFromTrx + ExpenceHR + additionalValue)
+ *
+ * projectType = "unpaid":
+ *   - IncomeHR = 0, BaseAmount = 0, EngineerHand = 0, NonEngineerBounty = 0
+ *   - EmployeeLaborCost = Σ (employee.Salary / 160h × hours on project) from TA records
+ *   - ProfitHR = −(EmployeeLaborCost + ExpenseHRFromTrx + ExpenceHR + additionalValue)
  */
 exports.recalculateAllProjects = functions.runWith({
   timeoutSeconds: 540,
