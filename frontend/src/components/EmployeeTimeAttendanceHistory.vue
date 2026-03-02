@@ -134,23 +134,32 @@
         <input type="month" v-model="selectedMonth" @change="loadMonthData" class="month-input" />
       </div>
       
-      <div v-if="monthStats" class="month-stats">
-        <div class="stat-card">
-          <span class="stat-label">Нийт ажилласан өдөр:</span>
-          <span class="stat-value">{{ monthStats.approvedDays }} өдөр</span>
+    </div>
+
+    <!-- Inline Calendar -->
+    <div class="inline-calendar">
+      <div class="calendar-grid">
+        <div class="cal-weekday" v-for="h in calWeekHeaders" :key="h">{{ h }}</div>
+        <div
+          v-for="day in calendarDays"
+          :key="day.key"
+          :class="['cal-day', day.cls]"
+          :title="day.tooltip"
+        >
+          <span v-if="day.date" class="cal-day-num">{{ day.date }}</span>
+          <span v-if="day.isPending" class="cal-pending-dot">·</span>
         </div>
-        <div class="stat-card">
-          <span class="stat-label">Нийт ирц бүртгүүлсэн цаг:</span>
-          <span class="stat-value">{{ monthStats.totalHours }} цаг</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Ажилласан/Томилолт нийт цаг:</span>
-          <span class="stat-value" style="font-weight: bold; color: #f59e0b;">{{ monthStats.workingHours }} цаг</span>
-        </div>
-        <div class="stat-card warning">
-          <span class="stat-label">Хүсэлт илгээгээгүй:</span>
-          <span class="stat-value">{{ monthStats.notRequestedDays }} өдөр</span>
-        </div>
+      </div>
+      <div v-if="monthStats" class="cal-count-row">
+        <span class="cal-count-chip chip-worked">✔ Ирсэн: {{ calCounts.worked }}</span>
+        <span class="cal-count-chip chip-trip">✈ Томилолт: {{ calCounts.trip }}</span>
+        <span class="cal-count-chip chip-free">♥ Чөлөөтэй: {{ calCounts.free }}</span>
+        <span class="cal-count-chip chip-missed">✘ Тасалсан: {{ calCounts.missed }}</span>
+        <span class="cal-count-chip chip-pending">⏳ Хүлээгдэж буй: {{ calCounts.pending }}</span>
+        <span class="cal-count-chip chip-no-req">⚠ Хүсэлтгүй: {{ calCounts.noReq }}</span>
+      </div>
+      <div v-if="monthStats" class="cal-working-hours">
+        Ажилласан/Томилолт нийт цаг: <strong>{{ monthStats.workingHours }} цаг</strong>
       </div>
     </div>
 
@@ -253,9 +262,76 @@ const projectTARecords = ref([]);
 
 const approvedRecords = ref([]);
 const rejectedRecords = ref([]);
+const pendingRecords = ref([]);
 const monthStats = ref(null);
 const projectSummary = ref([]);
 const recordStatusFilter = ref('');
+
+// ---- Calendar ----
+const calWeekHeaders = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
+
+const calendarDays = computed(() => {
+  if (!selectedMonth.value) return [];
+  const [yearStr, monthStr] = selectedMonth.value.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr) - 1; // 0-indexed
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startOffset = (firstDay.getDay() + 6) % 7; // Mon=0
+  const days = [];
+  for (let i = 0; i < startOffset; i++) {
+    days.push({ key: `e${i}`, date: null, cls: 'cal-empty', isPending: false, tooltip: '' });
+  }
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const dd = String(d).padStart(2, '0');
+    const dateStr = `${yearStr}-${monthStr}-${dd}`;
+    const dow = new Date(year, month, d).getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const approved = approvedRecords.value.find(r => (r.Day || r.Date) === dateStr);
+    const pending  = pendingRecords.value.find(r => (r.Day || r.Date) === dateStr);
+    let cls, isPending, tooltip;
+    if (approved) {
+      cls = calStatusClass(approved.Status);
+      isPending = false;
+      tooltip = `${approved.Status} (зөвшөөрөгдсөн)`;
+    } else if (pending) {
+      cls = 'cal-pending-req';
+      isPending = true;
+      tooltip = `${pending.Status} (хүлээгдэж буй)`;
+    } else if (isWeekend) {
+      cls = 'cal-weekend';
+      isPending = false;
+      tooltip = 'Амралтын өдөр';
+    } else {
+      cls = 'cal-no-req';
+      isPending = false;
+      tooltip = 'Хүсэлт илгээгдүйгүй';
+    }
+    days.push({ key: dateStr, date: d, cls, isPending, tooltip });
+  }
+  return days;
+});
+
+const calCounts = computed(() => {
+  const worked  = approvedRecords.value.filter(r => r.Status === 'Ирсэн').length;
+  const trip    = approvedRecords.value.filter(r => r.Status === 'Томилолт').length;
+  const free    = approvedRecords.value.filter(r => r.Status === 'Чөлөөтэй/Амралт').length;
+  const missed  = approvedRecords.value.filter(r => r.Status === 'тасалсан').length;
+  const pending = pendingRecords.value.length;
+  const noReq   = monthStats.value ? Math.max(0, monthStats.value.notRequestedDays - pending) : 0;
+  return { worked, trip, free, missed, pending, noReq };
+});
+
+function calStatusClass(status) {
+  switch (status) {
+    case 'Ирсэн':            return 'cal-worked';
+    case 'тасалсан':         return 'cal-missed';
+    case 'Томилолт':         return 'cal-trip';
+    case 'Чөлөөтэй/Амралт': return 'cal-free';
+    default:                  return 'cal-no-req';
+  }
+}
+// ---- End Calendar ----
 
 function getCurrentMonth() {
   const now = new Date();
@@ -407,6 +483,20 @@ async function loadMonthData() {
         docId: doc.id,
         ...doc.data()
       }))
+      .filter(record => {
+        const day = record.Day || record.Date;
+        return day >= startDate && day <= endDate;
+      });
+
+    // Fetch pending requests for this month
+    const pendingQuery = query(
+      collection(db, 'timeAttendanceRequests'),
+      where('EmployeeLastName', '==', employeeLastName),
+      where('status', '==', 'pending')
+    );
+    const pendingSnapshot = await getDocs(pendingQuery);
+    pendingRecords.value = pendingSnapshot.docs
+      .map(doc => ({ docId: doc.id, ...doc.data() }))
       .filter(record => {
         const day = record.Day || record.Date;
         return day >= startDate && day <= endDate;
@@ -1179,6 +1269,90 @@ h3 {
   padding: 15px;
   background: #f3f4f6;
   border-radius: 4px;
+  font-size: 16px;
+}
+
+/* ===== INLINE CALENDAR ===== */
+.inline-calendar {
+  margin-bottom: 24px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.cal-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  padding: 4px 0;
+}
+
+.cal-day {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+  min-height: 32px;
+  transition: filter 0.12s;
+}
+.cal-day:not(.cal-empty):hover { filter: brightness(0.88); }
+.cal-day-num { line-height: 1; }
+
+.cal-worked    { background: #28a745; color: #fff; }
+.cal-missed    { background: #222;    color: #fff; }
+.cal-trip      { background: #fd7e14; color: #fff; }
+.cal-free      { background: #007bff; color: #fff; }
+.cal-no-req    { background: #dc3545; color: #fff; }
+.cal-pending-req { background: #155724; color: #fff; }
+.cal-weekend   { background: #f0f0f0; color: #bbb; }
+.cal-empty     { background: transparent; }
+
+.cal-pending-dot {
+  position: absolute;
+  top: 0; right: 3px;
+  font-size: 18px;
+  line-height: 1;
+  color: rgba(255,255,255,0.8);
+}
+
+/* Count chips row */
+.cal-count-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cal-count-chip {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+.chip-worked  { background: #28a745; }
+.chip-trip    { background: #fd7e14; }
+.chip-free    { background: #007bff; }
+.chip-missed  { background: #222; }
+.chip-pending { background: #155724; }
+.chip-no-req  { background: #dc3545; }
+
+.cal-working-hours {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #555;
+}
+.cal-working-hours strong {
+  color: #f59e0b;
   font-size: 16px;
 }
 </style>

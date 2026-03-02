@@ -4,7 +4,7 @@
       <h2>Ирц бүртгэлийн хүсэлт</h2>
       <button @click="$router.push('/dashboard')" class="btn-back">Буцах</button>
     </div>
-    
+
     <!-- My Pending Requests Section -->
     <div v-if="myPendingRequests.length > 0" class="my-requests-section">
       <div class="requests-header">
@@ -234,7 +234,7 @@ onMounted(async () => {
   
   // Fetch my pending requests
   await loadMyPendingRequests();
-  
+
   addRow();
 });
 
