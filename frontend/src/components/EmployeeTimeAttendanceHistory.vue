@@ -4,7 +4,12 @@
     
     <!-- Project Summary Section -->
     <div class="projects-summary-section">
-      <h4>Миний хариуцсан ажлууд</h4>
+      <div class="section-heading">
+        <h4>Миний хариуцсан ажлууд</h4>
+        <button @click="loadProjectSummary" class="btn-refresh" :disabled="loadingProjects">
+          {{ loadingProjects ? '...' : '🔄' }}
+        </button>
+      </div>
       <div class="project-controls">
         <select v-model="statusFilter" class="status-filter">
           <option value="">Бүх төлөв</option>
@@ -15,71 +20,75 @@
           <option value="Урамшуулал олгох">Урамшуулал олгох</option>
           <option value="Дууссан">Дууссан</option>
         </select>
-        <button @click="loadProjectSummary" class="btn-refresh" :disabled="loadingProjects">
-          {{ loadingProjects ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
-        </button>
       </div>
       
       <div v-if="loadingProjects" class="loading">Төслүүдийг уншиж байна...</div>
       
       <div v-else-if="filteredProjects.length > 0" class="projects-grid">
-        <div v-for="project in filteredProjects" :key="project.projectId" class="project-card" @click="viewProjectDetails(project)">
+        <div v-for="project in filteredProjects" :key="project.projectId"
+          class="project-card"
+          :style="{ borderLeftColor: getProgressColor(project.status) }"
+          @click="viewProjectDetails(project)">
+
+          <!-- Card top: ID + status badge -->
           <div class="project-header">
-            <h5>{{ project.projectId }}</h5>
-            <span class="project-status" :class="'status-' + project.status">{{ project.status }}</span>
-          </div>
-          <div class="project-details">
-            <div class="detail-row">
-              <span class="detail-icon">📍</span>
-              <span class="detail-label">Байршил:</span>
-              <span class="detail-value">{{ project.siteLocation }}</span>
-            </div>
-            <div class="detail-row" v-if="project.referenceId">
-              <span class="detail-icon">🔗</span>
-              <span class="detail-label">Лавлах дугаар:</span>
-              <span class="detail-value">{{ project.referenceId }}</span>
-            </div>
-            <div class="detail-row" v-if="project.startDate">
-              <span class="detail-icon">📅</span>
-              <span class="detail-label">Эхэлсэн:</span>
-              <span class="detail-value">{{ project.startDate }}</span>
+            <div class="project-id-wrap">
+              <span class="project-id">#{{ project.projectId }}</span>
+              <span class="project-status" :class="'status-' + project.status">{{ project.status }}</span>
             </div>
           </div>
-          <div class="project-stats">
-            <div class="stat-row">
-              <span class="stat-label">Төлөвлөгөөт цаг:</span>
-              <span class="stat-value planned">{{ project.plannedHour }} хүн/цаг</span>
+
+          <!-- Location prominent -->
+          <div class="project-location-row">
+            <span class="loc-icon">📍</span>
+            <span class="loc-text">{{ project.siteLocation }}</span>
+          </div>
+
+          <!-- Meta row -->
+          <div class="project-meta-row">
+            <span v-if="project.referenceId" class="meta-chip">🔗 {{ project.referenceId }}</span>
+            <span v-if="project.startDate" class="meta-chip">📅 {{ project.startDate }}</span>
+          </div>
+
+          <!-- Stats 2-col grid -->
+          <div class="stats-grid">
+            <div class="sg-item">
+              <div class="sg-label">Төлөвлөгөөт цаг</div>
+              <div class="sg-value planned">{{ project.plannedHour }}<small> цаг</small></div>
             </div>
-            <div class="stat-row">
-              <span class="stat-label">Ажилласан цаг:</span>
-              <span class="stat-value real">{{ project.realHour }} хүн/цаг</span>
+            <div class="sg-item">
+              <div class="sg-label">Ажилласан цаг</div>
+              <div class="sg-value real">{{ project.realHour }}<small> цаг</small></div>
             </div>
-            <div class="stat-row">
-              <span class="stat-label">Төлөв:</span>
-              <span class="stat-value status">{{ project.status }}</span>
+            <div v-if="project.engineerHand > 0" class="sg-item sg-full">
+              <div class="sg-label">Инженерийн урамшуулал</div>
+              <div class="sg-value bounty-adjusted">{{ formatNumber(project.engineerHand) }} ₮</div>
             </div>
-            <div class="stat-row" v-if="project.engineerHand > 0">
-              <span class="stat-label">Инженерийн урамшуулал:</span>
-              <span class="stat-value bounty-adjusted">{{ formatNumber(project.engineerHand) }} ₮</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">Төлөвийн прогресс:</span>
+          </div>
+
+          <!-- Progress bars full-width -->
+          <div class="progress-section">
+            <div class="progress-item">
+              <div class="progress-label">
+                <span>Төлөвийн прогресс</span>
+                <span>{{ project.progress }}%</span>
+              </div>
               <div class="progress-bar">
                 <div class="progress-fill" :style="{ width: project.progress + '%', backgroundColor: getProgressColor(project.status) }"></div>
-                <span class="progress-text">{{ project.progress }}%</span>
               </div>
             </div>
-            <div class="stat-row" v-if="project.HourPerformance != null">
-              <span class="stat-label">Цагийн гүйцэтгэл:</span>
+            <div v-if="project.HourPerformance != null" class="progress-item">
+              <div class="progress-label">
+                <span>Цагийн гүйцэтгэл</span>
+                <span :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
+              </div>
               <div class="progress-bar">
-                <div class="progress-fill" :style="{ 
-                  width: Math.min(100, project.HourPerformance) + '%', 
-                  backgroundColor: getPerformanceColor(project.HourPerformance)
-                }"></div>
-                <span class="progress-text" :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
+                <div class="progress-fill" :style="{ width: Math.min(100, project.HourPerformance) + '%', backgroundColor: getPerformanceColor(project.HourPerformance) }"></div>
               </div>
             </div>
           </div>
+
+          <div class="card-tap-hint">Дэлгэрэнг дарна дэдэггэер харах →</div>
         </div>
       </div>
       
@@ -129,11 +138,16 @@
     
     <!-- Month picker and statistics -->
     <div class="month-picker-section">
-      <div class="month-input-group">
-        <label>Сар сонгох:</label>
-        <input type="month" v-model="selectedMonth" @change="loadMonthData" class="month-input" />
+      <div class="picker-row">
+        <button class="month-nav-btn" @click="shiftMonth(-1)">&#8249;</button>
+        <div class="month-display">{{ formattedSelectedMonth }}</div>
+        <button class="month-nav-btn" @click="shiftMonth(1)">&#8250;</button>
       </div>
-      
+      <div class="range-tabs">
+        <button :class="['range-tab', selectedRange === 'full' ? 'active' : '']" @click="setRange('full')">Бүтэн сар</button>
+        <button :class="['range-tab', selectedRange === '1-15' ? 'active' : '']" @click="setRange('1-15')">1 – 15</button>
+        <button :class="['range-tab', selectedRange === '16-31' ? 'active' : '']" @click="setRange('16-31')">16 – сүүл</button>
+      </div>
     </div>
 
     <!-- Inline Calendar -->
@@ -160,6 +174,9 @@
       </div>
       <div v-if="monthStats" class="cal-working-hours">
         Ажилласан/Томилолт нийт цаг: <strong>{{ monthStats.workingHours }} цаг</strong>
+      </div>
+      <div v-if="monthStats" class="cal-working-hours">
+        Нийт илүү цаг: <strong>{{ monthStats.overtimeHours }} цаг</strong>
       </div>
     </div>
 
@@ -266,6 +283,30 @@ const pendingRecords = ref([]);
 const monthStats = ref(null);
 const projectSummary = ref([]);
 const recordStatusFilter = ref('');
+const selectedRange = ref('full');
+
+const mongoMonthNames = [
+  '1-р сар','2-р сар','3-р сар','4-р сар','5-р сар','6-р сар',
+  '7-р сар','8-р сар','9-р сар','10-р сар','11-р сар','12-р сар',
+];
+
+const formattedSelectedMonth = computed(() => {
+  if (!selectedMonth.value) return '';
+  const [y, m] = selectedMonth.value.split('-');
+  return `${y} оны ${mongoMonthNames[parseInt(m) - 1]}`;
+});
+
+function shiftMonth(dir) {
+  const [y, m] = selectedMonth.value.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  selectedMonth.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  loadMonthData();
+}
+
+function setRange(val) {
+  selectedRange.value = val;
+  loadMonthData();
+}
 
 // ---- Calendar ----
 const calWeekHeaders = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
@@ -275,14 +316,21 @@ const calendarDays = computed(() => {
   const [yearStr, monthStr] = selectedMonth.value.split('-');
   const year = parseInt(yearStr);
   const month = parseInt(monthStr) - 1; // 0-indexed
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startOffset = (firstDay.getDay() + 6) % 7; // Mon=0
+  const fullLastDate = new Date(year, month + 1, 0).getDate();
+
+  let startDayNum = 1;
+  let endDayNum = fullLastDate;
+  if (selectedRange.value === '1-15') endDayNum = 15;
+  else if (selectedRange.value === '16-31') startDayNum = 16;
+
+  // Offset from Monday for the first displayed day
+  const firstDisplayed = new Date(year, month, startDayNum);
+  const startOffset = (firstDisplayed.getDay() + 6) % 7;
   const days = [];
   for (let i = 0; i < startOffset; i++) {
     days.push({ key: `e${i}`, date: null, cls: 'cal-empty', isPending: false, tooltip: '' });
   }
-  for (let d = 1; d <= lastDay.getDate(); d++) {
+  for (let d = startDayNum; d <= endDayNum; d++) {
     const dd = String(d).padStart(2, '0');
     const dateStr = `${yearStr}-${monthStr}-${dd}`;
     const dow = new Date(year, month, d).getDay();
@@ -426,9 +474,17 @@ async function loadMonthData() {
 
     // Parse selected month
     const [year, month] = selectedMonth.value.split('-');
-    const startDate = `${year}-${month}-01`;
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+    const fullLastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+    let startDay = 1;
+    let endDayNum = fullLastDay;
+    if (selectedRange.value === '1-15') {
+      startDay = 1; endDayNum = 15;
+    } else if (selectedRange.value === '16-31') {
+      startDay = 16; endDayNum = fullLastDay;
+    }
+    const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
+    const endDate = `${year}-${month}-${String(endDayNum).padStart(2, '0')}`;
+    const lastDay = endDayNum;
 
     // Fetch approved records from timeAttendance - query by EmployeeLastName only
     const approvedQuery = query(
@@ -503,7 +559,7 @@ async function loadMonthData() {
       });
 
     // Calculate month statistics
-    calculateMonthStats(year, month, lastDay);
+    calculateMonthStats(year, month, startDay, lastDay);
 
   } catch (error) {
     console.error('Error loading time attendance data:', error);
@@ -512,7 +568,7 @@ async function loadMonthData() {
   }
 }
 
-function calculateMonthStats(year, month, lastDay) {
+function calculateMonthStats(year, month, startDay, lastDay) {
   const approvedDays = approvedRecords.value.length;
   const totalHours = approvedRecords.value.reduce((sum, record) => sum + (record.WorkingHour || 0), 0);
   // Only count hours for status 'Ажилласан', 'Томилолт', or 'Ирсэн' (robust to case/whitespace)
@@ -524,9 +580,13 @@ function calculateMonthStats(year, month, lastDay) {
     return sum;
   }, 0);
 
-  // Calculate working days in month (excluding weekends)
+  const overtimeHours = approvedRecords.value.reduce((sum, record) => {
+    return sum + (record.overtimeHour || 0);
+  }, 0);
+
+  // Calculate working days in range (excluding weekends)
   let workingDays = 0;
-  for (let day = 1; day <= lastDay; day++) {
+  for (let day = startDay; day <= lastDay; day++) {
     const date = new Date(parseInt(year), parseInt(month) - 1, day);
     const dayOfWeek = date.getDay();
     if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday or Saturday
@@ -540,6 +600,7 @@ function calculateMonthStats(year, month, lastDay) {
     approvedDays,
     totalHours: Math.round(totalHours * 10) / 10,
     workingHours: Math.round(workingHours * 10) / 10,
+    overtimeHours: Math.round(overtimeHours * 10) / 10,
     notRequestedDays: Math.max(0, notRequestedDays)
   };
 }
@@ -741,26 +802,96 @@ h3 {
 }
 
 .month-picker-section {
-  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
 }
 
-.month-input-group {
+.picker-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  margin-bottom: 16px;
 }
 
-.month-input-group label {
-  font-weight: 500;
-  color: #555;
+.month-nav-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #d1d5db;
+  background: white;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.month-nav-btn:hover { background: #e5e7eb; }
+
+.month-display {
+  flex: 1;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
 }
 
-.month-input {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+.range-tabs {
+  display: flex;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+  background: white;
+}
+
+.range-tab {
+  flex: 1;
+  padding: 10px 6px;
+  border: none;
+  background: transparent;
   font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+  border-right: 1px solid #d1d5db;
+}
+.range-tab:last-child { border-right: none; }
+.range-tab:hover { background: #f3f4f6; }
+.range-tab.active {
+  background: #1d4ed8;
+  color: white;
+  font-weight: 700;
+}
+
+/* keep old filter-group for other uses but remove min-width */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.filter-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+.filter-group input[type="month"],
+.filter-group select {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
 }
 
 .month-stats {
@@ -942,239 +1073,208 @@ h3 {
 
 .projects-summary-section {
   background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 30px;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .projects-summary-section h4 {
-  margin: 0 0 15px 0;
-  color: #333;
-  font-size: 18px;
-  display: inline-block;
+  margin: 0;
+  color: #111827;
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .project-controls {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 15px;
+  margin-bottom: 14px;
 }
 
 .status-filter {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 13px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
   background: white;
   cursor: pointer;
+  color: #374151;
 }
 
 .btn-refresh {
-  padding: 8px 16px;
-  background: #007bff;
+  padding: 8px 14px;
+  background: #3b82f6;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 16px;
+  line-height: 1;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
+.btn-refresh:hover:not(:disabled) { background: #2563eb; }
+.btn-refresh:disabled { background: #9ca3af; cursor: not-allowed; }
 
-.btn-refresh:hover:not(:disabled) {
-  background: #0056b3;
-}
-
-.btn-refresh:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
+/* Grid — 1 col mobile, 2 col tablet+, 3 col desktop */
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
-  clear: both;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (min-width: 640px) {
+  .projects-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1024px) {
+  .projects-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* Card */
 .project-card {
   background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 5px solid #6b7280;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   cursor: pointer;
-}
-
-.project-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.project-header {
-  border-bottom: 2px solid #f0f0f0;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+  transition: box-shadow 0.2s, transform 0.15s;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+.project-card:active { transform: scale(0.98); }
+@media (hover: hover) {
+  .project-card:hover {
+    box-shadow: 0 4px 14px rgba(0,0,0,0.13);
+    transform: translateY(-2px);
+  }
 }
 
-.project-header h5 {
-  margin: 0;
-  color: #007bff;
-  font-size: 16px;
-  font-weight: 600;
+/* Header */
+.project-header { margin: 0; }
+
+.project-id-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.project-id {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1d4ed8;
 }
 
 .project-status {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.project-status.status-Төлөвлөсөн {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.project-status.status-Ажиллаж.байгаа {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.project-status.status-Хүлээлэгдэж.өгөх {
-  background: #fff3e0;
-  color: #f57c00;
-}
-
-.project-status.status-Нэхэмжилж.өгөх {
-  background: #fce4ec;
-  color: #c2185b;
-}
-
-.project-status.status-Хүлээлэгдэж.өгөх.ба.шалгах {
-  background: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.project-status.status-Үрамшуулал.олгох {
-  background: #e0f2f1;
-  color: #00796b;
-}
-
-.project-status.status-Дууссан {
-  background: #e0e0e0;
-  color: #616161;
-}
-
-.project-details {
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detail-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.detail-icon {
-  flex-shrink: 0;
-  width: 20px;
-  text-align: center;
-}
-
-.detail-label {
-  color: #666;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.detail-value {
-  color: #333;
-  word-break: break-word;
-}
-
-.project-location {
-  color: #666;
-  font-size: 13px;
-}
-
-.project-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.stat-label {
-  color: #666;
-  font-size: 13px;
-}
-
-.stat-value {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.stat-value.planned {
-  color: #6c757d;
-}
-
-.stat-value.real {
-  color: #28a745;
-}
-
-.stat-value.bounty {
-  color: #f59e0b;
-  font-weight: 700;
-}
-
-.stat-value.bounty-adjusted {
-  color: #10b981;
-  font-weight: 700;
-  font-size: 15px;
-}
-
-.progress-bar {
-  position: relative;
-  width: 150px;
-  height: 24px;
-  background: #e9ecef;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid #d1d5db;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.progress-fill {
-  height: 100%;
-  transition: width 0.3s;
-  border-radius: 12px;
-}
-
-.progress-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  padding: 4px 10px;
+  border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* Location */
+.project-location-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.loc-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.loc-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+}
+
+/* Meta chips */
+.project-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.meta-chip {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Stats 2-col mini grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sg-item {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.sg-full { grid-column: 1 / -1; }
+.sg-label {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+.sg-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+.sg-value small { font-size: 11px; font-weight: 400; color: #9ca3af; }
+.sg-value.planned { color: #6b7280; }
+.sg-value.real    { color: #16a34a; }
+.sg-value.bounty-adjusted { color: #059669; }
+
+/* Progress section */
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-item {}
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  background: #e5e7eb;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* Tap hint */
+.card-tap-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: right;
+  margin-top: 2px;
 }
 
 .modal-overlay {
@@ -1200,7 +1300,7 @@ h3 {
 }
 
 .project-details-modal {
-  width: 900px;
+  width: min(900px, 96vw);
 }
 
 .modal-header {
@@ -1347,12 +1447,13 @@ h3 {
 .chip-no-req  { background: #dc3545; }
 
 .cal-working-hours {
-  margin-top: 10px;
+  margin-top: 8px;
   font-size: 14px;
-  color: #555;
+  color: #333;
 }
 .cal-working-hours strong {
-  color: #f59e0b;
-  font-size: 16px;
+  color: #333;
+  font-size: 15px;
+  font-weight: 700;
 }
 </style>
