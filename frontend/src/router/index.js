@@ -14,6 +14,7 @@ import WarehouseTransactionManagement from '../components/WarehouseTransactionMa
 import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
 import PublicProjects from '../views/PublicProjects.vue';
 import PublicTASummary from '../views/PublicTASummary.vue';
+import SupervisorSalaryReport from '../views/SupervisorSalaryReport.vue';
 
 const routes = [
   {
@@ -101,6 +102,12 @@ const routes = [
     path: '/warehouse-requests',
     name: 'WarehouseRequests',
     component: WarehouseRequestForm,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/supervisor-salary',
+    name: 'SupervisorSalaryReport',
+    component: SupervisorSalaryReport,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

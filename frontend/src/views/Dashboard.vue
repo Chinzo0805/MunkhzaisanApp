@@ -41,6 +41,9 @@
           <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>
+          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/supervisor-salary')" class="btn-action salary">
+            💰 Цалингийн тооцоо
+          </button>
         </div>
       </div>
 
