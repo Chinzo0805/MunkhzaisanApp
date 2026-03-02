@@ -155,14 +155,9 @@
                 <span v-if="project.StartDate && project.EndDate"> → </span>
                 <span v-if="project.EndDate">{{ excelSerialToDate(project.EndDate) }}</span>
               </div>
-              <div class="kcard-hours-row" v-if="project.PlannedHour > 0">
-                <div class="kcard-hours-bar">
-                  <div class="kcard-hours-fill" :style="{ width: Math.min(100, (project.RealHour / project.PlannedHour) * 100) + '%', background: getPerformanceClass(project.RealHour, project.PlannedHour) === 'perf-good' ? '#10b981' : '#ef4444' }"></div>
-                </div>
-                <div class="kcard-hours-labels">
-                  <span>{{ formatNumber(project.RealHour) }} / {{ formatNumber(project.PlannedHour) }}ц</span>
-                  <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">{{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%</span>
-                </div>
+              <div class="kcard-hours" v-if="project.PlannedHour > 0">
+                <span>📅 {{ formatNumber(project.PlannedHour) }}ц</span>
+                <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">▶ {{ formatNumber(project.RealHour) }}ц  ({{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%)</span>
               </div>
               <div class="kcard-footer">
                 <span class="kcard-id">#{{ project.id }}</span>
@@ -1580,29 +1575,13 @@ defineExpose({
   margin-bottom: 6px;
 }
 
-.kcard-hours-row {
-  margin-bottom: 6px;
-}
-
-.kcard-hours-bar {
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 3px;
-}
-
-.kcard-hours-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-
-.kcard-hours-labels {
+.kcard-hours {
   display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: #6b7280;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 6px;
 }
 
 .kcard-footer {
