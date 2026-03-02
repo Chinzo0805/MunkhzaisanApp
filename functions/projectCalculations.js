@@ -67,37 +67,34 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   const wosHour = parseFloat(projectData.WosHour) || 0;
   const additionalHour = parseFloat(projectData.additionalHour) || 0;
   const additionalValue = parseFloat(projectData.additionalValue) || 0;
-  
+  const isUnpaid = projectData.projectType === 'unpaid';
+
   // Calculate base amount (WosHour * 12500) - rounded to whole number
-  calculations.BaseAmount = Math.round(wosHour * 12500);
-  
+  calculations.BaseAmount = isUnpaid ? 0 : Math.round(wosHour * 12500);
+
   // Calculate TeamBounty - rounded to whole number
-  calculations.TeamBounty = Math.round(wosHour * 22500);
-  
+  calculations.TeamBounty = isUnpaid ? 0 : Math.round(wosHour * 22500);
+
   // Calculate NonEngineerBounty - rounded to whole number
-  calculations.NonEngineerBounty = Math.round(nonEngineerHours * 5000);
-  
+  calculations.NonEngineerBounty = isUnpaid ? 0 : Math.round(nonEngineerHours * 5000);
+
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
     calculations.HourPerformance = Math.round((realHour / plannedHour) * 100);
   } else {
     calculations.HourPerformance = 0;
   }
-  
+
   // Calculate EngineerHand (performance-adjusted bounty) - rounded to whole number
-  // Formula: Bounty % = 200% - Performance %
-  // At 100% performance: 200 - 100 = 100% bounty
-  // At 60% performance: 200 - 60 = 140% bounty
-  // At 120% performance: 200 - 120 = 80% bounty
-  if (plannedHour > 0 && calculations.BaseAmount > 0) {
+  if (!isUnpaid && plannedHour > 0 && calculations.BaseAmount > 0) {
     const bountyPercentage = 200 - calculations.HourPerformance;
     calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
   } else {
-    calculations.EngineerHand = calculations.BaseAmount;
+    calculations.EngineerHand = 0;
   }
-  
-  // Calculate Income HR
-  calculations.IncomeHR = Math.round((wosHour + additionalHour) * 110000);
+
+  // Calculate Income HR (0 for unpaid projects)
+  calculations.IncomeHR = isUnpaid ? 0 : Math.round((wosHour + additionalHour) * 110000);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
   calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand);
@@ -131,10 +128,15 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   
   // Calculate Profit HR
   const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
-  calculations.ProfitHR = Math.round(
-    calculations.IncomeHR - 
-    (calculations.EngineerHand + calculations.NonEngineerBounty + calculations.ExpenseHRFromTrx + expenceHR + additionalValue)
-  );
+  if (isUnpaid) {
+    // No income, no bounty — only direct expenses
+    calculations.ProfitHR = Math.round(-(expenseHRFromTrx + expenceHR + additionalValue));
+  } else {
+    calculations.ProfitHR = Math.round(
+      calculations.IncomeHR - 
+      (calculations.EngineerHand + calculations.NonEngineerBounty + calculations.ExpenseHRFromTrx + expenceHR + additionalValue)
+    );
+  }
   
   // Calculate Summary Totals
   const incomeCar = parseFloat(projectData.IncomeCar) || 0;
@@ -175,15 +177,16 @@ function calculateBasicMetrics(projectData) {
   const nonEngineerHours = parseFloat(projectData.NonEngineerWorkHour) || 0;
   const additionalHour = parseFloat(projectData.additionalHour) || 0;
   const additionalValue = parseFloat(projectData.additionalValue) || 0;
+  const isUnpaid = projectData.projectType === 'unpaid';
   
-  // Calculate base amount (WosHour * 12500) - rounded to whole number
-  calculations.BaseAmount = Math.round(wosHour * 12500);
+  // Calculate base amount (WosHour * 12500)
+  calculations.BaseAmount = isUnpaid ? 0 : Math.round(wosHour * 12500);
   
-  // Calculate TeamBounty - rounded to whole number
-  calculations.TeamBounty = Math.round(wosHour * 22500);
+  // Calculate TeamBounty
+  calculations.TeamBounty = isUnpaid ? 0 : Math.round(wosHour * 22500);
   
-  // Calculate NonEngineerBounty - rounded to whole number
-  calculations.NonEngineerBounty = Math.round(nonEngineerHours * 5000);
+  // Calculate NonEngineerBounty
+  calculations.NonEngineerBounty = isUnpaid ? 0 : Math.round(nonEngineerHours * 5000);
   
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
@@ -192,16 +195,16 @@ function calculateBasicMetrics(projectData) {
     calculations.HourPerformance = 0;
   }
   
-  // Calculate EngineerHand (performance-adjusted bounty) - rounded to whole number
-  if (plannedHour > 0 && calculations.BaseAmount > 0) {
+  // Calculate EngineerHand (performance-adjusted bounty)
+  if (!isUnpaid && plannedHour > 0 && calculations.BaseAmount > 0) {
     const bountyPercentage = 200 - calculations.HourPerformance;
     calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
   } else {
-    calculations.EngineerHand = calculations.BaseAmount;
+    calculations.EngineerHand = 0;
   }
   
-  // Calculate Income HR
-  calculations.IncomeHR = Math.round((wosHour + additionalHour) * 110000);
+  // Calculate Income HR (0 for unpaid)
+  calculations.IncomeHR = isUnpaid ? 0 : Math.round((wosHour + additionalHour) * 110000);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
   calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand);
@@ -213,10 +216,14 @@ function calculateBasicMetrics(projectData) {
   
   // Calculate Profit HR
   const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
-  calculations.ProfitHR = Math.round(
-    calculations.IncomeHR - 
-    (calculations.EngineerHand + calculations.NonEngineerBounty + expenseHRFromTrx + expenceHR + additionalValue)
-  );
+  if (isUnpaid) {
+    calculations.ProfitHR = Math.round(-(expenseHRFromTrx + expenceHR + additionalValue));
+  } else {
+    calculations.ProfitHR = Math.round(
+      calculations.IncomeHR - 
+      (calculations.EngineerHand + calculations.NonEngineerBounty + expenseHRFromTrx + expenceHR + additionalValue)
+    );
+  }
   
   // Calculate Summary Totals
   const incomeCar = parseFloat(projectData.IncomeCar) || 0;
@@ -252,7 +259,7 @@ function needsRecalculation(oldData, newData) {
   const calculationFields = [
     'WosHour', 'PlannedHour', 'RealHour', 
     'EngineerWorkHour', 'NonEngineerWorkHour',
-    'additionalHour', 'additionalValue'
+    'additionalHour', 'additionalValue', 'projectType'
   ];
   
   for (const field of calculationFields) {

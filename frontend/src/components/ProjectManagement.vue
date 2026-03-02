@@ -558,8 +558,8 @@ const kanbanStatuses = [
 
 const kanbanProjects = computed(() => {
   let items = [...projectsStore.projects];
-  // Hide internal (own-company) projects from kanban
-  items = items.filter(p => !isInternalCustomer(p.customer));
+  // Hide internal (own-company) and unpaid projects from kanban
+  items = items.filter(p => !isInternalCustomer(p.customer) && p.projectType !== 'unpaid');
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
     items = items.filter(p =>
@@ -798,9 +798,10 @@ function getStatusColor(status) {
 }
 
 function onWosHourChange() {
-  // When WosHour changes, calculate IncomeHR
-  // IncomeHR = (WosHour + additionalHour) * 110000
-  form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
+  // When WosHour changes, calculate IncomeHR (skip for unpaid projects)
+  if (form.value.projectType !== 'unpaid') {
+    form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
+  }
   calculateFinancials();
 }
 
@@ -820,6 +821,26 @@ function onAdditionalHourChange() {
 }
 
 function calculateFinancials() {
+  const isUnpaid = form.value.projectType === 'unpaid';
+
+  if (isUnpaid) {
+    // Unpaid projects: no client revenue, no bounty
+    form.value.IncomeHR = 0;
+    form.value.BaseAmount = 0;
+    form.value.TeamBounty = 0;
+    form.value.EngineerHand = 0;
+    form.value.NonEngineerBounty = 0;
+    // PlannedHour still meaningful for tracking
+    form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
+    form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
+    // ProfitHR = 0 income - expenses
+    form.value.ProfitHR = Math.round(-((form.value.additionalValue || 0) + (form.value.ExpenceHR || 0)));
+    form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
+    form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
+    form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+    return;
+  }
+
   // BaseAmount = WosHour * 12500
   form.value.BaseAmount = Math.round((form.value.WosHour || 0) * 12500);
   // TeamBounty = WosHour * 22500
