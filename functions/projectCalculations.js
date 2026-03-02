@@ -30,29 +30,54 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   let overtimeHours = 0;
   let engineerHours = 0;
   let nonEngineerHours = 0;
-  
+  const empHoursMap = new Map(); // employeeId (int) -> total hours, for labor cost
+
   taSnapshot.forEach(doc => {
     const record = doc.data();
     const workingHour = parseFloat(record.WorkingHour) || 0;
     const overtimeHour = parseFloat(record.overtimeHour) || 0;
     const totalHour = workingHour + overtimeHour;
-    
+
     workingHours += workingHour;
     overtimeHours += overtimeHour;
     totalHours += totalHour;
-    
+
+    // Track per-employee hours for labor cost calculation
+    const empId = parseInt(record.EmployeeID);
+    if (empId) empHoursMap.set(empId, (empHoursMap.get(empId) || 0) + totalHour);
+
     // Use Role field directly from the timeAttendance record
     // Role is already stored in each record (e.g., "Инженер", "Жолооч")
     const role = record.Role || '';
-    
+
     if (role === 'Инженер') {
       engineerHours += totalHour;
     } else {
       nonEngineerHours += totalHour;
     }
   });
-  
+
   console.log(`Project ${projectId} aggregation: Total=${totalHours}, Engineer=${engineerHours}, NonEngineer=${nonEngineerHours}`);
+
+  // Calculate EmployeeLaborCost: sum of (salary/160h * hours) per employee from TA records
+  // Used as the HR cost for unpaid projects (no client income, no bounty)
+  let employeeLaborCostFromTA = 0;
+  if (empHoursMap.size > 0) {
+    const empIds = Array.from(empHoursMap.keys());
+    // Firestore 'in' supports up to 30; batch if needed
+    for (let i = 0; i < empIds.length; i += 30) {
+      const batch = empIds.slice(i, i + 30);
+      const empSnap = await db.collection('employees').where('Id', 'in', batch).get();
+      empSnap.forEach(doc => {
+        const emp = doc.data();
+        const empId = parseInt(emp.Id);
+        const salary = parseFloat(emp.Salary) || 0;
+        const hours = empHoursMap.get(empId) || 0;
+        employeeLaborCostFromTA += (salary / 160) * hours; // 160h = standard mo baseline
+      });
+    }
+  }
+  calculations.EmployeeLaborCost = Math.round(employeeLaborCostFromTA);
   
   // Store aggregated hours - rounded to whole numbers
   calculations.RealHour = Math.round(totalHours);
@@ -129,8 +154,8 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   // Calculate Profit HR
   const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
   if (isUnpaid) {
-    // No income, no bounty — only direct expenses
-    calculations.ProfitHR = Math.round(-(expenseHRFromTrx + expenceHR + additionalValue));
+    // No income, no bounty — actual labor cost + direct expenses
+    calculations.ProfitHR = Math.round(-(calculations.EmployeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
   } else {
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
@@ -144,8 +169,13 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   const expenceHSE = parseFloat(projectData.ExpenceHSE) || 0;
   
   calculations.TotalIncome = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
-  calculations.TotalExpence = Math.round(expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx + calculations.ExpenceHRBonus);
-  calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + calculations.ExpenseHRFromTrx);
+  if (isUnpaid) {
+    calculations.TotalExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx);
+    calculations.TotalHRExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenseHRFromTrx);
+  } else {
+    calculations.TotalExpence = Math.round(expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx + calculations.ExpenceHRBonus);
+    calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + calculations.ExpenseHRFromTrx);
+  }
   
   // Calculate Car and Material profits
   const profitCar = incomeCar - calculations.ExpenceCar;
@@ -213,11 +243,14 @@ function calculateBasicMetrics(projectData) {
   const expenseHRFromTrx = parseFloat(projectData.ExpenseHRFromTrx) || 0;
   const expenceCar = parseFloat(projectData.ExpenceCar) || 0;
   const expenceMaterial = parseFloat(projectData.ExpenceMaterial) || 0;
+  // For unpaid: use stored EmployeeLaborCost (calculated by full recalc from TA)
+  const employeeLaborCost = isUnpaid ? (parseFloat(projectData.EmployeeLaborCost) || 0) : 0;
+  calculations.EmployeeLaborCost = Math.round(employeeLaborCost);
   
   // Calculate Profit HR
   const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
   if (isUnpaid) {
-    calculations.ProfitHR = Math.round(-(expenseHRFromTrx + expenceHR + additionalValue));
+    calculations.ProfitHR = Math.round(-(employeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
   } else {
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
@@ -231,8 +264,13 @@ function calculateBasicMetrics(projectData) {
   const expenceHSE = parseFloat(projectData.ExpenceHSE) || 0;
   
   calculations.TotalIncome = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
-  calculations.TotalExpence = Math.round(expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx + calculations.ExpenceHRBonus);
-  calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + expenseHRFromTrx);
+  if (isUnpaid) {
+    calculations.TotalExpence = Math.round(employeeLaborCost + expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx);
+    calculations.TotalHRExpence = Math.round(employeeLaborCost + expenceHR + expenseHRFromTrx);
+  } else {
+    calculations.TotalExpence = Math.round(expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx + calculations.ExpenceHRBonus);
+    calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + expenseHRFromTrx);
+  }
   
   // Calculate Car and Material profits
   const profitCar = incomeCar - expenceCar;

@@ -420,6 +420,14 @@
             </div>
           </div>
           
+          <div class="form-row" v-if="form.projectType === 'unpaid'">
+            <div class="form-group">
+              <label>Ажилтны цалингийн зардал (тооцоолсон)</label>
+              <input :value="formatNumber(form.EmployeeLaborCost || 0) + '\u20ae'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
+              <small style="color: #6b7280;">\u0422\u0410-\u0430\u0430\u0441 \u0442\u043e\u043e\u0446\u043e\u043e\u043b\u043e\u0433\u0434\u0441\u043e\u043d · Salary/160\u0446 \xd7 \u0446\u0430\u0433 (\u0443\u0442\u0430\u0430 \u0445\u0430\u0434\u0433\u0430\u043b\u0430\u0430\u0440 \u0434\u044d\u044d)</small>
+            </div>
+          </div>
+
           <!-- Expense Information Section -->
           <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #ef4444; font-weight: 600; border-bottom: 1px solid #ef4444; padding-bottom: 3px;">Expense Information</h6>
           
@@ -652,6 +660,7 @@ const form = ref({
   additionalHour: 0,
   additionalValue: 0,
   AdditionalOwner: '',
+  EmployeeLaborCost: 0,
   IncomeHR: 0,
   ExpenceHR: 0,
   IncomeCar: 0,
@@ -833,8 +842,10 @@ function calculateFinancials() {
     // PlannedHour still meaningful for tracking
     form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-    // ProfitHR = 0 income - expenses
-    form.value.ProfitHR = Math.round(-((form.value.additionalValue || 0) + (form.value.ExpenceHR || 0)));
+    // ProfitHR = -(EmployeeLaborCost + ExpenceHR + additionalValue)
+    // EmployeeLaborCost is calculated server-side from TA; use stored value here
+    const laborCost = form.value.EmployeeLaborCost || 0;
+    form.value.ProfitHR = Math.round(-((laborCost) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0)));
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
     form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
@@ -909,6 +920,7 @@ function editItem(project) {
     additionalHour: project.additionalHour || 0,
     additionalValue: project.additionalValue || 0,
     AdditionalOwner: project.AdditionalOwner || '',
+    EmployeeLaborCost: project.EmployeeLaborCost || 0,
     IncomeHR: project.IncomeHR || 0,
     ExpenceHR: project.ExpenceHR || 0,
     IncomeCar: project.IncomeCar || 0,
@@ -964,6 +976,7 @@ function closeModal() {
     additionalHour: 0,
     additionalValue: 0,
     AdditionalOwner: '',
+    EmployeeLaborCost: 0,
     IncomeHR: 0,
     ExpenceHR: 0,
     IncomeCar: 0,
