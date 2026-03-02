@@ -538,6 +538,8 @@ const kanbanStatuses = [
 
 const kanbanProjects = computed(() => {
   let items = [...projectsStore.projects];
+  // Hide internal (own-company) projects from kanban
+  items = items.filter(p => !isInternalCustomer(p.customer));
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
     items = items.filter(p =>
