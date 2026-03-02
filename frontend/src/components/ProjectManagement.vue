@@ -5,8 +5,11 @@
       <button @click="handleAddItem" class="action-btn add-btn">
         + Add Project
       </button>
-      <button @click="showList = !showList" class="action-btn">
-        {{ showList ? 'Hide Projects' : 'List Projects' }}
+      <button @click="showList = !showList; if(showList) showKanban = false;" class="action-btn" :class="{ 'active-view-btn': showList }">
+        {{ showList ? 'Hide List' : '☰ List' }}
+      </button>
+      <button @click="showKanban = !showKanban; if(showKanban) showList = false;" class="action-btn" :class="{ 'active-view-btn': showKanban }">
+        {{ showKanban ? 'Hide Kanban' : '⊞ Kanban' }}
       </button>
     </div>
     
@@ -95,6 +98,56 @@
           <div class="profit-display" :class="{ 'profit-positive': (project.TotalProfit || 0) > 0, 'profit-negative': (project.TotalProfit || 0) < 0 }">
             <span class="profit-label">Total Profit:</span>
             <span class="profit-value">{{ formatNumber(project.TotalProfit || 0) }}₮</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div v-if="showKanban" class="kanban-wrapper">
+      <div class="kanban-search-bar">
+        <input v-model="searchQuery" type="text" placeholder="Search by customer, type, or location..." class="search-input" />
+      </div>
+      <div class="kanban-board">
+        <div
+          v-for="status in kanbanStatuses"
+          :key="status"
+          class="kanban-column"
+          :class="{ 'kanban-drag-over': dragOverColumn === status }"
+          @dragover.prevent="onDragOver(status, $event)"
+          @dragleave.self="onDragLeave"
+          @drop.prevent="onDrop(status, $event)"
+        >
+          <div class="kanban-col-header" :style="{ borderTopColor: getStatusColor(status) }">
+            <span class="kanban-col-title">{{ status }}</span>
+            <span class="kanban-col-count" :style="{ background: getStatusColor(status) }">{{ projectsInColumn(status).length }}</span>
+          </div>
+          <div class="kanban-col-body">
+            <div
+              v-for="project in projectsInColumn(status)"
+              :key="project.id"
+              class="kanban-card"
+              draggable="true"
+              @dragstart="onDragStart(project, $event)"
+              @dragend="onDragEnd"
+              @click="editItem(project)"
+            >
+              <div class="kcard-top">
+                <span class="kcard-id">#{{ project.id }}</span>
+                <span class="kcard-location">📍 {{ project.siteLocation }}</span>
+              </div>
+              <div class="kcard-customer">{{ project.customer }}</div>
+              <div class="kcard-type">{{ project.type }}<span v-if="project.subtype"> · {{ project.subtype }}</span></div>
+              <div class="kcard-hours" v-if="project.PlannedHour > 0">
+                <span>📅 {{ formatNumber(project.PlannedHour) }}ц</span>
+                <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">▶ {{ formatNumber(project.RealHour) }}ц</span>
+              </div>
+              <div class="kcard-profit" v-if="project.TotalProfit || project.TotalProfit === 0"
+                :class="{ 'kprofit-pos': (project.TotalProfit||0) > 0, 'kprofit-neg': (project.TotalProfit||0) < 0 }">
+                {{ formatNumber(project.TotalProfit || 0) }}₮
+              </div>
+            </div>
+            <div v-if="projectsInColumn(status).length === 0" class="kanban-empty">— хоосон —</div>
           </div>
         </div>
       </div>
@@ -428,6 +481,86 @@ const filterStatus = ref('');
 const sortBy = ref('customer');
 const saving = ref(false);
 const formError = ref('');
+
+// Kanban board state
+const showKanban = ref(false);
+const draggedProject = ref(null);
+const dragOverColumn = ref('');
+
+const kanbanStatuses = [
+  'Төлөвлсөн',
+  'Ажиллаж байгаа',
+  'Ажил хүлээлгэн өгөх',
+  'Нэхэмжлэх өгөх ба Шалгах',
+  'Урамшуулал олгох',
+  'Дууссан',
+];
+
+const kanbanProjects = computed(() => {
+  let items = [...projectsStore.projects];
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase();
+    items = items.filter(p =>
+      (p.customer || '').toLowerCase().includes(query) ||
+      (p.type || '').toLowerCase().includes(query) ||
+      (p.siteLocation || '').toLowerCase().includes(query)
+    );
+  }
+  return items;
+});
+
+function projectsInColumn(status) {
+  return kanbanProjects.value.filter(p => p.Status === status);
+}
+
+function onDragStart(project, event) {
+  draggedProject.value = project;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', project.id);
+}
+
+function onDragEnd() {
+  draggedProject.value = null;
+  dragOverColumn.value = '';
+}
+
+function onDragOver(status, event) {
+  event.dataTransfer.dropEffect = 'move';
+  dragOverColumn.value = status;
+}
+
+function onDragLeave() {
+  dragOverColumn.value = '';
+}
+
+async function onDrop(status, event) {
+  dragOverColumn.value = '';
+  const project = draggedProject.value;
+  draggedProject.value = null;
+  if (!project || project.Status === status) return;
+  try {
+    const updatedData = {
+      id: project.id, customer: project.customer, type: project.type, subtype: project.subtype,
+      siteLocation: project.siteLocation, StartDate: project.StartDate, EndDate: project.EndDate,
+      ResponsibleEmp: project.ResponsibleEmp, Detail: project.Detail, Comment: project.Comment,
+      referenceIdfromCustomer: project.referenceIdfromCustomer, Status: status,
+      WosHour: project.WosHour, BaseAmount: project.BaseAmount, EngineerHand: project.EngineerHand,
+      TeamBounty: project.TeamBounty, PlannedHour: project.PlannedHour, RealHour: project.RealHour,
+      EngineerWorkHour: project.EngineerWorkHour, NonEngineerWorkHour: project.NonEngineerWorkHour,
+      NonEngineerBounty: project.NonEngineerBounty, HourPerformance: project.HourPerformance,
+      additionalHour: project.additionalHour, additionalValue: project.additionalValue,
+      AdditionalOwner: project.AdditionalOwner, IncomeHR: project.IncomeHR, ExpenceHR: project.ExpenceHR,
+      IncomeCar: project.IncomeCar, ExpenceCar: project.ExpenceCar, IncomeMaterial: project.IncomeMaterial,
+      ExpenceMaterial: project.ExpenceMaterial, ExpenceHSE: project.ExpenceHSE,
+      ProfitHR: project.ProfitHR, ProfitCar: project.ProfitCar, ProfitMaterial: project.ProfitMaterial,
+      TotalProfit: project.TotalProfit,
+    };
+    await manageProject('update', updatedData, project.docId);
+    await projectsStore.fetchProjects();
+  } catch (error) {
+    console.error('Error updating project status via kanban:', error);
+  }
+}
 
 const form = ref({
   id: '',
@@ -1241,4 +1374,177 @@ defineExpose({
   color: #dc2626;
   margin-bottom: 15px;
 }
+
+/* ── Kanban board ──────────────────────────────────────────── */
+.active-view-btn {
+  background: #1d4ed8 !important;
+  color: white !important;
+}
+
+.kanban-wrapper {
+  margin-top: 16px;
+}
+
+.kanban-search-bar {
+  margin-bottom: 12px;
+}
+
+.kanban-board {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: flex-start;
+}
+
+.kanban-column {
+  flex: 0 0 230px;
+  min-width: 200px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 2px dashed transparent;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.kanban-drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.kanban-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-top: 4px solid;
+  border-radius: 6px 6px 0 0;
+  background: white;
+}
+
+.kanban-col-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  line-height: 1.3;
+}
+
+.kanban-col-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  padding: 2px 7px;
+  border-radius: 10px;
+  min-width: 22px;
+  text-align: center;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.kanban-col-body {
+  padding: 8px;
+  min-height: 80px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kanban-card {
+  background: white;
+  border-radius: 6px;
+  padding: 10px 10px 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  cursor: grab;
+  border-left: 3px solid #e5e7eb;
+  transition: box-shadow 0.15s, transform 0.15s;
+  user-select: none;
+}
+
+.kanban-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(-1px);
+}
+
+.kanban-card:active {
+  cursor: grabbing;
+  opacity: 0.8;
+}
+
+.kcard-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.kcard-id {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.kcard-location {
+  font-size: 10px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
+.kcard-customer {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kcard-type {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kcard-hours {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #4b5563;
+  margin-bottom: 4px;
+}
+
+.kcard-profit {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.kprofit-pos { color: #16a34a; }
+.kprofit-neg { color: #dc2626; }
+
+.kanban-empty {
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 12px 0;
+}
+
+@media (max-width: 640px) {
+  .kanban-column {
+    flex: 0 0 180px;
+    min-width: 160px;
+  }
+}
 </style>
+
