@@ -107,7 +107,19 @@
         <div class="modal-body">
           <div v-if="loadingProjectTA" class="loading">Уншиж байна...</div>
           <div v-else-if="projectTARecords.length > 0">
-            <table class="ta-table">
+            <!-- Mobile: cards -->
+            <div v-if="isMobile" class="ta-cards">
+              <div v-for="record in projectTARecords" :key="record.docId" class="ta-card">
+                <div class="ta-card-top">
+                  <span class="ta-card-date">📅 {{ record.Day }}</span>
+                  <span class="ta-card-hours">{{ record.WorkingHour }} ц</span>
+                </div>
+                <div class="ta-card-name">👤 {{ record.EmployeeFirstName }} {{ record.EmployeeLastName }}</div>
+                <div v-if="record.comment" class="ta-card-comment">💬 {{ record.comment }}</div>
+              </div>
+            </div>
+            <!-- Desktop: table -->
+            <table v-else class="ta-table">
               <thead>
                 <tr>
                   <th>Огноо</th>
@@ -125,8 +137,18 @@
                 </tr>
               </tbody>
             </table>
+            <!-- Stats summary -->
             <div class="ta-summary">
-              <strong>Нийт ажилласан цаг: {{ totalProjectHours }} хүн/цаг</strong>
+              <div class="ta-stat-grid">
+                <div class="ta-stat-item">
+                  <div class="ta-stat-label">Нийт хүн/цаг</div>
+                  <div class="ta-stat-value">{{ totalProjectHours }} <small>цаг</small></div>
+                </div>
+                <div class="ta-stat-item accent">
+                  <div class="ta-stat-label">Баг/Цаг <span class="ta-stat-hint">(нийт цаг ÷ 3)</span></div>
+                  <div class="ta-stat-value">{{ bagHours }} <small>цаг</small></div>
+                </div>
+              </div>
             </div>
           </div>
           <div v-else class="no-records">
@@ -261,12 +283,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
+
+const isMobile = ref(window.innerWidth < 640);
+function handleResize() { isMobile.value = window.innerWidth < 640; }
+onUnmounted(() => window.removeEventListener('resize', handleResize));
 
 const loading = ref(false);
 const selectedMonth = ref(getCurrentMonth());
@@ -419,6 +445,11 @@ const totalProjectHours = computed(() => {
   return projectTARecords.value.reduce((sum, record) => {
     return sum + (parseFloat(record.WorkingHour) || 0);
   }, 0);
+});
+
+const bagHours = computed(() => {
+  const val = totalProjectHours.value / 3;
+  return Math.round(val * 10) / 10;
 });
 
 function formatDate(dateStr) {
@@ -781,6 +812,7 @@ function calculateMonthStats_old(year, month, lastDay) {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', handleResize);
   loadMonthData();
   loadProjectSummary();
 });
@@ -1365,11 +1397,133 @@ h3 {
 }
 
 .ta-summary {
-  text-align: right;
-  padding: 15px;
+  padding: 14px 16px 4px;
+}
+
+.ta-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ta-stat-item {
   background: #f3f4f6;
-  border-radius: 4px;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ta-stat-item.accent {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.ta-stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.ta-stat-hint {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.ta-stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.1;
+}
+
+.ta-stat-item.accent .ta-stat-value {
+  color: #1d4ed8;
+}
+
+.ta-stat-value small {
+  font-size: 13px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+/* Mobile record cards */
+.ta-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ta-card {
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border-left: 4px solid #3b82f6;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ta-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ta-card-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.ta-card-hours {
   font-size: 16px;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: #eff6ff;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.ta-card-name {
+  font-size: 13px;
+  color: #374151;
+}
+
+.ta-card-comment {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Responsive modal */
+@media (max-width: 640px) {
+  .project-details-modal {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    margin-top: auto;
+    align-self: flex-end;
+  }
+  .modal-overlay {
+    align-items: flex-end;
+  }
+  .modal-header {
+    padding: 14px 16px;
+  }
+  .modal-header h3 {
+    font-size: 15px;
+    word-break: break-word;
+  }
+  .modal-body {
+    padding: 14px;
+  }
+  .ta-stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* ===== INLINE CALENDAR ===== */
