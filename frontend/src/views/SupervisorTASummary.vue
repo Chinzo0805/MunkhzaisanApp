@@ -210,15 +210,18 @@ const mongolianHolidays = [
 // Calculate working days in range
 const workingDaysInRange = computed(() => {
   const [year, month] = selectedMonth.value.split('-');
+  const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
   let startDay, endDay;
-  
+
   if (selectedRange.value === 'full') {
     startDay = 1;
-    // Get last day of month
-    const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
     endDay = lastDayOfMonth;
+  } else if (selectedRange.value === '1-15') {
+    startDay = 1;
+    endDay = 15;
   } else {
-    [startDay, endDay] = selectedRange.value.split('-').map(Number);
+    startDay = 16;
+    endDay = lastDayOfMonth;
   }
   
   let workingDays = 0;
@@ -291,14 +294,19 @@ async function loadSummary() {
   try {
     const [year, month] = selectedMonth.value.split('-');
     let startDay, endDay;
-    
+
+    const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+
     if (selectedRange.value === 'full') {
       startDay = 1;
-      // Get last day of month
-      const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
       endDay = lastDayOfMonth;
+    } else if (selectedRange.value === '1-15') {
+      startDay = 1;
+      endDay = 15;
     } else {
-      [startDay, endDay] = selectedRange.value.split('-').map(Number);
+      // '16-31' → use actual last day so Feb/30-day months are correct
+      startDay = 16;
+      endDay = lastDayOfMonth;
     }
     
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
@@ -317,16 +325,23 @@ async function loadSummary() {
     
     console.log(`Loaded ${records.length} records`);
     
-    // Group by employee
+    // Group by employee — key on EmployeeID first (most stable), then composite name
     const employeeMap = new Map();
-    
+
     records.forEach(record => {
-      const empName = record.EmployeeFirstName || 'Unknown';
-      const empId = record.EmployeeID || '';
-      
-      if (!employeeMap.has(empName)) {
-        employeeMap.set(empName, {
-          employeeName: empName,
+      const empId   = String(record.EmployeeID || '').trim();
+      const lastName  = String(record.EmployeeLastName  || record.LastName  || '').trim();
+      const firstName = String(record.EmployeeFirstName || record.FirstName || '').trim();
+
+      // Stable grouping key: prefer numeric ID, fall back to LastName|FirstName composite
+      const empKey = empId || `${lastName}|${firstName}` || 'Unknown';
+
+      // Display name shown in table
+      const displayName = [lastName, firstName].filter(Boolean).join(' ') || 'Unknown';
+
+      if (!employeeMap.has(empKey)) {
+        employeeMap.set(empKey, {
+          employeeName: displayName,
           employeeId: empId,
           workedHours: 0,
           restHours: 0,
@@ -337,23 +352,24 @@ async function loadSummary() {
           missedDays: 0
         });
       }
-      
-      const employee = employeeMap.get(empName);
+
+      const employee = employeeMap.get(empKey);
       const hours = parseFloat(record.WorkingHour) || 0;
-      const status = record.Status || '';
-      
+      // Normalize status: lowercase + trim to avoid casing/whitespace mismatches
+      const status = (record.Status || '').toLowerCase().trim();
+
       // Categorize by status
-      if (status === 'Ирсэн' || status === 'Ажилласан' || status === 'Томилолт') {
+      if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
         employee.workedHours += hours;
         if (hours > 0) employee.workedDays++;
-      } else if (status === 'Чөлөөтэй/Амралт' || status.includes('Амарсан') || status.includes('Чөлөөтэй')) {
+      } else if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
         employee.restHours += hours;
         if (hours > 0) employee.restDays++;
       } else if (status === 'тасалсан') {
         employee.missedHours += hours;
         if (hours > 0) employee.missedDays++;
       }
-      
+
       employee.totalHours += hours;
     });
     
