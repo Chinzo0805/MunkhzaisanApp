@@ -126,11 +126,11 @@
               <th @click="sortBy('IncomeHR')" class="sortable financial-hr">
                 Орлого HR {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
-              <th @click="sortBy('ExpenceHR')" class="sortable financial-hr">
-                Зарлага HR {{ sortColumn === 'ExpenceHR' ? (sortAsc ? '↑' : '↓') : '' }}
-              </th>
               <th @click="sortBy('ExpenceHRBonus')" class="sortable financial-hr">
                 Нийт урамшуулал {{ sortColumn === 'ExpenceHRBonus' ? (sortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th @click="sortBy('EmployeeLaborCost')" class="sortable financial-hr">
+                Суурь цалин {{ sortColumn === 'EmployeeLaborCost' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
               <th @click="sortBy('ExpenseHRFromTrx')" class="sortable financial-hr wrap-text">
                 Хоол/Томилолт/Бусдад өгөх ажлын хөлс {{ sortColumn === 'ExpenseHRFromTrx' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -270,10 +270,10 @@
                 <span>{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</span>
               </td>
               <td class="number-cell financial-hr">
-                <span>{{ project.ExpenceHR ? project.ExpenceHR.toLocaleString() : '-' }}</span>
+                <span>{{ project.ExpenceHRBonus ? project.ExpenceHRBonus.toLocaleString() : '-' }}</span>
               </td>
               <td class="number-cell financial-hr">
-                <span>{{ project.ExpenceHRBonus ? project.ExpenceHRBonus.toLocaleString() : '-' }}</span>
+                <span>{{ project.EmployeeLaborCost ? project.EmployeeLaborCost.toLocaleString() : '-' }}</span>
               </td>
               <td class="number-cell financial-hr">
                 <span>{{ project.ExpenseHRFromTrx ? project.ExpenseHRFromTrx.toLocaleString() : '-' }}</span>
@@ -365,8 +365,8 @@
           <tr class="totals-row">
             <td colspan="4" class="totals-label">Нийт дүн:</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
-            <td class="number-cell financial-hr">{{ totalExpenceHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
+            <td class="number-cell financial-hr">{{ totalEmployeeLaborCost.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenseHRFromTrx.toLocaleString() }}</td>
             <td class="number-cell financial-hr">
               <span :style="{ color: totalProfitHR >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
@@ -534,6 +534,10 @@ const totalExpenceHR = computed(() =>
 
 const totalExpenceHRBonus = computed(() => 
   filteredProjects.value.reduce((sum, p) => sum + (p.ExpenceHRBonus || 0), 0)
+);
+
+const totalEmployeeLaborCost = computed(() =>
+  filteredProjects.value.reduce((sum, p) => sum + (p.EmployeeLaborCost || 0), 0)
 );
 
 const totalExpenseHRFromTrx = computed(() => 
