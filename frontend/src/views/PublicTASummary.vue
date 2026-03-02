@@ -92,6 +92,7 @@
       <div v-else-if="summaryData.length > 0" class="table-container">
         <div class="table-header">
           <span>{{ getDateRangeText() }}</span>
+          <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
         </div>
         
         <table class="summary-table">
@@ -161,6 +162,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../config/firebase';
+import * as XLSX from 'xlsx';
 
 const HARDCODED_PASSWORD = 'munkhzaisan2026';
 
@@ -194,13 +196,18 @@ const mongolianHolidays = [
 
 const workingDaysInRange = computed(() => {
   const [year, month] = selectedMonth.value.split('-');
+  const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
   let startDay, endDay;
-  
+
   if (selectedRange.value === 'full') {
     startDay = 1;
-    endDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+    endDay = lastDayOfMonth;
+  } else if (selectedRange.value === '1-15') {
+    startDay = 1;
+    endDay = 15;
   } else {
-    [startDay, endDay] = selectedRange.value.split('-').map(Number);
+    startDay = 16;
+    endDay = lastDayOfMonth;
   }
   
   let workingDays = 0;
@@ -269,13 +276,18 @@ async function loadSummary() {
   loading.value = true;
   try {
     const [year, month] = selectedMonth.value.split('-');
+    const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
     let startDay, endDay;
-    
+
     if (selectedRange.value === 'full') {
       startDay = 1;
-      endDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      endDay = lastDayOfMonth;
+    } else if (selectedRange.value === '1-15') {
+      startDay = 1;
+      endDay = 15;
     } else {
-      [startDay, endDay] = selectedRange.value.split('-').map(Number);
+      startDay = 16;
+      endDay = lastDayOfMonth;
     }
     
     // Call Cloud Function with password
@@ -313,11 +325,37 @@ function sortBy(column) {
 
 function getDateRangeText() {
   const [year, month] = selectedMonth.value.split('-');
-  if (selectedRange.value === 'full') {
-    return `${year}/${month}`;
-  }
-  const [start, end] = selectedRange.value.split('-');
-  return `${year}/${month}/${start} - ${year}/${month}/${end}`;
+  if (selectedRange.value === 'full') return `${year}/${month}`;
+  if (selectedRange.value === '1-15') return `${year}/${month}/1 - ${year}/${month}/15`;
+  const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+  return `${year}/${month}/16 - ${year}/${month}/${lastDay}`;
+}
+
+function exportToExcel() {
+  const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
+  const rows = sortedData.value.map(emp => [
+    emp.employeeName,
+    emp.employeeId,
+    emp.workedHours.toFixed(2),
+    emp.restHours.toFixed(2),
+    emp.missedHours.toFixed(2),
+    emp.totalHours.toFixed(2),
+    emp.workedDays,
+    emp.restDays,
+    emp.missedDays
+  ]);
+  rows.push(['НИЙТ', '',
+    totalWorkedHours.value.toFixed(2),
+    totalRestHours.value.toFixed(2),
+    totalMissedHours.value.toFixed(2),
+    grandTotalHours.value.toFixed(2),
+    '', '', ''
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+  XLSX.writeFile(wb, `TA_Summary_${selectedMonth.value}_${selectedRange.value}.xlsx`);
 }
 </script>
 
@@ -547,6 +585,19 @@ function getDateRangeText() {
   font-size: 16px;
   color: #374151;
 }
+
+.btn-export {
+  padding: 8px 16px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.btn-export:hover { background: #15803d; }
 
 .summary-table {
   width: 100%;

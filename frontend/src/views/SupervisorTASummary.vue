@@ -336,8 +336,8 @@ async function loadSummary() {
       // Stable grouping key: prefer numeric ID, fall back to LastName|FirstName composite
       const empKey = empId || `${lastName}|${firstName}` || 'Unknown';
 
-      // Display name shown in table
-      const displayName = [lastName, firstName].filter(Boolean).join(' ') || 'Unknown';
+      // Display name: first name only
+      const displayName = firstName || lastName || 'Unknown';
 
       if (!employeeMap.has(empKey)) {
         employeeMap.set(empKey, {

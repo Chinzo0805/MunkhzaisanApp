@@ -34,16 +34,19 @@ exports.getPublicTASummary = onCall(async (request) => {
       records.push(doc.data());
     });
 
-    // Aggregate data by employee
+    // Aggregate data by employee — stable key prevents split rows
     const employeeMap = new Map();
 
     records.forEach(record => {
-      const empName = record.EmployeeFirstName || 'Unknown';
-      const empId = record.EmployeeID || '';
+      const empId    = String(record.EmployeeID || '').trim();
+      const lastName  = String(record.EmployeeLastName  || record.LastName  || '').trim();
+      const firstName = String(record.EmployeeFirstName || record.FirstName || '').trim();
 
-      if (!employeeMap.has(empName)) {
-        employeeMap.set(empName, {
-          employeeName: empName,
+      const empKey = empId || `${lastName}|${firstName}` || 'Unknown';
+
+      if (!employeeMap.has(empKey)) {
+        employeeMap.set(empKey, {
+          employeeName: firstName || lastName || 'Unknown', // display first name only
           employeeId: empId,
           workedHours: 0,
           restHours: 0,
@@ -55,17 +58,17 @@ exports.getPublicTASummary = onCall(async (request) => {
         });
       }
 
-      const empData = employeeMap.get(empName);
+      const empData = employeeMap.get(empKey);
       const hours = parseFloat(record.WorkingHour) || 0;
-      const status = record.Status || '';
+      const status = (record.Status || '').toLowerCase().trim();
 
-      if (status === 'Чөлөөтэй/Амралт') {
+      if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
         empData.restHours += hours;
         if (hours > 0) empData.restDays++;
       } else if (status === 'тасалсан') {
         empData.missedHours += hours;
         if (hours > 0) empData.missedDays++;
-      } else if (status === 'Ирсэн' || status === 'Ажилласан' || status === 'Томилолт') {
+      } else if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
         empData.workedHours += hours;
         if (hours > 0) empData.workedDays++;
       }
