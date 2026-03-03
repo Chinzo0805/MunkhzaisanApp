@@ -29,20 +29,33 @@
           <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
           </button>
-          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/supervisor-ta-summary')" class="btn-action summary">
-            📊 Ирцийн нэгтгэл
-          </button>
-          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/project-summary')" class="btn-action project">
-            📋 Төслийн нэгтгэл
-          </button>
-          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/financial-transactions')" class="btn-action finance">
+        </div>
+
+        <!-- Supervisor: Management buttons -->
+        <div v-if="authStore.userData?.isSupervisor" class="quick-actions" style="margin-top:12px;">
+          <div class="section-label">⚙️ Удирдлага</div>
+          <button @click="$router.push('/financial-transactions')" class="btn-action finance">
             💵 Санхүүгийн гүйлгээ
           </button>
-          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/warehouse')" class="btn-action warehouse">
+          <button @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>
-          <button v-if="authStore.userData?.isSupervisor" @click="$router.push('/supervisor-salary')" class="btn-action salary">
+        </div>
+
+        <!-- Supervisor: Report buttons -->
+        <div v-if="authStore.userData?.isSupervisor" class="quick-actions" style="margin-top:12px;">
+          <div class="section-label">📊 Тайлангууд</div>
+          <button @click="$router.push('/supervisor-ta-summary')" class="btn-action summary">
+            📊 Ирцийн нэгтгэл
+          </button>
+          <button @click="$router.push('/project-summary')" class="btn-action project">
+            📋 Төслийн нэгтгэл
+          </button>
+          <button @click="$router.push('/supervisor-salary')" class="btn-action salary">
             💰 Цалингийн тооцоо
+          </button>
+          <button @click="$router.push('/supervisor-bounty')" class="btn-action bounty">
+            🏆 Урамшуулал тайлан
           </button>
         </div>
       </div>
@@ -535,8 +548,8 @@ function handleSaved(event) {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
 }
-
 .btn-action {
   padding: 12px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -578,6 +591,25 @@ function handleSaved(event) {
 .btn-action.warehouse-request {
   background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
   box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
+}
+
+.btn-action.bounty {
+  background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.btn-action.bounty:hover {
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+}
+
+.section-label {
+  width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
 }
 
 .btn-action:hover {

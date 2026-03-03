@@ -47,6 +47,8 @@
 
     <div v-if="loading" class="loading">Тайлан бэлтгэж байна...</div>
 
+    <div v-else-if="errorMsg" class="error-banner">⚠️ {{ errorMsg }}</div>
+
     <div v-else-if="!loading && projects.length === 0 && searched" class="no-data">
       Сонгосон хугацаанд урамшуулал олгох төсөл олдсонгүй
     </div>
@@ -205,6 +207,7 @@ const selectedRange = ref('10');
 const loading = ref(false);
 const searched = ref(false);
 const projects = ref([]);
+const errorMsg = ref('');
 
 const summaryByEmployee = computed(() => {
   const empMap = new Map();
@@ -232,6 +235,7 @@ async function loadReport() {
   loading.value = true;
   searched.value = true;
   projects.value = [];
+  errorMsg.value = '';
   try {
     const [year, month] = selectedMonth.value.split('-');
     const fn = httpsCallable(functions, 'getPublicBountyReport');
@@ -243,6 +247,7 @@ async function loadReport() {
     projects.value = result.data.projects;
   } catch (err) {
     console.error('Error loading bounty report:', err);
+    errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
   } finally {
     loading.value = false;
   }
@@ -353,4 +358,5 @@ h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 .loading { text-align: center; padding: 40px; color: #64748b; font-size: 15px; }
 .no-data { text-align: center; padding: 40px; color: #94a3b8; font-size: 15px; }
 .no-ta { padding: 12px 16px; color: #94a3b8; font-size: 13px; font-style: italic; }
+.error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 14px; }
 </style>
