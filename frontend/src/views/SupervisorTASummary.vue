@@ -93,6 +93,9 @@
             <th @click="sortBy('totalHours')" class="sortable hours-col">
               Нийт цаг {{ sortColumn === 'totalHours' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="sortBy('businessTripDays')" class="sortable hours-col">
+              Томилолт {{ sortColumn === 'businessTripDays' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
             <th class="days-col">Өдрийн тоо</th>
           </tr>
         </thead>
@@ -106,6 +109,7 @@
             <td class="hours-cell rest">{{ employee.restHours.toFixed(2) }}ц</td>
             <td class="hours-cell missed">{{ employee.missedHours.toFixed(2) }}ц</td>
             <td class="hours-cell total">{{ employee.totalHours.toFixed(2) }}ц</td>
+            <td class="hours-cell trip">{{ employee.businessTripDays > 0 ? employee.businessTripDays + ' өдөр' : '—' }}</td>
             <td class="days-cell">
               <div class="day-badges">
                 <span class="day-badge worked" v-if="employee.workedDays > 0">{{ employee.workedDays }} өдөр</span>
@@ -124,6 +128,7 @@
             <td class="hours-cell rest"><strong>{{ totalRestHours.toFixed(2) }}ц</strong></td>
             <td class="hours-cell missed"><strong>{{ totalMissedHours.toFixed(2) }}ц</strong></td>
             <td class="hours-cell total"><strong>{{ grandTotalHours.toFixed(2) }}ц</strong></td>
+            <td class="hours-cell trip"><strong>{{ summaryData.reduce((s,e) => s + (e.businessTripDays||0), 0) }} өдөр</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -349,7 +354,8 @@ async function loadSummary() {
           totalHours: 0,
           workedDays: 0,
           restDays: 0,
-          missedDays: 0
+          missedDays: 0,
+          businessTripDays: 0
         });
       }
 
@@ -359,7 +365,10 @@ async function loadSummary() {
       const status = (record.Status || '').toLowerCase().trim();
 
       // Categorize by status
-      if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
+      if (status === 'томилолт') {
+        employee.workedHours += hours;
+        if (hours > 0) { employee.workedDays++; employee.businessTripDays++; }
+      } else if (status === 'ирсэн' || status === 'ажилласан') {
         employee.workedHours += hours;
         if (hours > 0) employee.workedDays++;
       } else if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
@@ -410,7 +419,7 @@ function exportToExcel() {
     Sheets: {}
   };
   
-  const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
+  const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Томилолт өдөр', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
   
   const data = [
     headers,
@@ -421,6 +430,7 @@ function exportToExcel() {
       emp.restHours.toFixed(2),
       emp.missedHours.toFixed(2),
       emp.totalHours.toFixed(2),
+      emp.businessTripDays || 0,
       emp.workedDays,
       emp.restDays,
       emp.missedDays
@@ -433,6 +443,7 @@ function exportToExcel() {
       totalRestHours.value.toFixed(2),
       totalMissedHours.value.toFixed(2),
       grandTotalHours.value.toFixed(2),
+      summaryData.value.reduce((s, e) => s + (e.businessTripDays || 0), 0),
       '',
       '',
       ''
@@ -450,6 +461,7 @@ function exportToExcel() {
     { wch: 18 }, // Амарсан/Чөлөөтэй
     { wch: 12 }, // Тасалсан
     { wch: 12 }, // Нийт цаг
+    { wch: 14 }, // Томилолт өдөр
     { wch: 15 }, // Ажилласан өдөр
     { wch: 15 }, // Амралтын өдөр
     { wch: 15 }  // Тасалсан өдөр
@@ -725,6 +737,11 @@ onMounted(() => {
 
 .hours-cell.total {
   color: #1f2937;
+}
+
+.hours-cell.trip {
+  color: #7c3aed;
+  font-weight: 600;
 }
 
 .days-cell {

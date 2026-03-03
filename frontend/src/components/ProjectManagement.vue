@@ -1526,12 +1526,12 @@ defineExpose({
 
 .modal-content {
   background: white;
-  padding: 30px;
-  border-radius: 8px;
-  max-width: 980px;
-  max-height: 92vh;
+  padding: 32px 36px;
+  border-radius: 10px;
+  max-width: 1280px;
+  max-height: 94vh;
   overflow-y: auto;
-  width: 96%;
+  width: 98%;
 }
 
 .item-form {

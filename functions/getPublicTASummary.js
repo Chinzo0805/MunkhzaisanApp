@@ -54,7 +54,8 @@ exports.getPublicTASummary = onCall(async (request) => {
           totalHours: 0,
           workedDays: 0,
           restDays: 0,
-          missedDays: 0
+          missedDays: 0,
+          businessTripDays: 0
         });
       }
 
@@ -68,7 +69,10 @@ exports.getPublicTASummary = onCall(async (request) => {
       } else if (status === 'тасалсан') {
         empData.missedHours += hours;
         if (hours > 0) empData.missedDays++;
-      } else if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
+      } else if (status === 'томилолт') {
+        empData.workedHours += hours;
+        if (hours > 0) { empData.workedDays++; empData.businessTripDays++; }
+      } else if (status === 'ирсэн' || status === 'ажилласан') {
         empData.workedHours += hours;
         if (hours > 0) empData.workedDays++;
       }
