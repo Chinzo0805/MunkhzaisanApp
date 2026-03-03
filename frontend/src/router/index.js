@@ -15,6 +15,7 @@ import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
 import PublicProjects from '../views/PublicProjects.vue';
 import PublicTASummary from '../views/PublicTASummary.vue';
 import SupervisorSalaryReport from '../views/SupervisorSalaryReport.vue';
+import SupervisorBountyReport from '../views/SupervisorBountyReport.vue';
 
 const routes = [
   {
@@ -108,6 +109,12 @@ const routes = [
     path: '/supervisor-salary',
     name: 'SupervisorSalaryReport',
     component: SupervisorSalaryReport,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/supervisor-bounty',
+    name: 'SupervisorBountyReport',
+    component: SupervisorBountyReport,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

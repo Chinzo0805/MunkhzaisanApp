@@ -2,7 +2,10 @@
   <div class="ta-summary-container">
     <h3>📊 Ирцийн нэгтгэл (Удирдлага)</h3>
     
-    <!-- Filters Section -->
+    <!-- Quick nav -->
+    <div style="margin-bottom:16px;">
+      <router-link to="/supervisor-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
+    </div>
     <div class="filters-section">
       <div class="filter-group">
         <label>Он сар:</label>
@@ -530,6 +533,19 @@ onMounted(() => {
   background: white;
   min-width: 180px;
 }
+
+.btn-bounty-nav {
+  display: inline-block;
+  padding: 8px 18px;
+  background: #f59e0b;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+.btn-bounty-nav:hover { background: #d97706; }
 
 .btn-refresh {
   padding: 10px 20px;
