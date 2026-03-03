@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+// Module-level unsubscribe reference — not reactive, lives outside state
+let _unsubscribeFn = null;
 
 export const useProjectsStore = defineStore('projects', {
   state: () => ({
@@ -10,22 +13,38 @@ export const useProjectsStore = defineStore('projects', {
   }),
 
   actions: {
-    async fetchProjects() {
+    // Set up a real-time listener. Safe to call multiple times — only subscribes once.
+    subscribeToProjects() {
+      if (_unsubscribeFn) return; // already listening
       this.loading = true;
-      this.error = null;
-      
-      try {
-        const projectsSnapshot = await getDocs(collection(db, 'projects'));
-        this.projects = projectsSnapshot.docs.map(doc => ({
-          docId: doc.id, // Firestore document ID
-          ...doc.data(),
-        }));
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-        this.error = error.message;
-      } finally {
-        this.loading = false;
+      _unsubscribeFn = onSnapshot(
+        collection(db, 'projects'),
+        (snapshot) => {
+          this.projects = snapshot.docs.map(doc => ({
+            docId: doc.id,
+            ...doc.data(),
+          }));
+          this.loading = false;
+        },
+        (error) => {
+          console.error('Projects snapshot error:', error);
+          this.error = error.message;
+          this.loading = false;
+        }
+      );
+    },
+
+    // Stop listening (call on component unmount if desired)
+    unsubscribeFromProjects() {
+      if (_unsubscribeFn) {
+        _unsubscribeFn();
+        _unsubscribeFn = null;
       }
+    },
+
+    // Legacy compatibility — just ensures the subscription is active
+    async fetchProjects() {
+      this.subscribeToProjects();
     },
   },
 });

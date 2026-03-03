@@ -421,7 +421,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
@@ -432,9 +432,12 @@ import * as XLSX from 'xlsx';
 
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
-const loading = ref(false);
+const loading = computed(() => projectsStore.loading);
 const recalculating = ref(false);
-const allProjects = ref([]);
+
+// allProjects is reactive — automatically reflects Firestore real-time updates
+const allProjects = computed(() => projectsStore.projects);
+
 const selectedStatus = ref('');
 const searchQuery = ref('');
 const viewMode = ref('default'); // 'default', 'financial', 'summary'
@@ -618,19 +621,10 @@ async function recalculateAll() {
 }
 
 async function loadProjects() {
-  loading.value = true;
-  try {
-    await Promise.all([projectsStore.fetchProjects(), employeesStore.employees.length === 0 ? employeesStore.fetchEmployees() : Promise.resolve()]);
-    allProjects.value = projectsStore.projects;
-    console.log(`Loaded ${allProjects.value.length} projects`);
-    
-    // Log unique status values for debugging
-    const uniqueStatuses = [...new Set(allProjects.value.map(p => p.Status))];
-    console.log('Unique statuses in database:', uniqueStatuses);
-  } catch (error) {
-    console.error('Error loading projects:', error);
-  } finally {
-    loading.value = false;
+  // Subscription already active — just ensure employees are loaded
+  projectsStore.subscribeToProjects();
+  if (employeesStore.employees.length === 0) {
+    await employeesStore.fetchEmployees();
   }
 }
 
@@ -799,7 +793,16 @@ function exportToExcel() {
 }
 
 onMounted(async () => {
-  await loadProjects();
+  projectsStore.subscribeToProjects();
+  if (employeesStore.employees.length === 0) {
+    await employeesStore.fetchEmployees();
+  }
+});
+
+onUnmounted(() => {
+  // Keep subscription alive since other pages may use the same store;
+  // only unsubscribe if you want to fully stop listening when leaving this page.
+  // projectsStore.unsubscribeFromProjects();
 });
 </script>
 

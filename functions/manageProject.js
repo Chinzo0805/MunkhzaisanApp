@@ -88,17 +88,51 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         calculations = {};
       }
       
+      // Detect status change and build statusDates update
+      const oldStatus = oldProjectData.Status || '';
+      const newStatus = projectData.Status || oldStatus;
+      const statusChanged = newStatus && newStatus !== oldStatus;
+      const now = new Date().toISOString();
+
+      let statusDatesUpdate = {};
+      if (statusChanged) {
+        const existingStatusDates = oldProjectData.statusDates || {};
+        statusDatesUpdate = {
+          statusDates: {
+            ...existingStatusDates,
+            [newStatus]: now,
+          }
+        };
+      }
+
       // Prepare update data - only changed fields + calculations
       const updateData = {
         ...projectData,
         ...calculations,
-        updatedAt: new Date().toISOString(),
+        ...statusDatesUpdate,
+        updatedAt: now,
       };
       
-      await (projectId ? 
+      const projectDocRef = projectId ? 
         db.collection('projects').doc(projectId) : 
-        projectDoc.ref
-      ).update(updateData);
+        projectDoc.ref;
+
+      await projectDocRef.update(updateData);
+
+      // Write status history record if status changed
+      if (statusChanged) {
+        await db.collection('projectStatusHistory').add({
+          projectId: oldProjectData.id,
+          projectDocId: projectDocRef.id,
+          siteLocation: mergedData.siteLocation || '',
+          customer: mergedData.customer || '',
+          type: mergedData.type || '',
+          fromStatus: oldStatus,
+          toStatus: newStatus,
+          changedAt: now,
+        });
+        console.log(`Status history: project ${oldProjectData.id} [${oldStatus}] → [${newStatus}]`);
+      }
       
       console.log(`Updated project ${oldProjectData.id}, recalculated: ${shouldRecalculate}`);
       
@@ -106,7 +140,8 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         success: true,
         message: 'Project updated successfully',
         projectId: projectId || projectData.id,
-        recalculated: shouldRecalculate
+        recalculated: shouldRecalculate,
+        statusChanged,
       });
       
     } else {

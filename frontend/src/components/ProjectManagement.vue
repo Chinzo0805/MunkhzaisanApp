@@ -695,7 +695,7 @@ async function onDrop(status, event) {
       TotalProfit: project.TotalProfit,
     };
     await manageProject('update', updatedData, project.docId);
-    await projectsStore.fetchProjects();
+    // onSnapshot auto-updates the store
   } catch (error) {
     console.error('Error updating project status via kanban:', error);
   }
@@ -1118,7 +1118,7 @@ async function handleSave() {
     console.log('Saving project:', { action, itemId, formData: form.value });
     
     await manageProject(action, form.value, itemId);
-    await projectsStore.fetchProjects();
+    // onSnapshot auto-updates the store — no manual fetchProjects needed
     
     emit('saved', { success: true, action, type: 'project' });
     closeModal();
