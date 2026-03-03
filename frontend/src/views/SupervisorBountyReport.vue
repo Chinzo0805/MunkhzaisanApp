@@ -217,9 +217,6 @@ async function loadReport() {
 
       // Aggregate per employee
       const empMap = new Map();
-      let totalEngineerHours = 0;
-      let totalNonEngineerHours = 0;
-      let totalOvertimeHours = 0;
 
       taSnap.forEach(doc => {
         const r = doc.data();
@@ -238,30 +235,36 @@ async function loadReport() {
         const e = empMap.get(key);
         if (role === 'Инженер') {
           e.engineerHours += wh;
-          totalEngineerHours += wh;
         } else {
           e.nonEngineerHours += wh;
-          totalNonEngineerHours += wh;
         }
         e.overtimeHours += oh;
-        totalOvertimeHours += oh;
       });
 
       // Compute bounty per employee
+      // Engineer bounty: the one engineer gets the full EngineerHand (not hours-proportional)
+      // Find the employee with the most engineer hours — they are the project engineer
+      let mainEngineerKey = null;
+      let maxEngHours = 0;
+      for (const [key, e] of empMap.entries()) {
+        if (e.engineerHours > maxEngHours) { maxEngHours = e.engineerHours; mainEngineerKey = key; }
+      }
+
       let sumEngineerHours = 0, sumNonEngineerHours = 0, sumOvertimeHours = 0;
       let sumEngineerBounty = 0, sumNonEngineerBounty = 0, sumOvertimeBounty = 0;
 
-      const employees = Array.from(empMap.values()).map(e => {
-        const engineerBounty = !isOvertime && totalEngineerHours > 0
-          ? Math.round((e.engineerHours / totalEngineerHours) * engineerHand)
+      const employees = Array.from(empMap.entries()).map(([key, e]) => {
+        // Engineer gets flat EngineerHand; technicians get hours × 5000; overtime gets hours × 15000
+        const engineerBounty = (!isOvertime && key === mainEngineerKey && engineerHand > 0)
+          ? Math.max(0, engineerHand)
           : 0;
         const nonEngineerBounty = !isOvertime
-          ? Math.round(e.nonEngineerHours * 5000)
+          ? Math.max(0, Math.round(e.nonEngineerHours * 5000))
           : 0;
         const overtimeBounty = isOvertime
-          ? Math.round(e.overtimeHours * 15000)
+          ? Math.max(0, Math.round(e.overtimeHours * 15000))
           : 0;
-        const totalBounty = engineerBounty + nonEngineerBounty + overtimeBounty;
+        const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
 
         sumEngineerHours += e.engineerHours;
         sumNonEngineerHours += e.nonEngineerHours;
