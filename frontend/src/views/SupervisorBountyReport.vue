@@ -1,6 +1,28 @@
 <template>
   <div class="bounty-container">
-    <h3>🏆 Урамшуулал тайлан</h3>
+
+    <!-- Password gate -->
+    <div v-if="!isAuthenticated" class="password-screen">
+      <div class="password-card">
+        <h2>🔐 Нэвтрэх</h2>
+        <p>Урамшуулал тайлан үзэхийн тулд нууц үг оруулна уу</p>
+        <input
+          v-model="passwordInput"
+          type="password"
+          placeholder="Нууц үг"
+          @keyup.enter="checkPassword"
+          class="password-input"
+        />
+        <button @click="checkPassword" class="btn-submit">Нэвтрэх</button>
+        <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
+      </div>
+    </div>
+
+    <div v-else>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <h3 style="margin:0;">🏆 Урамшуулал тайлан</h3>
+      <button @click="logout" class="btn-logout">Гарах</button>
+    </div>
 
     <!-- Filters -->
     <div class="filters-section">
@@ -145,6 +167,7 @@
         </div>
       </div>
     </template>
+    </div><!-- /v-else -->
   </div>
 </template>
 
@@ -153,6 +176,29 @@ import { ref, computed, onMounted } from 'vue';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
+
+const HARDCODED_PASSWORD = 'munkhzaisan2026';
+const isAuthenticated = ref(false);
+const passwordInput = ref('');
+const errorMessage = ref('');
+
+function checkPassword() {
+  if (passwordInput.value === HARDCODED_PASSWORD) {
+    isAuthenticated.value = true;
+    sessionStorage.setItem('bountyReportAuth', 'true');
+    errorMessage.value = '';
+    loadReport();
+  } else {
+    errorMessage.value = 'Нууц үг буруу байна';
+  }
+}
+
+function logout() {
+  isAuthenticated.value = false;
+  sessionStorage.removeItem('bountyReportAuth');
+  passwordInput.value = '';
+  projects.value = [];
+}
 
 const selectedMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
 const selectedRange = ref('10');
@@ -323,11 +369,30 @@ function exportToExcel() {
   XLSX.writeFile(wb, `BountyReport_${from}_${to}.xlsx`);
 }
 
-onMounted(() => loadReport());
+onMounted(() => {
+  const auth = sessionStorage.getItem('bountyReportAuth');
+  if (auth === 'true') {
+    isAuthenticated.value = true;
+    loadReport();
+  }
+});
 </script>
 
 <style scoped>
-.bounty-container { max-width: 1400px; margin: 0 auto; padding: 24px; font-family: 'Segoe UI', sans-serif; }
+.bounty-container { max-width: 1400px; margin: 0 auto; padding: 24px; font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+
+.password-screen { display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+.password-card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 400px; width: 100%; text-align: center; }
+.password-card h2 { margin: 0 0 10px 0; color: #1f2937; }
+.password-card p { color: #6b7280; margin-bottom: 25px; }
+.password-input { width: 100%; padding: 12px 16px; font-size: 16px; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 15px; transition: border-color 0.3s; box-sizing: border-box; }
+.password-input:focus { outline: none; border-color: #667eea; }
+.btn-submit { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.btn-submit:hover { background: #5a6fd6; }
+.error-message { margin-top: 12px; color: #ef4444; font-size: 14px; }
+
+.btn-logout { padding: 7px 16px; background: #ef4444; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-logout:hover { background: #dc2626; }
 h3 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; color: #1e293b; }
 h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 

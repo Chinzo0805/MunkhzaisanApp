@@ -115,7 +115,7 @@ const routes = [
     path: '/supervisor-bounty',
     name: 'SupervisorBountyReport',
     component: SupervisorBountyReport,
-    meta: { requiresAuth: true, requiresRegistration: true },
+    meta: { public: true },
   },
 ];
 
