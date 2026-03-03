@@ -1449,6 +1449,54 @@ firebase deploy --only functions:updateProjectRealHours
 **Статус:**  Амжилттай дууссан
 **Дараагийн ажил:** Ажилтны цалингийн тооцоо харуулах
 
+## 2026.03.03 - Урамшуулал тайлан, нийтийн хандалт, Dashboard зохион байгуулалт
+
+### 1. Nav button: PublicTASummary + SupervisorTASummary → /supervisor-bounty
+- Both pages got `🏆 Урамшуулал тайлан →` router-link button with `.btn-bounty-nav` amber CSS
+- Files: `PublicTASummary.vue`, `SupervisorTASummary.vue`
+
+### 2. /supervisor-bounty — нийтийн хандалт (нууц үгтэй)
+- Route changed from `requiresAuth: true` → `meta: { public: true }` in `router/index.js`
+- `SupervisorBountyReport.vue` got same password gate as `PublicTASummary.vue`
+  - Password: `munkhzaisan2026`, stored in `sessionStorage('bountyReportAuth')`
+  - Gradient background + password card UI matching PublicTASummary style
+  - Гарах button in header
+
+### 3. Firestore → Cloud Function (нийтийн хандалтыг засварлах)
+- **Асуудал:** Firestore security rules (`request.auth != null`) блоклосон тул нэвтэрч ороогүй хэрэглэгч өгөгдөл авч чадахгүй байсан
+- **Шийдэл:** `functions/getPublicBountyReport.js` шинэ Cloud Function үүсгэсэн
+  - Admin SDK-аар `projects` + `timeAttendance` унших (auth шаардахгүй)
+  - Password шалгалт функц дотор (`munkhzaisan2026`)
+  - Бүх урамшуулал тооцооллыг Cloud Function-д шилжүүлсэн (инженер/техникч/overtime)
+  - `functions/index.js`-д экспортолсон
+- `SupervisorBountyReport.vue`-д `httpsCallable(functions, 'getPublicBountyReport')` ашиглах болгосон
+- Алдааны мэдэгдэл (red error banner) нэмсэн
+- `firebase deploy --only functions:getPublicBountyReport` — us-central1
+
+### 4. Dashboard зохион байгуулалт
+- Quick-actions 3 хэсэгт хуваасан:
+  1. **Нийтлэг** (бүх хэрэглэгч): Цагийн хүсэлт, Агуулахын хүсэлт, Цалингийн мэдээлэл
+  2. **⚙️ Удирдлага** (supervisor): Санхүүгийн гүйлгээ, Агуулах
+  3. **📊 Тайлангууд** (supervisor): Ирцийн нэгтгэл, Төслийн нэгтгэл, Цалингийн тооцоо, Урамшуулал тайлан
+- `.btn-action.bounty` amber gradient нэмсэн
+- `.section-label` CSS нэмсэн (label for each group)
+
+### Key files changed
+- `frontend/src/views/SupervisorBountyReport.vue` — password gate, httpsCallable, error banner
+- `frontend/src/views/PublicTASummary.vue` — nav button + CSS
+- `frontend/src/views/SupervisorTASummary.vue` — nav button (prior session)
+- `frontend/src/views/Dashboard.vue` — 3-section quick-actions layout
+- `frontend/src/router/index.js` — supervisor-bounty → public route
+- `functions/getPublicBountyReport.js` — NEW Cloud Function
+- `functions/index.js` — export getPublicBountyReport
+
+### Deployed
+- `firebase deploy --only hosting` — https://munkh-zaisan.web.app
+- `firebase deploy --only functions:getPublicBountyReport` — us-central1
+- Commits: 0387c87, 11fecf2, 46f841d, 44aba08
+
+---
+
 ## 2026.03.02 (continued)  Supervisor Salary Report
 
 ### Added: SupervisorSalaryReport.vue
