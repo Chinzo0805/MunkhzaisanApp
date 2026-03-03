@@ -312,6 +312,10 @@
                 <label>End Date</label>
                 <input v-model="form.EndDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
+              <div class="form-group">
+                <label>Урамшуулал огноо</label>
+                <input v-model="form.bountyPayDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #fef3c7;' : 'background-color: #fef3c7;'" />
+              </div>
             </div>
 
             <div class="form-group">
@@ -1006,6 +1010,8 @@ function editItem(project) {
     siteLocation: project.siteLocation || '',
     StartDate: excelSerialToDate(project.StartDate),
     EndDate: excelSerialToDate(project.EndDate),
+    bountyPayDate: project.bountyPayDate || '',
+    statusDates: project.statusDates || {},
     ResponsibleEmp: project.ResponsibleEmp || '',
     Detail: project.Detail || '',
     Comment: project.Comment || '',
@@ -1067,6 +1073,8 @@ function closeModal() {
     siteLocation: '',
     StartDate: new Date().toISOString().slice(0, 10),
     EndDate: '',
+    bountyPayDate: '',
+    statusDates: {},
     ResponsibleEmp: '',
     Detail: '',
     Comment: '',
