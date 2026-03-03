@@ -9,11 +9,10 @@
         <input type="month" v-model="selectedMonth" @change="loadReport" />
       </div>
       <div class="filter-group">
-        <label>Хугацаа:</label>
+        <label>Олгох өдөр:</label>
         <select v-model="selectedRange" @change="loadReport">
-          <option value="full">Бүтэн сар</option>
-          <option value="1-15">1-15</option>
-          <option value="16-31">16-31</option>
+          <option value="10">10-ны</option>
+          <option value="25">25-ны</option>
         </select>
       </div>
       <button @click="loadReport" class="btn-refresh" :disabled="loading">
@@ -60,9 +59,9 @@
       <div v-for="proj in projects" :key="proj.docId" class="project-block">
         <div class="project-header">
           <span class="proj-id">#{{ proj.id }}</span>
+          <span class="proj-ref">{{ proj.referenceIdfromCustomer || '—' }}</span>
           <span class="proj-customer">{{ proj.customer || '-' }}</span>
           <span class="proj-location">📍 {{ proj.siteLocation || '-' }}</span>
-          <span class="proj-paydate">📅 Огноо: <strong>{{ proj.bountyPayDate }}</strong></span>
           <span class="proj-type-badge" :class="proj.projectType">{{ proj.projectType }}</span>
           <span class="proj-total">Нийт: <strong>{{ (proj._totalBounty || 0).toLocaleString() }}₮</strong></span>
         </div>
@@ -74,8 +73,8 @@
                 <th>Ажилтан</th>
                 <th class="num">Инженер цаг</th>
                 <th class="num">Инженер урамшуулал</th>
-                <th class="num">Бус ажилтан цаг</th>
-                <th class="num">Бус ажилтан урамшуулал</th>
+                <th class="num">Техникч цаг</th>
+                <th class="num">Техникч урамшуулал</th>
                 <th class="num">Илүү цаг</th>
                 <th class="num">Илүү цагийн урамшуулал</th>
                 <th class="num total-col">Нийт урамшуулал</th>
@@ -119,7 +118,7 @@
             <tr>
               <th>Ажилтан</th>
               <th v-for="proj in projects" :key="proj.docId" class="num proj-head">
-                #{{ proj.id }}<br><small>{{ proj.customer }}</small>
+                {{ proj.referenceIdfromCustomer || ('#' + proj.id) }}
               </th>
               <th class="num total-col">Нийт</th>
             </tr>
@@ -156,7 +155,7 @@ import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
 
 const selectedMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
-const selectedRange = ref('full');
+const selectedRange = ref('10');
 const loading = ref(false);
 const searched = ref(false);
 const projects = ref([]);
@@ -178,15 +177,9 @@ const grandTotal = computed(() => summaryByEmployee.value.reduce((s, e) => s + e
 
 function getDateRange() {
   const [year, month] = selectedMonth.value.split('-');
-  const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-  let startDay, endDay;
-  if (selectedRange.value === 'full') { startDay = 1; endDay = lastDay; }
-  else if (selectedRange.value === '1-15') { startDay = 1; endDay = 15; }
-  else { startDay = 16; endDay = lastDay; }
-  return {
-    from: `${year}-${month}-${String(startDay).padStart(2, '0')}`,
-    to: `${year}-${month}-${String(endDay).padStart(2, '0')}`,
-  };
+  const day = selectedRange.value; // '10' or '25'
+  const dateStr = `${year}-${month}-${day}`;
+  return { from: dateStr, to: dateStr };
 }
 
 async function loadReport() {
@@ -302,7 +295,7 @@ function exportToExcel() {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary by employee
-  const summaryHeaders = ['Ажилтан', ...projects.value.map(p => `#${p.id} ${p.customer || ''}`), 'Нийт'];
+  const summaryHeaders = ['Ажилтан', ...projects.value.map(p => p.referenceIdfromCustomer || ('#' + p.id)), 'Нийт'];
   const summaryRows = summaryByEmployee.value.map(row => [
     row.name,
     ...projects.value.map(p => row.byProject[p.docId] || 0),
@@ -314,7 +307,7 @@ function exportToExcel() {
 
   // Sheet 2+: Per project
   for (const proj of projects.value) {
-    const headers = ['Ажилтан', 'Инженер цаг', 'Инженер урамшуулал', 'Бус цаг', 'Бус урамшуулал', 'Илүү цаг', 'Илүү цагийн урамшуулал', 'Нийт'];
+    const headers = ['Ажилтан', 'Инженер цаг', 'Инженер урамшуулал', 'Техникч цаг', 'Техникч урамшуулал', 'Илүү цаг', 'Илүү цагийн урамшуулал', 'Нийт'];
     const rows = (proj._employees || []).map(e => [
       e.name, e.engineerHours, e.engineerBounty, e.nonEngineerHours, e.nonEngineerBounty, e.overtimeHours, e.overtimeBounty, e.totalBounty,
     ]);
@@ -357,9 +350,9 @@ h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 .project-block { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
 .project-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 16px; background: #f0f9ff; border-bottom: 1px solid #e0f2fe; font-size: 13px; }
 .proj-id { font-weight: 700; font-size: 15px; color: #0369a1; }
-.proj-customer { font-weight: 600; color: #1e293b; }
-.proj-location { color: #64748b; }
-.proj-paydate { color: #374151; }
+.proj-ref { font-weight: 700; color: #7c3aed; font-size: 13px; background: #ede9fe; padding: 2px 7px; border-radius: 6px; }
+.proj-customer { font-size: 11px; color: #64748b; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-location { font-weight: 600; color: #0f172a; font-size: 14px; }
 .proj-total { margin-left: auto; font-size: 14px; color: #047857; }
 .proj-type-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; background: #dbeafe; color: #1d4ed8; }
 .proj-type-badge.overtime { background: #fef3c7; color: #92400e; }
