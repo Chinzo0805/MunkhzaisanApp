@@ -49,22 +49,66 @@ exports.recalculateAllProjects = functions.runWith({
     
     for (const doc of snapshot.docs) {
       const project = doc.data();
-      
-      // Skip finished projects
+      const statusDates = project.statusDates || {};
+      const nowIso = new Date().toISOString();
+
+      // --- Backfill missing auto-date fields ---
+      const backfill = {};
+
+      // StartDate: default to createdAt date if missing
+      if (!project.StartDate && project.createdAt) {
+        backfill.StartDate = project.createdAt.slice(0, 10);
+      }
+
+      // EndDate: if status is Дууссан and EndDate is missing, derive from statusDates or updatedAt
+      if (project.Status === 'Дууссан' && !project.EndDate) {
+        const ref = statusDates['Дууссан'] || project.updatedAt || project.createdAt || nowIso;
+        backfill.EndDate = ref.slice(0, 10);
+      }
+
+      // bountyPayDate: if status is Урамшуулал олгох and field is missing, derive from statusDates
+      if (project.Status === 'Урамшуулал олгох' && !project.bountyPayDate) {
+        const changedIso = statusDates['Урамшуулал олгох'] || project.updatedAt || nowIso;
+        const changeDate = new Date(changedIso);
+        const day = changeDate.getDate();
+        let payDate;
+        if (day >= 1 && day <= 5) {
+          payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-10`;
+        } else if (day >= 6 && day <= 20) {
+          payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-25`;
+        } else {
+          const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 10);
+          payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-10`;
+        }
+        backfill.bountyPayDate = payDate;
+      }
+
+      // Skip financial recalculation for finished projects, but still apply backfill
       if (project.Status === 'Дууссан') {
+        if (Object.keys(backfill).length > 0) {
+          batch.update(doc.ref, backfill);
+          batchCount++;
+        }
         skipped++;
+        // still count toward batch limit check below
+        if (batchCount >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
         continue;
       }
-      
+
       const projectId = project.id;
-      
+
       // Use centralized calculation function
       const calculations = await calculateProjectMetrics(String(projectId), project, db);
-      
-      // Update document with all calculated fields
+
+      // Update document with all calculated fields + any backfilled dates
       batch.update(doc.ref, {
         ...calculations,
-        lastRealHourUpdate: new Date().toISOString()
+        ...backfill,
+        lastRealHourUpdate: nowIso,
       });
       
       batchCount++;
