@@ -22,7 +22,10 @@
         <button @click="logout" class="btn-logout">Гарах</button>
       </div>
 
-      <!-- Filters Section -->
+      <!-- Quick nav -->
+      <div style="margin-bottom:16px;">
+        <router-link to="/supervisor-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
+      </div>
       <div class="filters-section">
         <div class="filter-group">
           <label>Он сар:</label>
@@ -475,6 +478,19 @@ function exportToExcel() {
 .btn-logout:hover {
   background: #dc2626;
 }
+
+.btn-bounty-nav {
+  display: inline-block;
+  padding: 8px 18px;
+  background: #f59e0b;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+.btn-bounty-nav:hover { background: #d97706; }
 
 .filters-section {
   display: flex;
