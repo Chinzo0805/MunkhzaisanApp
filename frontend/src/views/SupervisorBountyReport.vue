@@ -173,8 +173,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../config/firebase';
 import * as XLSX from 'xlsx';
 
 const HARDCODED_PASSWORD = 'munkhzaisan2026';
@@ -233,106 +233,14 @@ async function loadReport() {
   searched.value = true;
   projects.value = [];
   try {
-    const { from, to } = getDateRange();
-
-    // 1. Load projects whose bountyPayDate is in range
-    const projSnap = await getDocs(
-      query(collection(db, 'projects'),
-        where('bountyPayDate', '>=', from),
-        where('bountyPayDate', '<=', to))
-    );
-
-    const projList = projSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-
-    // 2. For each project load TA records and compute per-employee bounty
-    for (const proj of projList) {
-      const isOvertime = proj.projectType === 'overtime';
-      const isUnpaid = proj.projectType === 'unpaid';
-
-      // Skip unpaid — no bounty
-      if (isUnpaid) {
-        proj._employees = [];
-        proj._totalBounty = 0;
-        continue;
-      }
-
-      const engineerHand = parseFloat(proj.EngineerHand) || 0;
-      const taSnap = await getDocs(
-        query(collection(db, 'timeAttendance'), where('ProjectID', '==', parseInt(proj.id)))
-      );
-
-      // Aggregate per employee
-      const empMap = new Map();
-
-      taSnap.forEach(doc => {
-        const r = doc.data();
-        const firstName = String(r.EmployeeFirstName || r.FirstName || '').trim();
-        const lastName  = String(r.EmployeeLastName  || r.LastName  || '').trim();
-        const empId = String(r.EmployeeID || '').trim();
-        const key = empId || `${lastName}|${firstName}`;
-        const name = firstName || lastName || 'Unknown';
-        const role = (r.Role || '').trim();
-        const wh = parseFloat(r.WorkingHour) || 0;
-        const oh = parseFloat(r.overtimeHour) || 0;
-
-        if (!empMap.has(key)) {
-          empMap.set(key, { name, engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
-        }
-        const e = empMap.get(key);
-        if (role === 'Инженер') {
-          e.engineerHours += wh;
-        } else {
-          e.nonEngineerHours += wh;
-        }
-        e.overtimeHours += oh;
-      });
-
-      // Compute bounty per employee
-      // Engineer bounty: the one engineer gets the full EngineerHand (not hours-proportional)
-      // Find the employee with the most engineer hours — they are the project engineer
-      let mainEngineerKey = null;
-      let maxEngHours = 0;
-      for (const [key, e] of empMap.entries()) {
-        if (e.engineerHours > maxEngHours) { maxEngHours = e.engineerHours; mainEngineerKey = key; }
-      }
-
-      let sumEngineerHours = 0, sumNonEngineerHours = 0, sumOvertimeHours = 0;
-      let sumEngineerBounty = 0, sumNonEngineerBounty = 0, sumOvertimeBounty = 0;
-
-      const employees = Array.from(empMap.entries()).map(([key, e]) => {
-        // Engineer gets flat EngineerHand; technicians get hours × 5000; overtime gets hours × 15000
-        const engineerBounty = (!isOvertime && key === mainEngineerKey && engineerHand > 0)
-          ? Math.max(0, engineerHand)
-          : 0;
-        const nonEngineerBounty = !isOvertime
-          ? Math.max(0, Math.round(e.nonEngineerHours * 5000))
-          : 0;
-        const overtimeBounty = isOvertime
-          ? Math.max(0, Math.round(e.overtimeHours * 15000))
-          : 0;
-        const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
-
-        sumEngineerHours += e.engineerHours;
-        sumNonEngineerHours += e.nonEngineerHours;
-        sumOvertimeHours += e.overtimeHours;
-        sumEngineerBounty += engineerBounty;
-        sumNonEngineerBounty += nonEngineerBounty;
-        sumOvertimeBounty += overtimeBounty;
-
-        return { name: e.name, engineerHours: e.engineerHours, engineerBounty, nonEngineerHours: e.nonEngineerHours, nonEngineerBounty, overtimeHours: e.overtimeHours, overtimeBounty, totalBounty };
-      }).sort((a, b) => b.totalBounty - a.totalBounty);
-
-      proj._employees = employees;
-      proj._sumEngineerHours = sumEngineerHours;
-      proj._sumNonEngineerHours = sumNonEngineerHours;
-      proj._sumOvertimeHours = sumOvertimeHours;
-      proj._sumEngineerBounty = sumEngineerBounty;
-      proj._sumNonEngineerBounty = sumNonEngineerBounty;
-      proj._sumOvertimeBounty = sumOvertimeBounty;
-      proj._totalBounty = sumEngineerBounty + sumNonEngineerBounty + sumOvertimeBounty;
-    }
-
-    projects.value = projList.sort((a, b) => (a.bountyPayDate || '').localeCompare(b.bountyPayDate || ''));
+    const [year, month] = selectedMonth.value.split('-');
+    const fn = httpsCallable(functions, 'getPublicBountyReport');
+    const result = await fn({
+      password: HARDCODED_PASSWORD,
+      month: selectedMonth.value,
+      day: selectedRange.value,
+    });
+    projects.value = result.data.projects;
   } catch (err) {
     console.error('Error loading bounty report:', err);
   } finally {

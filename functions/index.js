@@ -65,3 +65,4 @@ exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTA
 // Public data access functions (password-protected)
 exports.getPublicTASummary = require("./getPublicTASummary").getPublicTASummary;
 exports.getPublicProjects = require("./getPublicProjects").getPublicProjects;
+exports.getPublicBountyReport = require("./getPublicBountyReport").getPublicBountyReport;
