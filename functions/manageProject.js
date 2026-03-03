@@ -107,6 +107,7 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
 
       let statusDatesUpdate = {};
       let bountyPayDateUpdate = {};
+      let endDateUpdate = {};
 
       if (statusChanged) {
         const existingStatusDates = oldProjectData.statusDates || {};
@@ -116,6 +117,13 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
             [newStatus]: now,
           }
         };
+
+        // Auto-fill EndDate when status changes to Дууссан
+        if (newStatus === 'Дууссан') {
+          const today = now.slice(0, 10); // YYYY-MM-DD
+          endDateUpdate = { EndDate: today };
+          console.log(`EndDate auto-set to ${today} on status → Дууссан`);
+        }
 
         // Auto-compute bountyPayDate when status changes to Урамшуулал олгох
         if (newStatus === 'Урамшуулал олгох') {
@@ -144,6 +152,7 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         ...calculations,
         ...statusDatesUpdate,
         ...bountyPayDateUpdate,
+        ...endDateUpdate,
         updatedAt: now,
       };
       
