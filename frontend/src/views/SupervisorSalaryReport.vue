@@ -344,16 +344,17 @@ async function loadData() {
     });
 
     // 4. Group TA records by EmployeeID
-    const empTA = new Map(); // employeeId -> { workedHours, workedDays, projectHours: Map }
+    const empTA = new Map(); // employeeId -> { workedHours, workedDays, projectHours: Map, projectOvertimeHours: Map }
     taRecords.forEach(r => {
       const empId  = String(r.EmployeeID || '').trim();
       const status = (r.Status || '').toLowerCase().trim();
       const hours  = parseFloat(r.WorkingHour) || 0;
+      const overtimeHrs = parseFloat(r.overtimeHour) || 0;
       const projId = String(r.ProjectID || '').trim();
 
       if (!empId) return;
       if (!empTA.has(empId)) {
-        empTA.set(empId, { workedHours: 0, workedDays: 0, projectHours: new Map() });
+        empTA.set(empId, { workedHours: 0, workedDays: 0, projectHours: new Map(), projectOvertimeHours: new Map() });
       }
       const et = empTA.get(empId);
 
@@ -361,10 +362,14 @@ async function loadData() {
       if (isWorked && hours > 0) {
         et.workedHours += hours;
         et.workedDays++;
-        // Track per project
+        // Track per project (working hours)
         if (projId) {
           et.projectHours.set(projId, (et.projectHours.get(projId) || 0) + hours);
         }
+      }
+      // Track overtime hours per project regardless of status
+      if (projId && overtimeHrs > 0) {
+        et.projectOvertimeHours.set(projId, (et.projectOvertimeHours.get(projId) || 0) + overtimeHrs);
       }
     });
 
@@ -409,6 +414,20 @@ async function loadData() {
             hours: empHours,
             bounty: 0,
             rateLabel: '🚫 Урамшуулалгүй (unpaid)',
+          });
+          continue;
+        }
+        // Overtime projects: bounty = employee overtimeHours * 20,000
+        if (proj?.projectType === 'overtime') {
+          const empOvertimeHrs = ta.projectOvertimeHours.get(projId) || 0;
+          const projBounty = Math.round(empOvertimeHrs * 20000);
+          bounty += projBounty;
+          projectDetails.push({
+            projectId: projId,
+            location: proj?.siteLocation || proj?.customer || '—',
+            hours: empHours,
+            bounty: projBounty,
+            rateLabel: `⏱️ ${empOvertimeHrs.toFixed(1)}ц илүү цаг × 20,000₮`,
           });
           continue;
         }

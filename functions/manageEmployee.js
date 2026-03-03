@@ -63,18 +63,51 @@ exports.manageEmployee = functions.region('asia-east2').https.onRequest(async (r
       if (!employeeId) {
         return res.status(400).send({ error: 'Missing employeeId for update' });
       }
-      
+
+      // Fetch old employee data to detect name changes
+      const oldSnap = await db.collection('employees').doc(employeeId).get();
+      const oldData = oldSnap.exists ? oldSnap.data() : {};
+      const oldName = ((oldData.FirstName || '') + ' ' + (oldData.LastName || oldData.EmployeeLastName || '')).trim();
+
       await db.collection('employees').doc(employeeId).update({
         ...employeeData,
         updatedAt: new Date().toISOString(),
       });
-      
+
+      // If name changed, cascade-update all projects that reference the old name in ResponsibleEmp
+      const newFirst = employeeData.FirstName !== undefined ? employeeData.FirstName : (oldData.FirstName || '');
+      const newLast = employeeData.LastName !== undefined ? employeeData.LastName
+        : employeeData.EmployeeLastName !== undefined ? employeeData.EmployeeLastName
+        : (oldData.LastName || oldData.EmployeeLastName || '');
+      const newName = (newFirst + ' ' + newLast).trim();
+
+      let projectsUpdated = 0;
+      if (oldName && newName && oldName !== newName) {
+        const projectsSnap = await db.collection('projects')
+          .where('ResponsibleEmp', '==', oldName)
+          .get();
+
+        const batch = db.batch();
+        projectsSnap.forEach(pdoc => {
+          batch.update(pdoc.ref, {
+            ResponsibleEmp: newName,
+            updatedAt: new Date().toISOString(),
+          });
+        });
+        if (!projectsSnap.empty) {
+          await batch.commit();
+          projectsUpdated = projectsSnap.size;
+          console.log(`Cascaded name change "${oldName}" → "${newName}" to ${projectsUpdated} project(s)`);
+        }
+      }
+
       console.log(`Updated employee with ID: ${employeeId}`);
       
       res.status(200).send({
         success: true,
         message: 'Employee updated successfully',
         employeeId,
+        projectsUpdated,
       });
       
     } else {

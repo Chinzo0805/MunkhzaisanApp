@@ -106,6 +106,9 @@
             <th @click="sortBy('ResponsibleEmp')" class="sortable">
               Хариуцах {{ sortColumn === 'ResponsibleEmp' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
+              Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
             
             <template v-if="viewMode === 'default'">
               <th @click="sortBy('HourPerformance')" class="sortable">
@@ -116,9 +119,6 @@
               </th>
               <th @click="sortBy('EngineerHand')" class="sortable">
                 Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
-              </th>
-              <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
-                Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
             </template>
             
@@ -198,46 +198,40 @@
           <tr v-for="project in sortedProjects" :key="project.id">
             <td class="project-id-cell">{{ project.id }}</td>
             
-            <td>
-              <input 
-                v-if="editingId === project.id"
-                v-model="editForm.customer"
-                type="text"
-                class="edit-input"
-              />
-              <span v-else>{{ project.customer || '-' }}</span>
-            </td>
+            <td>{{ project.customer || '-' }}</td>
+            
+            <td>{{ project.siteLocation || '-' }}</td>
             
             <td>
-              <input 
-                v-if="editingId === project.id"
-                v-model="editForm.siteLocation"
-                type="text"
-                class="edit-input"
-              />
-              <span v-else>{{ project.siteLocation || '-' }}</span>
-            </td>
-            
-            <td>
-              <input 
+              <select
                 v-if="editingId === project.id"
                 v-model="editForm.ResponsibleEmp"
+                class="edit-input"
+              >
+                <option value="">-- Сонгох --</option>
+                <option
+                  v-for="emp in employeesStore.employees"
+                  :key="emp.id"
+                  :value="(emp.FirstName + ' ' + (emp.EmployeeLastName || '')).trim()"
+                >{{ (emp.FirstName + ' ' + (emp.EmployeeLastName || '')).trim() }}</option>
+              </select>
+              <span v-else>{{ project.ResponsibleEmp || '-' }}</span>
+            </td>
+
+            <td>
+              <input 
+                v-if="editingId === project.id"
+                v-model="editForm.referenceIdfromCustomer"
                 type="text"
                 class="edit-input"
+                placeholder="Ref ID..."
               />
-              <span v-else>{{ project.ResponsibleEmp || '-' }}</span>
+              <span v-else class="ref-id-cell">{{ project.referenceIdfromCustomer || '-' }}</span>
             </td>
             
             <template v-if="viewMode === 'default'">
               <td class="number-cell">
-                <input 
-                  v-if="editingId === project.id"
-                  v-model.number="editForm.HourPerformance"
-                  type="number"
-                  step="0.01"
-                  class="edit-input"
-                />
-                <span v-else>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
+                <span>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
               </td>
               
               <td class="number-cell">
@@ -245,23 +239,7 @@
               </td>
               
               <td class="number-cell">
-                <input 
-                  v-if="editingId === project.id"
-                  v-model.number="editForm.EngineerHand"
-                  type="number"
-                  class="edit-input"
-                />
-                <span v-else>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
-              </td>
-              
-              <td>
-                <input 
-                  v-if="editingId === project.id"
-                  v-model="editForm.referenceIdfromCustomer"
-                  type="text"
-                  class="edit-input"
-                />
-                <span v-else>{{ project.referenceIdfromCustomer || '-' }}</span>
+                <span>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
               </td>
             </template>
             
@@ -363,7 +341,7 @@
         </tbody>
         <tfoot v-if="viewMode === 'financial'">
           <tr class="totals-row">
-            <td colspan="4" class="totals-label">Нийт дүн:</td>
+            <td colspan="5" class="totals-label">Нийт дүн:</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalEmployeeLaborCost.toLocaleString() }}</td>
@@ -400,7 +378,7 @@
         </tfoot>
         <tfoot v-else-if="viewMode === 'summary'">
           <tr class="totals-row">
-            <td colspan="4" class="totals-label">Нийт дүн:</td>
+            <td colspan="5" class="totals-label">Нийт дүн:</td>
             <td class="number-cell summary-main">
               <span style="color: #10b981; font-weight: 700;">{{ sumTotalIncome.toLocaleString() }}</span>
             </td>
@@ -447,11 +425,13 @@ import { ref, computed, onMounted } from 'vue';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
+import { useEmployeesStore } from '../stores/employees';
 import ProjectManagement from '../components/ProjectManagement.vue';
 import TimeAttendanceModal from '../components/TimeAttendanceModal.vue';
 import * as XLSX from 'xlsx';
 
 const projectsStore = useProjectsStore();
+const employeesStore = useEmployeesStore();
 const loading = ref(false);
 const recalculating = ref(false);
 const allProjects = ref([]);
@@ -468,11 +448,7 @@ const selectedProjectId = ref(null);
 const editingId = ref(null);
 const saving = ref(false);
 const editForm = ref({
-  customer: '',
-  siteLocation: '',
   ResponsibleEmp: '',
-  HourPerformance: 0,
-  EngineerHand: 0,
   referenceIdfromCustomer: ''
 });
 
@@ -644,7 +620,7 @@ async function recalculateAll() {
 async function loadProjects() {
   loading.value = true;
   try {
-    await projectsStore.fetchProjects();
+    await Promise.all([projectsStore.fetchProjects(), employeesStore.employees.length === 0 ? employeesStore.fetchEmployees() : Promise.resolve()]);
     allProjects.value = projectsStore.projects;
     console.log(`Loaded ${allProjects.value.length} projects`);
     
@@ -687,11 +663,7 @@ function getStatusClass(status) {
 function startEdit(project) {
   editingId.value = project.id;
   editForm.value = {
-    customer: project.customer || '',
-    siteLocation: project.siteLocation || '',
     ResponsibleEmp: project.ResponsibleEmp || '',
-    HourPerformance: project.HourPerformance || 0,
-    EngineerHand: project.EngineerHand || 0,
     referenceIdfromCustomer: project.referenceIdfromCustomer || ''
   };
 }
@@ -705,11 +677,7 @@ function viewProject(project) {
 function cancelEdit() {
   editingId.value = null;
   editForm.value = {
-    customer: '',
-    siteLocation: '',
     ResponsibleEmp: '',
-    HourPerformance: 0,
-    EngineerHand: 0,
     referenceIdfromCustomer: ''
   };
 }
@@ -719,11 +687,7 @@ async function saveEdit(project) {
   try {
     const projectRef = doc(db, 'projects', project.docId);
     await updateDoc(projectRef, {
-      customer: editForm.value.customer,
-      siteLocation: editForm.value.siteLocation,
       ResponsibleEmp: editForm.value.ResponsibleEmp,
-      HourPerformance: Number(editForm.value.HourPerformance),
-      EngineerHand: Number(editForm.value.EngineerHand),
       referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
       updatedAt: new Date().toISOString()
     });
@@ -731,7 +695,8 @@ async function saveEdit(project) {
     // Update local data
     const index = allProjects.value.findIndex(p => p.id === project.id);
     if (index !== -1) {
-      Object.assign(allProjects.value[index], editForm.value);
+      allProjects.value[index].ResponsibleEmp = editForm.value.ResponsibleEmp;
+      allProjects.value[index].referenceIdfromCustomer = editForm.value.referenceIdfromCustomer;
     }
     
     console.log('Project updated successfully');

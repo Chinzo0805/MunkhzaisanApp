@@ -91,8 +91,8 @@
                 <small v-if="project.subtype" class="tbl-sub">{{ project.subtype }}</small>
               </td>
               <td class="td-ptype">
-                <span class="ptype-badge" :class="project.projectType === 'unpaid' ? 'ptype-unpaid' : 'ptype-paid'">
-                  {{ project.projectType === 'unpaid' ? '🚫 Үгүй' : '✅ Тийм' }}
+                <span class="ptype-badge" :class="project.projectType === 'unpaid' ? 'ptype-unpaid' : project.projectType === 'overtime' ? 'ptype-overtime' : 'ptype-paid'">
+                  {{ project.projectType === 'unpaid' ? '🚫 Үгүй' : project.projectType === 'overtime' ? '⏱️ Илүү цаг' : '✅ Угсралт' }}
                 </span>
               </td>
               <td class="td-status">
@@ -123,6 +123,15 @@
     <div v-if="showKanban" class="kanban-wrapper">
       <div class="kanban-search-bar">
         <input v-model="searchQuery" type="text" placeholder="Search by customer, type, or location..." class="search-input" />
+        <div class="kanban-type-filters">
+          <button
+            v-for="ft in kanbanTypeOptions"
+            :key="ft.value"
+            class="ktype-btn"
+            :class="{ 'ktype-active': kanbanTypeFilter === ft.value }"
+            @click="kanbanTypeFilter = ft.value"
+          >{{ ft.label }}</button>
+        </div>
       </div>
       <div class="kanban-board">
         <div
@@ -150,6 +159,7 @@
             >
               <div class="kcard-location">📍 {{ project.siteLocation }}</div>
               <span v-if="project.projectType === 'unpaid'" class="kcard-unpaid-badge">🚫 Урамшуулалгүй</span>
+              <span v-else-if="project.projectType === 'overtime'" class="kcard-overtime-badge">⏱️ Ашиглалт</span>
               <div class="kcard-type">
                 {{ project.type }}<span v-if="project.subtype"> · {{ project.subtype }}</span>
               </div>
@@ -165,6 +175,23 @@
               <div class="kcard-hours" v-if="project.PlannedHour > 0">
                 <span>📅 {{ formatNumber(project.PlannedHour) }}ц</span>
                 <span :class="getPerformanceClass(project.RealHour, project.PlannedHour)">▶ {{ formatNumber(project.RealHour) }}ц  ({{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%)</span>
+              </div>
+              <!-- Calculation summary row -->
+              <div class="kcard-calc-row" v-if="project.projectType === 'paid' && (project.EngineerHand || project.NonEngineerBounty)">
+                <span class="kcalc-label">🏗️</span>
+                <span class="kcalc-value">Инж: {{ formatNumber(project.EngineerHand || 0) }}₮</span>
+                <span class="kcalc-sep">·</span>
+                <span class="kcalc-value">Бус: {{ formatNumber(project.NonEngineerBounty || 0) }}₮</span>
+              </div>
+              <div class="kcard-calc-row" v-else-if="project.projectType === 'overtime' && project.OvertimeBounty">
+                <span class="kcalc-label">⏱️</span>
+                <span class="kcalc-value">Илүү цаг: {{ formatNumber(project.OvertimeBounty || 0) }}₮</span>
+                <span class="kcalc-sep" v-if="project.OvertimeHours">·</span>
+                <span class="kcalc-value" v-if="project.OvertimeHours">{{ formatNumber(project.OvertimeHours) }}ц</span>
+              </div>
+              <div class="kcard-calc-row" v-else-if="project.projectType === 'unpaid' && project.EmployeeLaborCost">
+                <span class="kcalc-label">💼</span>
+                <span class="kcalc-value kcalc-cost">Цалин: {{ formatNumber(project.EmployeeLaborCost || 0) }}₮</span>
               </div>
               <div class="kcard-footer">
                 <span class="kcard-id">#{{ project.id }}</span>
@@ -189,300 +216,330 @@
         
         <form @submit.prevent="handleSave" class="item-form">
           <p v-if="formError" class="error">{{ formError }}</p>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>ID *</label>
-              <input v-model="form.id" type="number" required readonly style="background-color: #f5f5f5;" placeholder="Auto" />
-            </div>
-            <div class="form-group">
-              <label>Customer *</label>
-              <select v-model="form.customer" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                <option value="">Select customer...</option>
-                <option v-for="customer in customersStore.customers" :key="customer.ID" :value="customer.Name">{{ customer.Name }}</option>
-              </select>
-            </div>
+
+          <!-- Tab Navigation -->
+          <div class="form-tabs">
+            <button type="button" @click="activeTab = 'basic'" :class="['form-tab', activeTab === 'basic' ? 'form-tab-active' : '']">📋 Basic Info</button>
+            <button type="button" @click="activeTab = 'hr'" :class="['form-tab', activeTab === 'hr' ? 'form-tab-active' : '']">👷 HR Info</button>
+            <button type="button" @click="activeTab = 'financial'" :class="['form-tab', activeTab === 'financial' ? 'form-tab-active' : '']">💰 Financial</button>
           </div>
-          
-          <div class="form-row">
+
+          <!-- ═══════════════════════════════ TAB 1: BASIC ═══════════════════════════════ -->
+          <div v-if="activeTab === 'basic'" class="tab-content">
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>ID *</label>
+                <input v-model="form.id" type="number" required readonly style="background-color: #f5f5f5;" placeholder="Auto" />
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select v-model="form.Status" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option value="Төлөвлсөн">Төлөвлсөн</option>
+                  <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
+                  <option value="Ажил хүлээлгэн өгөх">Ажил хүлээлгэн өгөх</option>
+                  <option value="Нэхэмжлэх өгөх ба Шалгах">Нэхэмжлэх өгөх ба Шалгах</option>
+                  <option value="Урамшуулал олгох">Урамшуулал олгох</option>
+                  <option value="Дууссан">Дууссан</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Урамшуулал тооцох эсэх</label>
+                <select v-model="form.projectType" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option value="paid">✅ Угсралтын урамшуулал</option>
+                  <option value="overtime">⏱️ Ашиглалтын илүү цаг</option>
+                  <option value="unpaid">🚫 Зөвхөн суурь цалин</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>Customer *</label>
+                <select v-model="form.customer" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option value="">Select customer...</option>
+                  <option v-for="customer in customersStore.customers" :key="customer.ID" :value="customer.Name">{{ customer.Name }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Reference ID</label>
+                <input v-model="form.referenceIdfromCustomer" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>Type *</label>
+                <select v-model="form.type" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @change="form.subtype = ''">
+                  <option value="">Select type...</option>
+                  <option value="Үүрэн холбоо">Үүрэн холбоо</option>
+                  <option value="Барилга">Барилга</option>
+                  <option value="Оффис">Оффис</option>
+                  <option value="Бусад">Бусад</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Subtype</label>
+                <select v-if="form.type === 'Үүрэн холбоо'" v-model="form.subtype" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option value="">Select subtype...</option>
+                  <option value="Шинэ сайт">Шинэ сайт</option>
+                  <option value="Карьвер нэмэлт">Карьвер нэмэлт</option>
+                  <option value="Гэмтэл саатал">Гэмтэл саатал</option>
+                  <option value="5G угсралт">5G угсралт</option>
+                  <option value="Хийсэн ажлын засвар">Хийсэн ажлын засвар</option>
+                  <option value="Бусад">Бусад</option>
+                </select>
+                <input v-else v-model="form.subtype" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" placeholder="Enter subtype..." />
+              </div>
+              <div class="form-group">
+                <label>Site Location</label>
+                <input v-model="form.siteLocation" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>Responsible Employee</label>
+                <select v-model="form.ResponsibleEmp" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option value="">Select employee...</option>
+                  <option v-for="emp in workingEmployees" :key="emp.NumID" :value="emp.FirstName">{{ emp.FirstName }} {{ emp.LastName }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Start Date</label>
+                <input v-model="form.StartDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+              <div class="form-group">
+                <label>End Date</label>
+                <input v-model="form.EndDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+            </div>
+
             <div class="form-group">
-              <label>Type *</label>
-              <select v-model="form.type" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @change="form.subtype = ''">
-                <option value="">Select type...</option>
-                <option value="Үүрэн холбоо">Үүрэн холбоо</option>
-                <option value="Барилга">Барилга</option>
-                <option value="Оффис">Оффис</option>
-                <option value="Бусад">Бусад</option>
-              </select>
+              <label>Detail</label>
+              <textarea v-model="form.Detail" rows="3" class="form-textarea" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
             </div>
             <div class="form-group">
-              <label>Subtype</label>
-              <select v-if="form.type === 'Үүрэн холбоо'" v-model="form.subtype" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                <option value="">Select subtype...</option>
-                <option value="Шинэ сайт">Шинэ сайт</option>
-                <option value="Карьвер нэмэлт">Карьвер нэмэлт</option>
-                <option value="Гэмтэл саатал">Гэмтэл саатал</option>
-                <option value="5G угсралт">5G угсралт</option>
-                <option value="Хийсэн ажлын засвар">Хийсэн ажлын засвар</option>
-                <option value="Бусад">Бусад</option>
-              </select>
-              <input v-else v-model="form.subtype" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" placeholder="Enter subtype..." />
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Site Location</label>
-              <input v-model="form.siteLocation" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
-            </div>
-            <div class="form-group">
-              <label>Responsible Employee</label>
-              <select v-model="form.ResponsibleEmp" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                <option value="">Select employee...</option>
-                <option v-for="emp in workingEmployees" :key="emp.NumID" :value="emp.FirstName">{{ emp.FirstName }} {{ emp.LastName }}</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Start Date</label>
-              <input v-model="form.StartDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
-            </div>
-            <div class="form-group">
-              <label>End Date</label>
-              <input v-model="form.EndDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Урамшуулал тооцох эсэх</label>
-              <select v-model="form.projectType" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                <option value="paid">✅ Тийм — ажилтан урамшуулал авна</option>
-                <option value="unpaid">🚫 Үгүй — зөвхөн суурь цалин</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <!-- spacer -->
+              <label>Comment</label>
+              <textarea v-model="form.Comment" rows="2" class="form-textarea" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
             </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label>Status</label>
-              <select v-model="form.Status" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                <option value="Төлөвлсөн">Төлөвлсөн</option>
-                <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
-                <option value="Ажил хүлээлгэн өгөх">Ажил хүлээлгэн өгөх</option>
-                <option value="Нэхэмжлэх өгөх ба Шалгах">Нэхэмжлэх өгөх ба Шалгах</option>
-                <option value="Урамшуулал олгох">Урамшуулал олгох</option>
-                <option value="Дууссан">Дууссан</option>
-              </select>
+          <!-- ═══════════════════════════════ TAB 2: HR INFO ══════════════════════════════ -->
+          <div v-if="activeTab === 'hr'" class="tab-content">
+            <div class="section-header sh-blue">⏱️ Цагийн мэдээлэл (TA-аас)</div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>WosHour</label>
+                <input v-model.number="form.WosHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onWosHourChange" />
+                <small class="hint">Income HR-г тооцоолно</small>
+              </div>
+              <div class="form-group">
+                <label>Planned Hour</label>
+                <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
+                <small class="hint">WosHour × 3</small>
+              </div>
+              <div class="form-group">
+                <label>Real Hour (TA-аас)</label>
+                <input :value="formatNumber(form.RealHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
+                <small class="hint">TimeAttendance нийлбэр</small>
+              </div>
             </div>
-            <div class="form-group">
-              <label>Reference ID</label>
-              <input v-model="form.referenceIdfromCustomer" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>Working Hours</label>
+                <input :value="formatNumber(form.WorkingHours || 0)" type="text" readonly style="background-color: #dbeafe;" />
+                <small class="hint">Ердийн цаг (TA-аас)</small>
+              </div>
+              <div class="form-group">
+                <label>Overtime Hours</label>
+                <input :value="formatNumber(form.OvertimeHours || 0)" type="text" readonly style="background-color: #fef9c3;" />
+                <small class="hint">Илүү цаг (TA-аас)</small>
+              </div>
+              <div class="form-group">
+                <label>Цагийн гүйцэтгэл</label>
+                <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
+                <small class="hint">RealHour / PlannedHour × 100</small>
+              </div>
             </div>
-          </div>
-          
-          <!-- Detail and Comment -->
-          <div class="form-group" style="grid-column: 1 / -1; margin-top: 15px;">
-            <label>Detail</label>
-            <textarea v-model="form.Detail" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
-          </div>
-          
-          <div class="form-group" style="grid-column: 1 / -1;">
-            <label>Comment</label>
-            <textarea v-model="form.Comment" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
-          </div>
-          
-          <!-- Financial Fields -->
-          <h5 style="grid-column: 1 / -1; margin-top: 20px; color: #f59e0b; border-bottom: 2px solid #f59e0b; padding-bottom: 5px;">Financial Information</h5>
-          
-          <!-- HR Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #3b82f6; font-weight: 600; border-bottom: 1px solid #3b82f6; padding-bottom: 3px;">HR Information</h6>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>WosHour</label>
-              <input v-model.number="form.WosHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onWosHourChange" />
-              <small style="color: #6b7280;">Will calculate Income HR</small>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>Engineer Work Hour</label>
+                <input :value="formatNumber(form.EngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
+                <small class="hint">Инженерийн цаг</small>
+              </div>
+              <div class="form-group">
+                <label>Non-Engineer Work Hour</label>
+                <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
+                <small class="hint">Инженер бусын цаг</small>
+              </div>
             </div>
-            <div class="form-group">
-              <label>OR Income HR (manual)</label>
-              <input v-model.number="form.IncomeHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onIncomeHRChange" />
-              <small style="color: #6b7280;">Will calculate WosHour</small>
+
+            <div class="section-header sh-amber" style="margin-top: 16px;">📎 Нэмэлт мэдээлэл</div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>Additional Hour</label>
+                <input v-model.number="form.additionalHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onAdditionalHourChange" />
+                <small class="hint">Нэмэлт бусад цаг</small>
+              </div>
+              <div class="form-group">
+                <label>Additional Value</label>
+                <input :value="formatNumber(form.additionalValue)" type="text" readonly style="background-color: #f5f5f5;" />
+                <small class="hint">additionalHour × 65,000₮</small>
+              </div>
+              <div class="form-group">
+                <label>Additional Owner</label>
+                <input v-model="form.AdditionalOwner" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
             </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Инженер урамшуулал (WosHour × 12,500)</label>
-              <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
-              <small style="color: #6b7280;">Base for performance calculation</small>
-            </div>
-            <div class="form-group">
-              <label>Багийн урамшуулал</label>
-              <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
-              <small style="color: #6b7280;">WosHour × 22,500 MNT</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Planned Hour (calculated)</label>
-              <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">WosHour × 3</small>
-            </div>
-            <div class="form-group">
-              <label>Real Hour</label>
-              <input :value="formatNumber(form.RealHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">Sum from TimeAttendance</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Engineer Work Hour</label>
-              <input :value="formatNumber(form.EngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
-              <small style="color: #6b7280;">Hours by Engineers</small>
-            </div>
-            <div class="form-group">
-              <label>Non-Engineer Work Hour</label>
-              <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
-              <small style="color: #6b7280;">Hours by Non-Engineers</small>
-            </div>
-          </div>
-          
-          <div class="form-row" v-if="form.PlannedHour > 0">
-            <div class="form-group">
-              <label>Цагийн гүйцэтгэл</label>
-              <input :value="formatNumber(calculateTimePerformance(form.RealHour, form.PlannedHour)) + '%'" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">RealHour / PlannedHour × 100</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Инженерийн урамшуулал (гүйцэтгэлийн дагуу)</label>
-              <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-              <small style="color: #6b7280;">Performance-adjusted bounty</small>
-            </div>
-            <div class="form-group">
-              <label>Инженер бус урамшуулал</label>
-              <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-              <small style="color: #6b7280;">NonEngineerWorkHour × 5,000 MNT</small>
-            </div>
-          </div>
-          
-          <!-- Income Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #10b981; font-weight: 600; border-bottom: 1px solid #10b981; padding-bottom: 3px;">Income Information</h6>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Income HR (calculated)</label>
-              <input :value="formatNumber(form.IncomeHR)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">(WosHour + additionalHour) × 110,000</small>
-            </div>
-            <div class="form-group">
-              <label>Income Car</label>
-              <input v-model.number="form.IncomeCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Income Material</label>
-              <input v-model.number="form.IncomeMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-            </div>
-          </div>
-          
-          <!-- Additional (Нэмэлт) Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #f59e0b; font-weight: 600; border-bottom: 1px solid #f59e0b; padding-bottom: 3px;">Additional (Нэмэлт)</h6>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Additional Hour (Нэмэлт бусад цаг)</label>
-              <input v-model.number="form.additionalHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onAdditionalHourChange" />
-            </div>
-            <div class="form-group">
-              <label>Additional Owner</label>
-              <input v-model="form.AdditionalOwner" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Additional Value (calculated)</label>
-              <input :value="formatNumber(form.additionalValue)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">additionalHour × 65,000₮</small>
-            </div>
-          </div>
-          
-          <div class="form-row" v-if="form.projectType === 'unpaid'">
-            <div class="form-group">
-              <label>Ажилтны цалингийн зардал (тооцоолсон)</label>
-              <input :value="formatNumber(form.EmployeeLaborCost || 0) + '\u20ae'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
-              <small style="color: #6b7280;">\u0422\u0410-\u0430\u0430\u0441 \u0442\u043e\u043e\u0446\u043e\u043e\u043b\u043e\u0433\u0434\u0441\u043e\u043d · Salary/160\u0446 \xd7 \u0446\u0430\u0433 (\u0443\u0442\u0430\u0430 \u0445\u0430\u0434\u0433\u0430\u043b\u0430\u0430\u0440 \u0434\u044d\u044d)</small>
+
+            <div v-if="form.projectType === 'unpaid' || form.projectType === 'overtime'" class="form-grid-2" style="margin-top: 8px;">
+              <div class="form-group">
+                <label>Ажилтны цалингийн зардал</label>
+                <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
+                <small class="hint">Salary/160ц × Цаг (TA-аас)</small>
+              </div>
             </div>
           </div>
 
-          <!-- Expense Information Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #ef4444; font-weight: 600; border-bottom: 1px solid #ef4444; padding-bottom: 3px;">Expense Information</h6>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Expense HR</label>
-              <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-              <small style="color: #6b7280;">Includes additionalValue</small>
+          <!-- ═══════════════════════════════ TAB 3: FINANCIAL ═══════════════════════════ -->
+          <div v-if="activeTab === 'financial'" class="tab-content">
+
+            <!-- HR Financial -->
+            <div class="fin-section">
+              <div class="section-header sh-blue">👷 HR Санхүүгийн мэдээлэл</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Income HR</label>
+                  <input v-model.number="form.IncomeHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onIncomeHRChange" />
+                  <small class="hint" v-if="form.projectType === 'overtime'">WosHour × 20,000</small>
+                  <small class="hint" v-else-if="form.projectType !== 'unpaid'">(WosHour + addHour) × 110,000</small>
+                  <small class="hint" v-else>Төлбөргүй төсөл</small>
+                </div>
+                <div class="form-group">
+                  <label>Expense HR</label>
+                  <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group">
+                  <label>Expense HR (Гүйлгээнээс)</label>
+                  <input :value="formatNumber(form.ExpenseHRFromTrx || 0) + '₮'" type="text" readonly style="background-color: #f5f5f5;" />
+                  <small class="hint">Ажлын хөлс, томилолт, хоол</small>
+                </div>
+              </div>
+
+              <!-- Paid bounties -->
+              <div v-if="form.projectType === 'paid'" class="form-grid-3">
+                <div class="form-group">
+                  <label>Base Amount (WosHour × 12,500)</label>
+                  <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
+                </div>
+                <div class="form-group">
+                  <label>Team Bounty (WosHour × 22,500)</label>
+                  <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
+                </div>
+                <div class="form-group">
+                  <label>Инженерийн урамшуулал</label>
+                  <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+                  <small class="hint">Гүйцэтгэлийн дагуу тохируулсан</small>
+                </div>
+              </div>
+              <div v-if="form.projectType === 'paid'" class="form-grid-3">
+                <div class="form-group">
+                  <label>Инженер бус урамшуулал</label>
+                  <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
+                  <small class="hint">NonEngineerHour × 5,000₮</small>
+                </div>
+              </div>
+
+              <!-- Overtime bounty -->
+              <div v-if="form.projectType === 'overtime'" class="form-grid-2">
+                <div class="form-group">
+                  <label>Илүү цагийн урамшуулал</label>
+                  <input :value="formatNumber(form.OvertimeBounty || 0) + '₮'" type="text" readonly style="background-color: #fef9c3; font-weight: 600; color: #b45309;" />
+                  <small class="hint">OvertimeHours × 15,000₮</small>
+                </div>
+                <div class="form-group">
+                  <label>Ажилтны цалингийн зардал</label>
+                  <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
+                </div>
+              </div>
+
+              <!-- Unpaid labor cost -->
+              <div v-if="form.projectType === 'unpaid'" class="form-grid-2">
+                <div class="form-group">
+                  <label>Ажилтны цалингийн зардал</label>
+                  <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
+                </div>
+              </div>
+
+              <div class="form-grid-1">
+                <div class="form-group profit-field" :class="(form.ProfitHR||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
+                  <label>Profit HR</label>
+                  <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="font-weight: 700; font-size: 15px;" />
+                </div>
+              </div>
             </div>
-            <div class="form-group">
-              <label>Expense Car</label>
-              <input v-model.number="form.ExpenceCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+
+            <!-- Material Financial -->
+            <div class="fin-section">
+              <div class="section-header sh-green">📦 Материалын санхүүгийн мэдээлэл</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Income Material</label>
+                  <input v-model.number="form.IncomeMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group">
+                  <label>Expense Material</label>
+                  <input v-model.number="form.ExpenceMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group profit-field" :class="(form.ProfitMaterial||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
+                  <label>Profit Material</label>
+                  <input :value="formatNumber(form.ProfitMaterial)" type="text" readonly style="font-weight: 700;" />
+                </div>
+              </div>
             </div>
+
+            <!-- Car Financial -->
+            <div class="fin-section">
+              <div class="section-header sh-purple">🚗 Тээврийн санхүүгийн мэдээлэл</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Income Car</label>
+                  <input v-model.number="form.IncomeCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group">
+                  <label>Expense Car</label>
+                  <input v-model.number="form.ExpenceCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group profit-field" :class="(form.ProfitCar||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
+                  <label>Profit Car</label>
+                  <input :value="formatNumber(form.ProfitCar)" type="text" readonly style="font-weight: 700;" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Summary / Additional -->
+            <div class="fin-section">
+              <div class="section-header sh-amber">📊 Нэмэлт ба Нийт дүн</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Expense HSE</label>
+                  <input v-model.number="form.ExpenceHSE" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
+                </div>
+                <div class="form-group">
+                  <label>Total Income</label>
+                  <input :value="formatNumber((form.IncomeHR||0) + (form.IncomeCar||0) + (form.IncomeMaterial||0))" type="text" readonly style="background-color: #dcfce7; font-weight: 700; color: #16a34a;" />
+                </div>
+                <div class="form-group profit-field" :class="(form.TotalProfit||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
+                  <label>Total Profit</label>
+                  <input :value="formatNumber(form.TotalProfit)" type="text" readonly style="font-weight: 800; font-size: 17px;" />
+                </div>
+              </div>
+            </div>
+
           </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Expense Material</label>
-              <input v-model.number="form.ExpenceMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-            </div>
-            <div class="form-group">
-              <label>Expense HSE</label>
-              <input v-model.number="form.ExpenceHSE" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-            </div>
-          </div>
-          
-          <!-- Profit Summary Section -->
-          <h6 style="grid-column: 1 / -1; margin-top: 15px; color: #8b5cf6; font-weight: 600; border-bottom: 1px solid #8b5cf6; padding-bottom: 3px;">Profit Summary</h6>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Profit HR (calculated)</label>
-              <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)</small>
-            </div>
-            <div class="form-group">
-              <label>Profit Car (calculated)</label>
-              <input :value="formatNumber(form.ProfitCar)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">IncomeCar - ExpenseCar</small>
-            </div>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Profit Material (calculated)</label>
-              <input :value="formatNumber(form.ProfitMaterial)" type="text" readonly style="background-color: #f5f5f5;" />
-              <small style="color: #6b7280;">IncomeMaterial - ExpenseMaterial</small>
-            </div>
-            <div class="form-group">
-              <label>Total Profit (calculated)</label>
-              <input :value="formatNumber(form.TotalProfit)" type="text" readonly style="background-color: #f5f5f5; font-weight: bold; font-size: 16px; color: #8b5cf6;" />
-              <small style="color: #6b7280;">ProfitHR + ProfitCar + ProfitMaterial - ExpenseHSE</small>
-            </div>
-          </div>
-          
+
           <div class="form-actions">
             <button v-if="editingItem && !isEditMode" type="button" @click="isEditMode = true" class="edit-btn">
               Edit
@@ -529,6 +586,7 @@ const searchQuery = ref('');
 const filterStatus = ref('');
 const saving = ref(false);
 const formError = ref('');
+const activeTab = ref('basic');
 
 // List sort state
 const listSortField = ref('location');
@@ -554,6 +612,14 @@ function isInternalCustomer(name) {
 const showKanban = ref(false);
 const draggedProject = ref(null);
 const dragOverColumn = ref('');
+const kanbanTypeFilter = ref('all');
+
+const kanbanTypeOptions = [
+  { value: 'all',      label: '🔀 Бүгд' },
+  { value: 'paid',     label: '✅ Угсралтын' },
+  { value: 'overtime', label: '⏱️ Ашиглалт' },
+  { value: 'unpaid',   label: '🚫 Суурь цалин' },
+];
 
 const kanbanStatuses = [
   'Төлөвлсөн',
@@ -566,8 +632,10 @@ const kanbanStatuses = [
 
 const kanbanProjects = computed(() => {
   let items = [...projectsStore.projects];
-  // Hide internal (own-company) and unpaid projects from kanban
-  items = items.filter(p => !isInternalCustomer(p.customer) && p.projectType !== 'unpaid');
+  // Filter by projectType if not 'all'
+  if (kanbanTypeFilter.value !== 'all') {
+    items = items.filter(p => p.projectType === kanbanTypeFilter.value);
+  }
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
     items = items.filter(p =>
@@ -661,8 +729,12 @@ const form = ref({
   additionalValue: 0,
   AdditionalOwner: '',
   EmployeeLaborCost: 0,
+  OvertimeBounty: 0,
+  OvertimeHours: 0,
+  WorkingHours: 0,
   IncomeHR: 0,
   ExpenceHR: 0,
+  ExpenseHRFromTrx: 0,
   IncomeCar: 0,
   ExpenceCar: 0,
   IncomeMaterial: 0,
@@ -807,43 +879,49 @@ function getStatusColor(status) {
 }
 
 function onWosHourChange() {
-  // When WosHour changes, calculate IncomeHR (skip for unpaid projects)
-  if (form.value.projectType !== 'unpaid') {
-    form.value.IncomeHR = ((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000;
+  // When WosHour changes, calculate IncomeHR based on project type
+  if (form.value.projectType === 'overtime') {
+    form.value.IncomeHR = Math.round((form.value.WosHour || 0) * 20000);
+  } else if (form.value.projectType !== 'unpaid') {
+    form.value.IncomeHR = Math.round(((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000);
   }
   calculateFinancials();
 }
 
 function onIncomeHRChange() {
-  // When IncomeHR changes manually, calculate WosHour (keep additionalHour separate)
-  const additionalHour = form.value.additionalHour || 0;
-  form.value.WosHour = form.value.IncomeHR ? ((form.value.IncomeHR / 110000) - additionalHour) : 0;
+  // When IncomeHR changes manually, back-calculate WosHour
+  if (form.value.projectType === 'overtime') {
+    form.value.WosHour = form.value.IncomeHR ? Math.round((form.value.IncomeHR / 20000) * 100) / 100 : 0;
+  } else {
+    const additionalHour = form.value.additionalHour || 0;
+    form.value.WosHour = form.value.IncomeHR ? ((form.value.IncomeHR / 110000) - additionalHour) : 0;
+  }
   calculateFinancials();
 }
 
 function onAdditionalHourChange() {
-  // When additionalHour changes, calculate additionalValue and update IncomeHR
+  // When additionalHour changes, calculate additionalValue and update IncomeHR (paid only)
   form.value.additionalValue = Math.round((form.value.additionalHour || 0) * 65000);
-  // Recalculate IncomeHR with new additionalHour
-  form.value.IncomeHR = Math.round(((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000);
+  if (form.value.projectType !== 'overtime' && form.value.projectType !== 'unpaid') {
+    form.value.IncomeHR = Math.round(((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000);
+  }
   calculateFinancials();
 }
 
 function calculateFinancials() {
   const isUnpaid = form.value.projectType === 'unpaid';
+  const isOvertime = form.value.projectType === 'overtime';
 
   if (isUnpaid) {
-    // Unpaid projects: no client revenue, no bounty
+    // Unpaid projects: no client revenue, no bounty — only labour cost
     form.value.IncomeHR = 0;
     form.value.BaseAmount = 0;
     form.value.TeamBounty = 0;
     form.value.EngineerHand = 0;
     form.value.NonEngineerBounty = 0;
-    // PlannedHour still meaningful for tracking
+    form.value.OvertimeBounty = 0;
     form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-    // ProfitHR = -(EmployeeLaborCost + ExpenceHR + additionalValue)
-    // EmployeeLaborCost is calculated server-side from TA; use stored value here
     const laborCost = form.value.EmployeeLaborCost || 0;
     form.value.ProfitHR = Math.round(-((laborCost) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0)));
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
@@ -852,6 +930,30 @@ function calculateFinancials() {
     return;
   }
 
+  if (isOvertime) {
+    // Overtime projects (ашиглалтын илүү цаг): IncomeHR = WosHour * 20,000
+    form.value.BaseAmount = 0;
+    form.value.TeamBounty = 0;
+    form.value.EngineerHand = 0;
+    form.value.NonEngineerBounty = 0;
+    form.value.IncomeHR = Math.round((form.value.WosHour || 0) * 20000);
+    form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
+    form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
+    // OvertimeBounty is stored from server-side TA aggregation; use stored value
+    form.value.OvertimeBounty = Math.round((form.value.OvertimeHours || 0) * 15000);
+    const laborCost = form.value.EmployeeLaborCost || 0;
+    form.value.ProfitHR = Math.round(
+      (form.value.IncomeHR || 0) -
+      (laborCost + (form.value.OvertimeBounty || 0) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0))
+    );
+    form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
+    form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
+    form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+    return;
+  }
+
+  // Paid (Угсралтын урамшуулал): full bounty calculation
+  form.value.OvertimeBounty = 0;
   // BaseAmount = WosHour * 12500
   form.value.BaseAmount = Math.round((form.value.WosHour || 0) * 12500);
   // TeamBounty = WosHour * 22500
@@ -882,6 +984,7 @@ function handleAddItem() {
   }, 0);
   
   isEditMode.value = true; // Add mode is always edit mode
+  activeTab.value = 'basic';
   form.value.id = maxId + 1;
   showModal.value = true;
 }
@@ -889,6 +992,7 @@ function handleAddItem() {
 function editItem(project) {
   editingItem.value = project;
   editingDocId.value = project.docId; // Store Firestore document ID
+  activeTab.value = 'basic';
   
   console.log('Editing project:', { project, docId: project.docId, id: project.id });
   
@@ -921,8 +1025,12 @@ function editItem(project) {
     additionalValue: project.additionalValue || 0,
     AdditionalOwner: project.AdditionalOwner || '',
     EmployeeLaborCost: project.EmployeeLaborCost || 0,
+    OvertimeBounty: project.OvertimeBounty || 0,
+    OvertimeHours: project.OvertimeHours || 0,
+    WorkingHours: project.WorkingHours || 0,
     IncomeHR: project.IncomeHR || 0,
     ExpenceHR: project.ExpenceHR || 0,
+    ExpenseHRFromTrx: project.ExpenseHRFromTrx || 0,
     IncomeCar: project.IncomeCar || 0,
     ExpenceCar: project.ExpenceCar || 0,
     IncomeMaterial: project.IncomeMaterial || 0,
@@ -949,6 +1057,7 @@ function closeModal() {
   editingDocId.value = null;
   isEditMode.value = false;
   formError.value = '';
+  activeTab.value = 'basic';
   form.value = {
     id: '',
     customer: '',
@@ -977,8 +1086,12 @@ function closeModal() {
     additionalValue: 0,
     AdditionalOwner: '',
     EmployeeLaborCost: 0,
+    OvertimeBounty: 0,
+    OvertimeHours: 0,
+    WorkingHours: 0,
     IncomeHR: 0,
     ExpenceHR: 0,
+    ExpenseHRFromTrx: 0,
     IncomeCar: 0,
     ExpenceCar: 0,
     IncomeMaterial: 0,
@@ -1415,10 +1528,10 @@ defineExpose({
   background: white;
   padding: 30px;
   border-radius: 8px;
-  max-width: 700px;
-  max-height: 90vh;
+  max-width: 980px;
+  max-height: 92vh;
   overflow-y: auto;
-  width: 90%;
+  width: 96%;
 }
 
 .item-form {
@@ -1670,12 +1783,60 @@ defineExpose({
 .kprofit-pos { color: #16a34a; }
 .kprofit-neg { color: #dc2626; }
 
+.kanban-type-filters {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.ktype-btn {
+  padding: 4px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 20px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ktype-btn:hover { border-color: #6b7280; background: #f3f4f6; }
+.ktype-active { border-color: #3b82f6 !important; background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 700; }
+
+.kcard-calc-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin-top: 4px;
+  padding: 3px 6px;
+  background: #f8fafc;
+  border-radius: 5px;
+  border: 1px solid #e2e8f0;
+}
+.kcalc-label { font-size: 11px; }
+.kcalc-value { color: #374151; font-weight: 600; }
+.kcalc-cost { color: #dc2626; }
+.kcalc-sep { color: #9ca3af; }
+
 .kcard-unpaid-badge {
   display: inline-block;
   font-size: 10px;
   color: #dc2626;
   background: #fee2e2;
   border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.kcard-overtime-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #b45309;
+  background: #fef9c3;
+  border: 1px solid #fde68a;
   border-radius: 6px;
   padding: 1px 6px;
   margin-bottom: 4px;
@@ -1771,6 +1932,7 @@ defineExpose({
 .ptype-badge { font-size: 11px; padding: 2px 7px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
 .ptype-paid    { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
 .ptype-unpaid  { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+.ptype-overtime { background: #fef9c3; color: #b45309; border: 1px solid #fde68a; }
 .td-status { white-space: nowrap; }
 .td-date { white-space: nowrap; font-size: 12px; color: #6b7280; }
 .td-hours { text-align: right; font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -1789,5 +1951,137 @@ defineExpose({
 .th-hours { min-width: 80px; text-align: right; }
 .th-perf { min-width: 90px; text-align: right; }
 .th-profit { min-width: 110px; text-align: right; }
+
+/* ── Tabbed Form ──────────────────────────────────────────── */
+.form-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.form-tab {
+  padding: 8px 18px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.15s;
+}
+
+.form-tab:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.form-tab-active {
+  color: #1d4ed8 !important;
+  font-weight: 700 !important;
+  border-bottom-color: #1d4ed8 !important;
+  background: #eff6ff !important;
+}
+
+.tab-content {
+  animation: fadeInTab 0.15s ease;
+}
+
+@keyframes fadeInTab {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Form Grid Layouts ──────────────────────────────────────── */
+.form-grid-1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .form-grid-3 { grid-template-columns: 1fr 1fr; }
+  .form-grid-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .form-grid-3, .form-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ── Section Headers ──────────────────────────────────────── */
+.section-header {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
+}
+
+.sh-blue   { background: #eff6ff; color: #1d4ed8; border-left: 3px solid #3b82f6; }
+.sh-green  { background: #f0fdf4; color: #15803d; border-left: 3px solid #22c55e; }
+.sh-purple { background: #faf5ff; color: #7c3aed; border-left: 3px solid #8b5cf6; }
+.sh-amber  { background: #fffbeb; color: #92400e; border-left: 3px solid #f59e0b; }
+
+/* ── Financial Section ────────────────────────────────────── */
+.fin-section {
+  margin-bottom: 20px;
+  padding: 14px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+/* ── Profit field backgrounds ─────────────────────────────── */
+.profit-field input {
+  font-weight: 700;
+}
+
+.profit-pos-bg input {
+  background-color: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+.profit-neg-bg input {
+  background-color: #fee2e2 !important;
+  color: #dc2626 !important;
+}
+
+/* ── Misc ─────────────────────────────────────────────────── */
+.hint {
+  display: block;
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+}
 </style>
 

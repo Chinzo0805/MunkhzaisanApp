@@ -136,6 +136,19 @@ export async function syncFromExcelToProjects(accessToken) {
   }
 }
 
+// Sync WosHour from WOS Excel file (latest wos_records_* file in OneDrive)
+export async function syncWosHourFromExcel(accessToken) {
+  try {
+    const response = await api.post('/syncWosHourFromExcel', {
+      accessToken,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing WOS hours from Excel:', error);
+    throw error;
+  }
+}
+
 // Add or update project
 export async function manageProject(action, projectData, projectId = null) {
   try {

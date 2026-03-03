@@ -29,6 +29,7 @@ exports.manageCustomer = require("./manageCustomer").manageCustomer;
 // Project functions
 exports.syncProjectsToExcel = require("./syncProjectsToExcel").syncProjectsToExcel;
 exports.syncFromExcelToProjects = require("./syncFromExcelToProjects").syncFromExcelToProjects;
+exports.syncWosHourFromExcel = require("./syncWosHourFromExcel").syncWosHourFromExcel;
 exports.manageProject = require("./manageProject").manageProject;
 exports.updateProjectRealHours = require("./updateProjectRealHours").updateProjectRealHours;
 exports.recalculateAllProjects = require("./recalculateAllProjects").recalculateAllProjects;

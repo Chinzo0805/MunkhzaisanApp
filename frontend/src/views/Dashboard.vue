@@ -92,6 +92,10 @@
               <span class="icon">📦</span>
               {{ syncing && syncType === 'warehouse' ? 'Syncing...' : 'Sync Warehouse' }}
             </button>
+            <button @click="handleWosSync" class="sync-btn wos" :disabled="syncing">
+              <span class="icon">⏱️</span>
+              {{ syncing && syncType === 'wos' ? 'Syncing...' : 'WOS Хүн/цаг' }}
+            </button>
           </div>
           
           <div v-if="syncResult" :class="['sync-result', syncResult.success ? 'success' : 'error']">
@@ -158,7 +162,7 @@ import { useProjectsStore } from '../stores/projects';
 import { 
   syncEmployeesToExcel, syncFromExcelToFirestore,
   syncCustomersToExcel, syncFromExcelToCustomers,
-  syncProjectsToExcel, syncFromExcelToProjects,
+  syncProjectsToExcel, syncFromExcelToProjects, syncWosHourFromExcel,
   syncFinancialTransToExcel, syncFromExcelToFinancialTrans,
   syncWarehouseToExcel, syncFromExcelToWarehouse,
   syncWarehouseTransToExcel, syncFromExcelToWarehouseTrans
@@ -383,8 +387,6 @@ async function handleSyncDirection(direction) {
         };
       }
     }
-    
-    showSyncDialog.value = false;
   } catch (error) {
     console.error('Sync error:', error);
     
@@ -418,7 +420,32 @@ async function handleSyncDirection(direction) {
   }
 }
 
-
+async function handleWosSync() {
+  syncing.value = true;
+  syncType.value = 'wos';
+  syncResult.value = null;
+  try {
+    let token;
+    try {
+      token = await authStore.getMicrosoftToken();
+    } catch {
+      syncResult.value = { success: false, message: '✗ Microsoft authentication expired. Please sign in again.' };
+      syncing.value = false;
+      return;
+    }
+    const result = await syncWosHourFromExcel(token);
+    syncResult.value = {
+      success: true,
+      message: `✓ WOS Хүн/цаг синхрончлогдлоо: ${result.updated} төсөл шинэчлэгдсэн, ${result.skipped} алгасагдсан (файл: ${result.file})`,
+    };
+    await projectsStore.fetchProjects();
+  } catch (error) {
+    const msg = error.response?.data?.error || error.response?.data?.message || error.message;
+    syncResult.value = { success: false, message: `✗ WOS sync алдаа: ${msg}` };
+  } finally {
+    syncing.value = false;
+  }
+}
 
 function handleSaved(event) {
   syncResult.value = {
@@ -707,6 +734,11 @@ function handleSaved(event) {
 
 .sync-btn.warehouse {
   background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  color: white;
+}
+
+.sync-btn.wos {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
   color: white;
 }
 

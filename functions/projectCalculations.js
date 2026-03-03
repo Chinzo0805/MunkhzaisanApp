@@ -93,15 +93,19 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   const additionalHour = parseFloat(projectData.additionalHour) || 0;
   const additionalValue = parseFloat(projectData.additionalValue) || 0;
   const isUnpaid = projectData.projectType === 'unpaid';
+  const isOvertime = projectData.projectType === 'overtime';
 
-  // Calculate base amount (WosHour * 12500) - rounded to whole number
-  calculations.BaseAmount = isUnpaid ? 0 : Math.round(wosHour * 12500);
+  // Calculate base amount (WosHour * 12500) - 0 for unpaid/overtime
+  calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 12500);
 
-  // Calculate TeamBounty - rounded to whole number
-  calculations.TeamBounty = isUnpaid ? 0 : Math.round(wosHour * 22500);
+  // Calculate TeamBounty - 0 for unpaid/overtime
+  calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 22500);
 
-  // Calculate NonEngineerBounty - rounded to whole number
-  calculations.NonEngineerBounty = isUnpaid ? 0 : Math.round(nonEngineerHours * 5000);
+  // Calculate NonEngineerBounty - 0 for unpaid/overtime
+  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(nonEngineerHours * 5000);
+
+  // Calculate OvertimeBounty (ашиглалтын илүү цаг): overtimeHours * 15,000 - only for overtime type
+  calculations.OvertimeBounty = isOvertime ? Math.round(overtimeHours * 15000) : 0;
 
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
@@ -110,19 +114,21 @@ async function calculateProjectMetrics(projectId, projectData, db) {
     calculations.HourPerformance = 0;
   }
 
-  // Calculate EngineerHand (performance-adjusted bounty) - rounded to whole number
-  if (!isUnpaid && plannedHour > 0 && calculations.BaseAmount > 0) {
+  // Calculate EngineerHand (performance-adjusted bounty) - only for paid (Угсралтын урамшуулал)
+  if (!isUnpaid && !isOvertime && plannedHour > 0 && calculations.BaseAmount > 0) {
     const bountyPercentage = 200 - calculations.HourPerformance;
     calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
   } else {
     calculations.EngineerHand = 0;
   }
 
-  // Calculate Income HR (0 for unpaid projects)
-  calculations.IncomeHR = isUnpaid ? 0 : Math.round((wosHour + additionalHour) * 110000);
+  // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
+  calculations.IncomeHR = isUnpaid ? 0
+    : isOvertime ? Math.round(wosHour * 20000)
+    : Math.round((wosHour + additionalHour) * 110000);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
-  calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand);
+  calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + calculations.OvertimeBounty);
   
   // Query financial transactions for this project and sum by type
   const ftSnapshot = await db.collection('financialTransactions')
@@ -156,6 +162,12 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   if (isUnpaid) {
     // No income, no bounty — actual labor cost + direct expenses
     calculations.ProfitHR = Math.round(-(calculations.EmployeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
+  } else if (isOvertime) {
+    // Overtime projects: income exists, but expense = labor cost + overtime bounty
+    calculations.ProfitHR = Math.round(
+      calculations.IncomeHR -
+      (calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenseHRFromTrx + expenceHR + additionalValue)
+    );
   } else {
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
@@ -172,6 +184,9 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   if (isUnpaid) {
     calculations.TotalExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx);
     calculations.TotalHRExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenseHRFromTrx);
+  } else if (isOvertime) {
+    calculations.TotalExpence = Math.round(calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx);
+    calculations.TotalHRExpence = Math.round(calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenceHR + calculations.ExpenseHRFromTrx);
   } else {
     calculations.TotalExpence = Math.round(expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx + calculations.ExpenceHRBonus);
     calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + calculations.ExpenseHRFromTrx);
@@ -205,18 +220,23 @@ function calculateBasicMetrics(projectData) {
   const plannedHour = parseFloat(projectData.PlannedHour) || 0;
   const wosHour = parseFloat(projectData.WosHour) || 0;
   const nonEngineerHours = parseFloat(projectData.NonEngineerWorkHour) || 0;
+  const storedOvertimeHours = parseFloat(projectData.OvertimeHours) || 0;
   const additionalHour = parseFloat(projectData.additionalHour) || 0;
   const additionalValue = parseFloat(projectData.additionalValue) || 0;
   const isUnpaid = projectData.projectType === 'unpaid';
+  const isOvertime = projectData.projectType === 'overtime';
   
-  // Calculate base amount (WosHour * 12500)
-  calculations.BaseAmount = isUnpaid ? 0 : Math.round(wosHour * 12500);
+  // Calculate base amount (WosHour * 12500) - 0 for unpaid/overtime
+  calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 12500);
   
-  // Calculate TeamBounty
-  calculations.TeamBounty = isUnpaid ? 0 : Math.round(wosHour * 22500);
+  // Calculate TeamBounty - 0 for unpaid/overtime
+  calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 22500);
   
-  // Calculate NonEngineerBounty
-  calculations.NonEngineerBounty = isUnpaid ? 0 : Math.round(nonEngineerHours * 5000);
+  // Calculate NonEngineerBounty - 0 for unpaid/overtime
+  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(nonEngineerHours * 5000);
+
+  // Calculate OvertimeBounty (ашиглалтын илүү цаг): storedOvertimeHours * 15,000
+  calculations.OvertimeBounty = isOvertime ? Math.round(storedOvertimeHours * 15000) : 0;
   
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
@@ -225,32 +245,39 @@ function calculateBasicMetrics(projectData) {
     calculations.HourPerformance = 0;
   }
   
-  // Calculate EngineerHand (performance-adjusted bounty)
-  if (!isUnpaid && plannedHour > 0 && calculations.BaseAmount > 0) {
+  // Calculate EngineerHand (performance-adjusted bounty) - only for paid (Угсралтын урамшуулал)
+  if (!isUnpaid && !isOvertime && plannedHour > 0 && calculations.BaseAmount > 0) {
     const bountyPercentage = 200 - calculations.HourPerformance;
     calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
   } else {
     calculations.EngineerHand = 0;
   }
   
-  // Calculate Income HR (0 for unpaid)
-  calculations.IncomeHR = isUnpaid ? 0 : Math.round((wosHour + additionalHour) * 110000);
+  // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
+  calculations.IncomeHR = isUnpaid ? 0
+    : isOvertime ? Math.round(wosHour * 20000)
+    : Math.round((wosHour + additionalHour) * 110000);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
-  calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand);
+  calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + calculations.OvertimeBounty);
   
   // Get expense values from project data (already calculated from financial transactions)
   const expenseHRFromTrx = parseFloat(projectData.ExpenseHRFromTrx) || 0;
   const expenceCar = parseFloat(projectData.ExpenceCar) || 0;
   const expenceMaterial = parseFloat(projectData.ExpenceMaterial) || 0;
-  // For unpaid: use stored EmployeeLaborCost (calculated by full recalc from TA)
-  const employeeLaborCost = isUnpaid ? (parseFloat(projectData.EmployeeLaborCost) || 0) : 0;
+  // For unpaid/overtime: use stored EmployeeLaborCost (calculated by full recalc from TA)
+  const employeeLaborCost = (isUnpaid || isOvertime) ? (parseFloat(projectData.EmployeeLaborCost) || 0) : 0;
   calculations.EmployeeLaborCost = Math.round(employeeLaborCost);
   
   // Calculate Profit HR
   const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
   if (isUnpaid) {
     calculations.ProfitHR = Math.round(-(employeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
+  } else if (isOvertime) {
+    calculations.ProfitHR = Math.round(
+      calculations.IncomeHR -
+      (employeeLaborCost + calculations.OvertimeBounty + expenseHRFromTrx + expenceHR + additionalValue)
+    );
   } else {
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
@@ -267,6 +294,9 @@ function calculateBasicMetrics(projectData) {
   if (isUnpaid) {
     calculations.TotalExpence = Math.round(employeeLaborCost + expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx);
     calculations.TotalHRExpence = Math.round(employeeLaborCost + expenceHR + expenseHRFromTrx);
+  } else if (isOvertime) {
+    calculations.TotalExpence = Math.round(employeeLaborCost + calculations.OvertimeBounty + expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx);
+    calculations.TotalHRExpence = Math.round(employeeLaborCost + calculations.OvertimeBounty + expenceHR + expenseHRFromTrx);
   } else {
     calculations.TotalExpence = Math.round(expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx + calculations.ExpenceHRBonus);
     calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + expenseHRFromTrx);

@@ -24,7 +24,8 @@ service cloud.firestore {
     // Allow authenticated users to read projects, customers
     match /projects/{projectId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow update: if request.auth != null && isSupervisor();
+      allow create, delete: if false;
     }
     
     match /customers/{customerId} {
