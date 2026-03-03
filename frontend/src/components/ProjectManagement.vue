@@ -1065,7 +1065,7 @@ function closeModal() {
     subtype: '',
     projectType: 'paid',
     siteLocation: '',
-    StartDate: '',
+    StartDate: new Date().toISOString().slice(0, 10),
     EndDate: '',
     ResponsibleEmp: '',
     Detail: '',

@@ -191,6 +191,10 @@
               </th>
             </template>
             
+            <th class="sortable date-col" @click="sortBy('workDuration')" style="background:#e0f2fe;min-width:110px">Ажлын хугацаа</th>
+            <th class="sortable date-col" @click="sortBy('bountyPayDate')" style="background:#fef3c7;min-width:110px">
+              Урамшуулал огноо {{ sortColumn === 'bountyPayDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
             <th class="actions-col">Үйлдэл</th>
           </tr>
         </thead>
@@ -326,6 +330,14 @@
               </td>
             </template>
             
+            <td class="number-cell" style="background:#e0f2fe;font-size:12px;">
+              <span v-if="getWorkDuration(project)" style="color:#0369a1;font-weight:600;">{{ getWorkDuration(project) }}</span>
+              <span v-else style="color:#94a3b8;">-</span>
+            </td>
+            <td class="number-cell" style="background:#fef3c7;font-size:12px;">
+              <span v-if="project.bountyPayDate" style="color:#b45309;font-weight:600;">{{ project.bountyPayDate }}</span>
+              <span v-else style="color:#94a3b8;">-</span>
+            </td>
             <td class="actions-cell">
               <template v-if="editingId === project.id">
                 <button @click="saveEdit(project)" class="btn-save" :disabled="saving">💾</button>
@@ -373,7 +385,7 @@
                 {{ grandTotalProfit.toLocaleString() }}
               </span>
             </td>
-            <td></td>
+            <td></td><td></td><td></td>
           </tr>
         </tfoot>
         <tfoot v-else-if="viewMode === 'summary'">
@@ -395,7 +407,7 @@
             <td class="number-cell summary-detail">{{ totalExpenceMaterial.toLocaleString() }}</td>
             <td class="number-cell summary-detail">{{ sumExpenceHSE.toLocaleString() }}</td>
             <td class="number-cell summary-detail">{{ totalAdditionalValue.toLocaleString() }}</td>
-            <td></td>
+            <td></td><td></td><td></td>
           </tr>
         </tfoot>
       </table>
@@ -642,6 +654,19 @@ function formatDate(dateStr) {
   return dateStr;
 }
 
+// Compute how long a project has been in "Ажиллаж байгаа" status
+function getWorkDuration(project) {
+  const startIso = project.statusDates && project.statusDates['Ажиллаж байгаа'];
+  if (!startIso) return null;
+  const diffMs = Date.now() - new Date(startIso).getTime();
+  if (diffMs < 0) return null;
+  const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  if (days > 0) return `${days}өдөр ${hours}ц`;
+  return `${hours}ц`;
+}
+
 function getStatusClass(status) {
   const statusMap = {
     'Ажиллаж байгаа': 'status-working',
@@ -711,11 +736,11 @@ function exportToExcel() {
   
   let headers;
   if (viewMode.value === 'financial') {
-    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Орлого HR', 'Зарлага HR', 'Нийт урамшуулал', 'Орлого Car', 'Зарлага Car', 'Орлого Material', 'Зарлага Material', 'Нийт ашиг'];
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Орлого HR', 'Зарлага HR', 'Нийт урамшуулал', 'Орлого Car', 'Зарлага Car', 'Орлого Material', 'Зарлага Material', 'Нийт ашиг', 'Ажлын хугацаа', 'Урамшуулал огноо'];
   } else if (viewMode.value === 'summary') {
-    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Нийт орлого', 'Нийт зарлага', 'Нийт ашиг', 'Нийт цалин', 'Тээврийн зардал', 'Материалын зардал', 'ХАБЭА зардал', 'Нэмэлт'];
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Нийт орлого', 'Нийт зарлага', 'Нийт ашиг', 'Нийт цалин', 'Тээврийн зардал', 'Материалын зардал', 'ХАБЭА зардал', 'Нэмэлт', 'Ажлын хугацаа', 'Урамшуулал огноо'];
   } else {
-    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар'];
+    headers = ['ID', 'Харилцагч', 'Байршил', 'Хариуцах', 'Гүйцэтгэл %', 'Инженер урамшуулал', 'Инженер гар', 'Лавлах дугаар', 'Ажлын хугацаа', 'Урамшуулал огноо'];
   }
   
   const data = [
@@ -742,7 +767,9 @@ function exportToExcel() {
           proj.ExpenceCar || '-',
           proj.IncomeMaterial || '-',
           proj.ExpenceMaterial || '-',
-          proj.TotalProfit || '-'
+          proj.TotalProfit || '-',
+          getWorkDuration(proj) || '-',
+          proj.bountyPayDate || '-'
         ];
       } else if (viewMode.value === 'summary') {
         return [
@@ -754,7 +781,9 @@ function exportToExcel() {
           proj.ExpenceCar || '-',
           proj.ExpenceMaterial || '-',
           proj.ExpenceHSE || '-',
-          proj.additionalValue || '-'
+          proj.additionalValue || '-',
+          getWorkDuration(proj) || '-',
+          proj.bountyPayDate || '-'
         ];
       } else {
         return [
@@ -762,7 +791,9 @@ function exportToExcel() {
           proj.HourPerformance ? proj.HourPerformance.toFixed(2) : '-',
           proj.BaseAmount || '-',
           proj.EngineerHand || '-',
-          proj.referenceIdfromCustomer || '-'
+          proj.referenceIdfromCustomer || '-',
+          getWorkDuration(proj) || '-',
+          proj.bountyPayDate || '-'
         ];
       }
     })

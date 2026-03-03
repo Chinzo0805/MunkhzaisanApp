@@ -32,11 +32,22 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
     if (action === 'add') {
       // For new projects, use basic calculations (no TA data yet)
       const enrichedData = calculateBasicMetrics(projectData);
-      
+      const nowIso = new Date().toISOString();
+      const todayDate = nowIso.slice(0, 10); // YYYY-MM-DD
+
+      // Auto-set StartDate to today if not provided
+      const initialStartDate = projectData.StartDate || todayDate;
+
+      // Seed statusDates if initial status is known
+      const initialStatus = projectData.Status || '';
+      const initialStatusDates = initialStatus ? { [initialStatus]: nowIso } : {};
+
       const docRef = await db.collection('projects').add({
         ...projectData,
         ...enrichedData,
-        createdAt: new Date().toISOString(),
+        StartDate: initialStartDate,
+        statusDates: initialStatusDates,
+        createdAt: nowIso,
       });
       
       console.log(`Added new project with ID: ${docRef.id}`);
@@ -95,6 +106,8 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
       const now = new Date().toISOString();
 
       let statusDatesUpdate = {};
+      let bountyPayDateUpdate = {};
+
       if (statusChanged) {
         const existingStatusDates = oldProjectData.statusDates || {};
         statusDatesUpdate = {
@@ -103,6 +116,26 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
             [newStatus]: now,
           }
         };
+
+        // Auto-compute bountyPayDate when status changes to Урамшуулал олгох
+        if (newStatus === 'Урамшуулал олгох') {
+          const changeDate = new Date();
+          const day = changeDate.getDate();
+          let payDate;
+          if (day >= 1 && day <= 5) {
+            // Same month, 10th
+            payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-10`;
+          } else if (day >= 6 && day <= 20) {
+            // Same month, 25th
+            payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-25`;
+          } else {
+            // Next month, 10th
+            const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 10);
+            payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-10`;
+          }
+          bountyPayDateUpdate = { bountyPayDate: payDate };
+          console.log(`bountyPayDate set to ${payDate} (changed on day ${day})`);
+        }
       }
 
       // Prepare update data - only changed fields + calculations
@@ -110,6 +143,7 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         ...projectData,
         ...calculations,
         ...statusDatesUpdate,
+        ...bountyPayDateUpdate,
         updatedAt: now,
       };
       
