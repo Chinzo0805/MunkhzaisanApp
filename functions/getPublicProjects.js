@@ -27,7 +27,9 @@ exports.getPublicProjects = onCall(async (request) => {
           id: doc.id,
           ProjectName: data.ProjectName || data.siteLocation || '-',
           Status: data.Status || 'Unknown',
-          additionalHour: parseFloat(data.additionalHour) || 0
+          additionalHour: parseFloat(data.additionalHour) || 0,
+          referenceIdfromCustomer: data.referenceIdfromCustomer || '',
+          AdditionalOwner: data.AdditionalOwner || ''
         });
       }
     });

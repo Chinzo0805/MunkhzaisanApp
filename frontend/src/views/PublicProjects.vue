@@ -46,8 +46,8 @@
               <th @click="sortBy('ProjectName')" class="sortable">
                 Төслийн нэр {{ getSortIcon('ProjectName') }}
               </th>
-              <th @click="sortBy('id')" class="sortable">
-                Лавлагаа № {{ getSortIcon('id') }}
+              <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
+                Лавлагаа № {{ getSortIcon('referenceIdfromCustomer') }}
               </th>
               <th v-if="hasAdditionalOwner">Нэмэлт захиалагч</th>
               <th @click="sortBy('Status')" class="sortable">
@@ -62,7 +62,7 @@
           <tbody>
             <tr v-for="project in sortedProjects" :key="project.id">
               <td>{{ project.ProjectName || project.siteLocation || '-' }}</td>
-              <td>{{ project.id || '-' }}</td>
+              <td>{{ project.referenceIdfromCustomer || '-' }}</td>
               <td v-if="hasAdditionalOwner">{{ project.AdditionalOwner || '' }}</td>
               <td>
                 <span :class="['status-badge', getStatusClass(project.Status)]">
