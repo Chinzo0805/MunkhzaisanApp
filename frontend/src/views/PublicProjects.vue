@@ -46,9 +46,6 @@
               <th @click="sortBy('ProjectName')" class="sortable">
                 Төслийн нэр {{ getSortIcon('ProjectName') }}
               </th>
-              <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
-                Лавлагаа № {{ getSortIcon('referenceIdfromCustomer') }}
-              </th>
               <th v-if="hasAdditionalOwner">Нэмэлт захиалагч</th>
               <th @click="sortBy('Status')" class="sortable">
                 Төлөв {{ getSortIcon('Status') }}
@@ -62,7 +59,6 @@
           <tbody>
             <tr v-for="project in sortedProjects" :key="project.id">
               <td>{{ project.ProjectName || project.siteLocation || '-' }}</td>
-              <td>{{ project.referenceIdfromCustomer || '-' }}</td>
               <td v-if="hasAdditionalOwner">{{ project.AdditionalOwner || '' }}</td>
               <td>
                 <span :class="['status-badge', getStatusClass(project.Status)]">
@@ -75,7 +71,7 @@
           </tbody>
           <tfoot>
             <tr class="totals-row">
-              <td :colspan="hasAdditionalOwner ? 4 : 3"><strong>Нийт дүн:</strong></td>
+              <td :colspan="hasAdditionalOwner ? 3 : 2"><strong>Нийт дүн:</strong></td>
               <td class="number-cell"><strong>{{ formatNumber(totalHours) }}</strong></td>
               <td class="number-cell highlight"><strong>{{ formatCurrency(totalValue) }}</strong></td>
             </tr>
