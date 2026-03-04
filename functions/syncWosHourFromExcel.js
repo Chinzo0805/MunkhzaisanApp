@@ -151,10 +151,28 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
         if (incomeCar !== null && !isNaN(incomeCar)) fieldUpdates.IncomeCar = incomeCar;
         if (incomeMaterial !== null && !isNaN(incomeMaterial)) fieldUpdates.IncomeMaterial = incomeMaterial;
 
-        // If Ажилбар is "Нягтлан хүлээн авах", advance project status
+        // If Ажилбар is "Нягтлан хүлээн авах", advance project status to "Нэхэмжлэх өгөх ба Шалгах"
+        // — but never go backwards: skip if project is already at "Урамшуулал олгох" or "Дууссан"
+        const PIPELINE = [
+          'Төлөвлсөн',
+          'Ажиллаж байгаа',
+          'Ажил хүлээлгэн өгөх',
+          'Нэхэмжлэх өгөх ба Шалгах',
+          'Урамшуулал олгох',
+          'Дууссан',
+        ];
+        const TARGET_STATUS = 'Нэхэмжлэх өгөх ба Шалгах';
+        const currentStatus = projectData.Status || '';
+        const currentIdx = PIPELINE.indexOf(currentStatus);
+        const targetIdx  = PIPELINE.indexOf(TARGET_STATUS);
+
         if (ajilbar === 'Нягтлан хүлээн авах') {
-          fieldUpdates.Status = 'Нэхэмжлэх өгөх ба шалгах';
-          console.log(`  → Status set to "Нэхэмжлэх өгөх ба шалгах" for project ${projectData.id} (Ажилбар: ${ajilbar})`);
+          if (currentIdx < targetIdx) {
+            fieldUpdates.Status = TARGET_STATUS;
+            console.log(`  → Status: "${currentStatus}" → "${TARGET_STATUS}" for project ${projectData.id}`);
+          } else {
+            console.log(`  → Status NOT changed (already at "${currentStatus}", pipeline position ${currentIdx} ≥ ${targetIdx})`);
+          }
         }
 
         // Merge into project data then recalculate
