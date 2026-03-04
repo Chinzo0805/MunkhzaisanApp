@@ -65,7 +65,7 @@
         <input type="month" v-model="labourMonth" @change="loadLabour" class="month-input" />
       </div>
 
-      <div class="warning-banner">⚠️ Цалингийн тооцоолол баталгаажаагүй байна</div>
+      <div class="warning-banner">⚠️ Цалингийн тооцоололын хөгжүүлэлт дуусаагүй байна</div>
 
       <div class="period-tabs">
         <button @click="selectPeriod('first')" :class="['ptab', selectedPeriod === 'first' ? 'active' : '']">
