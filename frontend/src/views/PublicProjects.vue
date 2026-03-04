@@ -31,6 +31,10 @@
             {{ status }}
           </option>
         </select>
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="showFinished" />
+          Дууссан төсөл харуулах
+        </label>
       </div>
 
       <div v-if="loading" class="loading">Уншиж байна...</div>
@@ -42,6 +46,10 @@
               <th @click="sortBy('ProjectName')" class="sortable">
                 Төслийн нэр {{ getSortIcon('ProjectName') }}
               </th>
+              <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
+                Лавлагаа № {{ getSortIcon('referenceIdfromCustomer') }}
+              </th>
+              <th v-if="hasAdditionalOwner">Нэмэлт захиалагч</th>
               <th @click="sortBy('Status')" class="sortable">
                 Төлөв {{ getSortIcon('Status') }}
               </th>
@@ -54,6 +62,8 @@
           <tbody>
             <tr v-for="project in sortedProjects" :key="project.id">
               <td>{{ project.ProjectName || project.siteLocation || '-' }}</td>
+              <td>{{ project.referenceIdfromCustomer || '-' }}</td>
+              <td v-if="hasAdditionalOwner">{{ project.AdditionalOwner || '' }}</td>
               <td>
                 <span :class="['status-badge', getStatusClass(project.Status)]">
                   {{ project.Status }}
@@ -65,7 +75,7 @@
           </tbody>
           <tfoot>
             <tr class="totals-row">
-              <td colspan="2"><strong>Нийт дүн:</strong></td>
+              <td :colspan="hasAdditionalOwner ? 4 : 3"><strong>Нийт дүн:</strong></td>
               <td class="number-cell"><strong>{{ formatNumber(totalHours) }}</strong></td>
               <td class="number-cell highlight"><strong>{{ formatCurrency(totalValue) }}</strong></td>
             </tr>
@@ -95,6 +105,7 @@ const projects = ref([]);
 const sortColumn = ref('ProjectName');
 const sortAsc = ref(true);
 const statusFilter = ref('');
+const showFinished = ref(false);
 
 onMounted(() => {
   // Check if already authenticated in session
@@ -149,6 +160,11 @@ async function loadProjects() {
 const filteredProjects = computed(() => {
   // Cloud Function already filters for additionalHour > 0
   let filtered = projects.value;
+
+  // Hide Дууссан by default unless toggle is on
+  if (!showFinished.value) {
+    filtered = filtered.filter(p => p.Status !== 'Дууссан');
+  }
   
   // Filter by status if selected
   if (statusFilter.value) {
@@ -156,6 +172,10 @@ const filteredProjects = computed(() => {
   }
   
   return filtered;
+});
+
+const hasAdditionalOwner = computed(() => {
+  return projects.value.some(p => p.AdditionalOwner && p.AdditionalOwner.trim() !== '');
 });
 
 const availableStatuses = computed(() => {
@@ -366,6 +386,23 @@ function getStatusClass(status) {
 .filter-section select:focus {
   outline: none;
   border-color: #667eea;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  min-width: unset;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #667eea;
 }
 
 .loading {
