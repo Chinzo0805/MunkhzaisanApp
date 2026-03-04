@@ -219,20 +219,20 @@
 
           <!-- Tab Navigation -->
           <div class="form-tabs">
-            <button type="button" @click="activeTab = 'basic'" :class="['form-tab', activeTab === 'basic' ? 'form-tab-active' : '']">📋 Basic Info</button>
-            <button type="button" @click="activeTab = 'hr'" :class="['form-tab', activeTab === 'hr' ? 'form-tab-active' : '']">👷 HR Info</button>
-            <button type="button" @click="activeTab = 'financial'" :class="['form-tab', activeTab === 'financial' ? 'form-tab-active' : '']">💰 Financial</button>
+            <button type="button" @click="activeTab = 'basic'" :class="['form-tab', activeTab === 'basic' ? 'form-tab-active' : '']">📋 Үндсэн мэдээлэл</button>
+            <button type="button" @click="activeTab = 'hr'" :class="['form-tab', activeTab === 'hr' ? 'form-tab-active' : '']">👷 Цаг / Ажилтан</button>
+            <button type="button" @click="activeTab = 'financial'" :class="['form-tab', activeTab === 'financial' ? 'form-tab-active' : '']">💰 Санхүү</button>
           </div>
 
           <!-- ═══════════════════════════════ TAB 1: BASIC ═══════════════════════════════ -->
           <div v-if="activeTab === 'basic'" class="tab-content">
             <div class="form-grid-3">
               <div class="form-group">
-                <label>ID *</label>
+                <label>Дугаар *</label>
                 <input v-model="form.id" type="number" required readonly style="background-color: #f5f5f5;" placeholder="Auto" />
               </div>
               <div class="form-group">
-                <label>Status</label>
+                <label>Статус</label>
                 <select v-model="form.Status" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
                   <option value="Төлөвлсөн">Төлөвлсөн</option>
                   <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
@@ -254,23 +254,23 @@
 
             <div class="form-grid-2">
               <div class="form-group">
-                <label>Customer *</label>
+                <label>Харилцагч *</label>
                 <select v-model="form.customer" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                  <option value="">Select customer...</option>
+                  <option value="">Харилцагч сонгох...</option>
                   <option v-for="customer in customersStore.customers" :key="customer.ID" :value="customer.Name">{{ customer.Name }}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Reference ID</label>
+                <label>Харилцагчийн лавлагаа дугаар</label>
                 <input v-model="form.referenceIdfromCustomer" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
             </div>
 
             <div class="form-grid-3">
               <div class="form-group">
-                <label>Type *</label>
+                <label>Төрөл *</label>
                 <select v-model="form.type" required :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @change="form.subtype = ''">
-                  <option value="">Select type...</option>
+                  <option value="">Төрөл сонгох...</option>
                   <option value="Үүрэн холбоо">Үүрэн холбоо</option>
                   <option value="Барилга">Барилга</option>
                   <option value="Оффис">Оффис</option>
@@ -278,9 +278,9 @@
                 </select>
               </div>
               <div class="form-group">
-                <label>Subtype</label>
+                <label>Дэд төрөл</label>
                 <select v-if="form.type === 'Үүрэн холбоо'" v-model="form.subtype" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                  <option value="">Select subtype...</option>
+                  <option value="">Дэд төрөл сонгох...</option>
                   <option value="Шинэ сайт">Шинэ сайт</option>
                   <option value="Карьвер нэмэлт">Карьвер нэмэлт</option>
                   <option value="Гэмтэл саатал">Гэмтэл саатал</option>
@@ -291,25 +291,25 @@
                 <input v-else v-model="form.subtype" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" placeholder="Enter subtype..." />
               </div>
               <div class="form-group">
-                <label>Site Location</label>
+                <label>Байршил</label>
                 <input v-model="form.siteLocation" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
             </div>
 
             <div class="form-grid-3">
               <div class="form-group">
-                <label>Responsible Employee</label>
+                <label>Хариуцах ажилтан</label>
                 <select v-model="form.ResponsibleEmp" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
-                  <option value="">Select employee...</option>
+                  <option value="">Ажилтан сонгох...</option>
                   <option v-for="emp in workingEmployees" :key="emp.NumID" :value="emp.FirstName">{{ emp.FirstName }} {{ emp.LastName }}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Start Date</label>
+                <label>Эхлэх огноо</label>
                 <input v-model="form.StartDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
               <div class="form-group">
-                <label>End Date</label>
+                <label>Дуусах огноо</label>
                 <input v-model="form.EndDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
               <div class="form-group">
@@ -319,11 +319,11 @@
             </div>
 
             <div class="form-group">
-              <label>Detail</label>
+              <label>Дэлгэрэнгүй</label>
               <textarea v-model="form.Detail" rows="3" class="form-textarea" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
             </div>
             <div class="form-group">
-              <label>Comment</label>
+              <label>Тайлбар</label>
               <textarea v-model="form.Comment" rows="2" class="form-textarea" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''"></textarea>
             </div>
           </div>
@@ -333,17 +333,17 @@
             <div class="section-header sh-blue">⏱️ Цагийн мэдээлэл (TA-аас)</div>
             <div class="form-grid-3">
               <div class="form-group">
-                <label>WosHour</label>
+                <label>WOS цаг</label>
                 <input v-model.number="form.WosHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onWosHourChange" />
                 <small class="hint">Income HR-г тооцоолно</small>
               </div>
               <div class="form-group">
-                <label>Planned Hour</label>
+                <label>Төлөвлөгдсөн цаг</label>
                 <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
                 <small class="hint">WosHour × 3</small>
               </div>
               <div class="form-group">
-                <label>Real Hour (TA-аас)</label>
+                <label>Бодит цаг (TA-аас)</label>
                 <input :value="formatNumber(form.RealHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
                 <small class="hint">TimeAttendance нийлбэр</small>
               </div>
@@ -351,12 +351,12 @@
 
             <div class="form-grid-3">
               <div class="form-group">
-                <label>Working Hours</label>
+                <label>Ердийн цаг</label>
                 <input :value="formatNumber(form.WorkingHours || 0)" type="text" readonly style="background-color: #dbeafe;" />
                 <small class="hint">Ердийн цаг (TA-аас)</small>
               </div>
               <div class="form-group">
-                <label>Overtime Hours</label>
+                <label>Илүү цаг</label>
                 <input :value="formatNumber(form.OvertimeHours || 0)" type="text" readonly style="background-color: #fef9c3;" />
                 <small class="hint">Илүү цаг (TA-аас)</small>
               </div>
@@ -369,32 +369,14 @@
 
             <div class="form-grid-2">
               <div class="form-group">
-                <label>Engineer Work Hour</label>
+                <label>Инженерийн ажлын цаг</label>
                 <input :value="formatNumber(form.EngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
                 <small class="hint">Инженерийн цаг</small>
               </div>
               <div class="form-group">
-                <label>Non-Engineer Work Hour</label>
+                <label>Инженер бусын ажлын цаг</label>
                 <input :value="formatNumber(form.NonEngineerWorkHour || 0)" type="text" readonly style="background-color: #dbeafe;" />
                 <small class="hint">Инженер бусын цаг</small>
-              </div>
-            </div>
-
-            <div class="section-header sh-amber" style="margin-top: 16px;">📎 Нэмэлт мэдээлэл</div>
-            <div class="form-grid-3">
-              <div class="form-group">
-                <label>Additional Hour</label>
-                <input v-model.number="form.additionalHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onAdditionalHourChange" />
-                <small class="hint">Нэмэлт бусад цаг</small>
-              </div>
-              <div class="form-group">
-                <label>Additional Value</label>
-                <input :value="formatNumber(form.additionalValue)" type="text" readonly style="background-color: #f5f5f5;" />
-                <small class="hint">additionalHour × 65,000₮</small>
-              </div>
-              <div class="form-group">
-                <label>Additional Owner</label>
-                <input v-model="form.AdditionalOwner" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
               </div>
             </div>
 
@@ -415,18 +397,18 @@
               <div class="section-header sh-blue">👷 HR Санхүүгийн мэдээлэл</div>
               <div class="form-grid-3">
                 <div class="form-group">
-                  <label>Income HR</label>
+                  <label>HR орлого</label>
                   <input v-model.number="form.IncomeHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onIncomeHRChange" />
                   <small class="hint" v-if="form.projectType === 'overtime'">WosHour × 20,000</small>
                   <small class="hint" v-else-if="form.projectType !== 'unpaid'">(WosHour + addHour) × 110,000</small>
                   <small class="hint" v-else>Төлбөргүй төсөл</small>
                 </div>
                 <div class="form-group">
-                  <label>Expense HR</label>
+                  <label>HR зардал</label>
                   <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group">
-                  <label>Expense HR (Гүйлгээнээс)</label>
+                  <label>HR зардал (гүйлгээнээс)</label>
                   <input :value="formatNumber(form.ExpenseHRFromTrx || 0) + '₮'" type="text" readonly style="background-color: #f5f5f5;" />
                   <small class="hint">Ажлын хөлс, томилолт, хоол</small>
                 </div>
@@ -435,11 +417,11 @@
               <!-- Paid bounties -->
               <div v-if="form.projectType === 'paid'" class="form-grid-3">
                 <div class="form-group">
-                  <label>Base Amount (WosHour × 12,500)</label>
+                  <label>Суурь дүн (WosHour × 12,500)</label>
                   <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
                 </div>
                 <div class="form-group">
-                  <label>Team Bounty (WosHour × 22,500)</label>
+                  <label>Багийн урамшуулал (WosHour × 22,500)</label>
                   <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
                 </div>
                 <div class="form-group">
@@ -479,7 +461,7 @@
 
               <div class="form-grid-1">
                 <div class="form-group profit-field" :class="(form.ProfitHR||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
-                  <label>Profit HR</label>
+                  <label>HR ашиг</label>
                   <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="font-weight: 700; font-size: 15px;" />
                 </div>
               </div>
@@ -490,15 +472,15 @@
               <div class="section-header sh-green">📦 Материалын санхүүгийн мэдээлэл</div>
               <div class="form-grid-3">
                 <div class="form-group">
-                  <label>Income Material</label>
+                  <label>Материалын орлого</label>
                   <input v-model.number="form.IncomeMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group">
-                  <label>Expense Material</label>
+                  <label>Материалын зардал</label>
                   <input v-model.number="form.ExpenceMaterial" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group profit-field" :class="(form.ProfitMaterial||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
-                  <label>Profit Material</label>
+                  <label>Материалын ашиг</label>
                   <input :value="formatNumber(form.ProfitMaterial)" type="text" readonly style="font-weight: 700;" />
                 </div>
               </div>
@@ -509,34 +491,55 @@
               <div class="section-header sh-purple">🚗 Тээврийн санхүүгийн мэдээлэл</div>
               <div class="form-grid-3">
                 <div class="form-group">
-                  <label>Income Car</label>
+                  <label>Тээврийн орлого</label>
                   <input v-model.number="form.IncomeCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group">
-                  <label>Expense Car</label>
+                  <label>Тээврийн зардал</label>
                   <input v-model.number="form.ExpenceCar" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group profit-field" :class="(form.ProfitCar||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
-                  <label>Profit Car</label>
+                  <label>Тээврийн ашиг</label>
                   <input :value="formatNumber(form.ProfitCar)" type="text" readonly style="font-weight: 700;" />
                 </div>
               </div>
             </div>
 
-            <!-- Summary / Additional -->
+            <!-- Additional -->
             <div class="fin-section">
-              <div class="section-header sh-amber">📊 Нэмэлт ба Нийт дүн</div>
+              <div class="section-header sh-amber">📎 Нэмэлт мэдээлэл</div>
               <div class="form-grid-3">
                 <div class="form-group">
-                  <label>Expense HSE</label>
+                  <label>Нэмэлт цаг</label>
+                  <input v-model.number="form.additionalHour" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onAdditionalHourChange" />
+                  <small class="hint">Нэмэлт бусад цаг</small>
+                </div>
+                <div class="form-group">
+                  <label>Нэмэлт дүн</label>
+                  <input :value="formatNumber(form.additionalValue)" type="text" readonly style="background-color: #f5f5f5;" />
+                  <small class="hint">Нэмэлт цаг × 65,000₮</small>
+                </div>
+                <div class="form-group">
+                  <label>Нэмэлт эзэмшигч</label>
+                  <input v-model="form.AdditionalOwner" type="text" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="fin-section">
+              <div class="section-header sh-gray">📊 Нэмэлт ба Нийт дүн</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>HSE зардал</label>
                   <input v-model.number="form.ExpenceHSE" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group">
-                  <label>Total Income</label>
+                  <label>Нийт орлого</label>
                   <input :value="formatNumber((form.IncomeHR||0) + (form.IncomeCar||0) + (form.IncomeMaterial||0))" type="text" readonly style="background-color: #dcfce7; font-weight: 700; color: #16a34a;" />
                 </div>
                 <div class="form-group profit-field" :class="(form.TotalProfit||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
-                  <label>Total Profit</label>
+                  <label>Нийт ашиг</label>
                   <input :value="formatNumber(form.TotalProfit)" type="text" readonly style="font-weight: 800; font-size: 17px;" />
                 </div>
               </div>
@@ -546,12 +549,12 @@
 
           <div class="form-actions">
             <button v-if="editingItem && !isEditMode" type="button" @click="isEditMode = true" class="edit-btn">
-              Edit
+              Засах
             </button>
             <button v-if="isEditMode" type="submit" class="save-btn" :disabled="saving">
-              {{ saving ? 'Saving...' : 'Save' }}
+              {{ saving ? 'Хадгалж байна...' : 'Хадгалах' }}
             </button>
-            <button type="button" @click="closeModal" class="cancel-btn">{{ isEditMode ? 'Cancel' : 'Close' }}</button>
+            <button type="button" @click="closeModal" class="cancel-btn">{{ isEditMode ? 'Цуцлах' : 'Хаах' }}</button>
           </div>
         </form>
       </div>
