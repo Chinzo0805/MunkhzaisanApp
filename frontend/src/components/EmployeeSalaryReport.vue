@@ -5,7 +5,13 @@
     <div class="section-card">
       <div class="section-header-row">
         <div class="section-title">🏆 Урамшуулал</div>
-        <input type="month" v-model="bountyMonth" @change="loadBounty" class="month-input" />
+        <div class="date-selectors">
+          <input type="month" v-model="bountyMonth" @change="loadBounty" class="month-input" />
+          <select v-model="bountyDay" @change="loadBounty" class="day-select">
+            <option value="10">10-ны</option>
+            <option value="25">25-ны</option>
+          </select>
+        </div>
       </div>
 
       <div v-if="bountyLoading" class="loading-spin-sm">
@@ -138,6 +144,7 @@ const now = new Date();
 const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
 const bountyMonth = ref(thisMonth);
+const bountyDay = ref('10');
 const labourMonth = ref(thisMonth);
 const selectedPeriod = ref('first');
 
@@ -267,15 +274,12 @@ async function loadBounty() {
   bountyProjects.value = [];
 
   try {
-    const [year, month] = bountyMonth.value.split('-');
-    const from = `${year}-${month}-01`;
-    const to   = `${year}-${month}-31`;
+    const bountyPayDate = `${bountyMonth.value}-${String(bountyDay.value).padStart(2, '0')}`;
 
     const projSnap = await getDocs(
       query(
         collection(db, 'projects'),
-        where('bountyPayDate', '>=', from),
-        where('bountyPayDate', '<=', to)
+        where('bountyPayDate', '==', bountyPayDate)
       )
     );
 
@@ -381,6 +385,19 @@ onMounted(() => {
   border-radius: 8px;
   font-size: 13px;
   color: #374151;
+}
+.date-selectors {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.day-select {
+  padding: 6px 8px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  background: white;
 }
 
 /* Warning banner */
