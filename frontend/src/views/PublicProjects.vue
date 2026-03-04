@@ -171,7 +171,7 @@ const filteredProjects = computed(() => {
 });
 
 const hasAdditionalOwner = computed(() => {
-  return projects.value.some(p => p.AdditionalOwner && p.AdditionalOwner.trim() !== '');
+  return filteredProjects.value.some(p => p.AdditionalOwner && p.AdditionalOwner.trim() !== '');
 });
 
 const availableStatuses = computed(() => {
