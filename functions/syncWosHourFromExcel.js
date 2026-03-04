@@ -91,11 +91,12 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
     const wosIdx = headers.findIndex(h => h === 'Хүн/цаг');
     const carIdx = headers.findIndex(h => h === 'Унаа');
     const matIdx = headers.findIndex(h => h === 'Материалын дүн');
+    const ajilbarIdx = headers.findIndex(h => h === 'Ажилбар');
 
     if (refIdx === -1) throw new Error(`"ВОС дугаар" column not found. Headers: ${headers.join(', ')}`);
     if (wosIdx === -1) throw new Error(`"Хүн/цаг" column not found. Headers: ${headers.join(', ')}`);
 
-    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}`);
+    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}, "Ажилбар" at ${ajilbarIdx}`);
 
     // 6. Process each data row
     const updated = [];
@@ -108,11 +109,12 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
       const wosHourRaw = row[wosIdx];
       const incomeCarRaw = carIdx !== -1 ? row[carIdx] : null;
       const incomeMaterialRaw = matIdx !== -1 ? row[matIdx] : null;
+      const ajilbar = ajilbarIdx !== -1 ? (row[ajilbarIdx] || '').toString().trim() : '';
 
       if (!refId) continue;
 
-      const wosHour = parseFloat(wosHourRaw);
-      if (isNaN(wosHour)) {
+      const wosHourFromExcel = parseFloat(wosHourRaw);
+      if (isNaN(wosHourFromExcel)) {
         skipped.push({ refId, reason: `Invalid Хүн/цаг value: "${wosHourRaw}"` });
         continue;
       }
@@ -140,10 +142,20 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
       }
 
       try {
+        // WosHour = Excel Хүн/цаг - existing additionalHour
+        const existingAdditionalHour = parseFloat(projectData.additionalHour) || 0;
+        const wosHour = Math.max(0, wosHourFromExcel - existingAdditionalHour);
+
         // Build update payload — only overwrite IncomeCar/IncomeMaterial if column exists in Excel
         const fieldUpdates = { WosHour: wosHour };
         if (incomeCar !== null && !isNaN(incomeCar)) fieldUpdates.IncomeCar = incomeCar;
         if (incomeMaterial !== null && !isNaN(incomeMaterial)) fieldUpdates.IncomeMaterial = incomeMaterial;
+
+        // If Ажилбар is "Нягтлан хүлээн авах", advance project status
+        if (ajilbar === 'Нягтлан хүлээн авах') {
+          fieldUpdates.Status = 'Нэхэмжлэх өгөх ба шалгах';
+          console.log(`  → Status set to "Нэхэмжлэх өгөх ба шалгах" for project ${projectData.id} (Ажилбар: ${ajilbar})`);
+        }
 
         // Merge into project data then recalculate
         const updatedData = { ...projectData, ...fieldUpdates };
@@ -155,8 +167,8 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
           updatedAt: new Date().toISOString(),
         });
 
-        updated.push({ refId, projectId: projectData.id, wosHour, incomeCar, incomeMaterial });
-        console.log(`✓ Updated project ${projectData.id} (ref: ${refId}): WosHour=${wosHour}, IncomeCar=${incomeCar}, IncomeMaterial=${incomeMaterial}`);
+        updated.push({ refId, projectId: projectData.id, wosHour, wosHourFromExcel, existingAdditionalHour: parseFloat(projectData.additionalHour) || 0, incomeCar, incomeMaterial, statusChanged: ajilbar === 'Нягтлан хүлээн авах' });
+        console.log(`✓ Updated project ${projectData.id} (ref: ${refId}): WosHour=${wosHour} (Excel ${wosHourFromExcel} - addHour ${parseFloat(projectData.additionalHour) || 0}), IncomeCar=${incomeCar}, IncomeMaterial=${incomeMaterial}`);
       }  catch (err) {
         errors.push({ refId, error: err.message });
         console.error(`✗ Failed to update project ref ${refId}: ${err.message}`);
