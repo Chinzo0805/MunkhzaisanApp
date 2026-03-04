@@ -1,137 +1,124 @@
 ﻿<template>
   <div class="salary-page">
-    <!-- Header -->
-    <div class="page-header">
-      <h3>💰 Цалин &amp; Урамшуулал</h3>
-      <input type="month" v-model="selectedMonth" @change="loadAll" class="month-input" />
-    </div>
 
-    <div v-if="loading" class="loading-spin">
-      <div class="spinner"></div>
-      <p>Ачааллаж байна...</p>
-    </div>
-
-    <template v-else>
-      <!-- Summary chips -->
-      <div class="summary-chips">
-        <div class="chip chip-green">
-          <div class="chip-label">Цалин</div>
-          <div class="chip-value">{{ labourTotal.toLocaleString() }}₮</div>
-        </div>
-        <div class="chip chip-amber">
-          <div class="chip-label">Урамшуулал</div>
-          <div class="chip-value">{{ bountyTotal.toLocaleString() }}₮</div>
-        </div>
-        <div class="chip chip-blue">
-          <div class="chip-label">Нийт</div>
-          <div class="chip-value">{{ (labourTotal + bountyTotal).toLocaleString() }}₮</div>
-        </div>
-      </div>
-
-      <!-- ===== Labour Section ===== -->
-      <div class="section-card">
-        <div class="section-title">🕐 Цагийн цалин</div>
-
-        <div class="period-tabs">
-          <button @click="selectPeriod('first')" :class="['ptab', selectedPeriod === 'first' ? 'active' : '']">
-            1 – 15
-          </button>
-          <button @click="selectPeriod('second')" :class="['ptab', selectedPeriod === 'second' ? 'active' : '']">
-            16 – {{ lastDay }}
-          </button>
-        </div>
-
-        <div v-if="labourLoading" class="no-data-sm">Цагийн мэдээлэл уншиж байна...</div>
-        <div v-else-if="labourData.projects.length === 0" class="no-data-sm">
-          Энэ хугацаанд цагийн бүртгэл олдсонгүй
-        </div>
-        <template v-else>
-          <div class="stat-row">
-            <span>Ажилласан цаг</span>
-            <span class="val-blue">{{ labourData.totalHours.toFixed(1) }} ц</span>
-          </div>
-          <div v-if="labourData.missedHours > 0" class="stat-row warn">
-            <span>Тасалсан (× 2 хасалт)</span>
-            <span class="val-red">−{{ labourData.missedHours.toFixed(1) }} ц</span>
-          </div>
-          <div class="stat-row">
-            <span>Ажилласан өдөр</span>
-            <span>{{ labourData.daysWorked }} өдөр</span>
-          </div>
-
-          <div v-for="proj in labourData.projects" :key="proj.projectId" class="proj-card">
-            <div class="proj-card-top">
-              <span class="proj-card-name">{{ proj.projectName || proj.projectId }}</span>
-              <span class="proj-card-hours">{{ proj.totalHours.toFixed(1) }} ц</span>
-            </div>
-            <div v-for="role in proj.roles" :key="role.role" class="role-row">
-              <span class="role-icon">{{ role.role === 'Инженер' ? '👷' : role.role === 'Техникч' ? '🔧' : '👤' }}</span>
-              <span class="role-name">{{ role.role }}</span>
-              <span class="role-hours">{{ role.totalHours.toFixed(1) }}ц</span>
-              <span v-if="role.salary > 0" class="val-green">{{ role.salary.toLocaleString() }}₮</span>
-              <span v-else class="val-gray">—</span>
-            </div>
-            <div v-if="proj.totalSalary > 0" class="proj-salary">{{ proj.totalSalary.toLocaleString() }}₮</div>
-          </div>
-
-          <div class="total-row">
-            <span>Нийт цалин</span>
-            <strong class="val-green">{{ labourTotal.toLocaleString() }}₮</strong>
-          </div>
-        </template>
-      </div>
-
-      <!-- ===== Bounty Section ===== -->
-      <div class="section-card">
+    <!-- ===== Bounty Section ===== -->
+    <div class="section-card">
+      <div class="section-header-row">
         <div class="section-title">🏆 Урамшуулал</div>
-
-        <div v-if="bountyLoading" class="no-data-sm">Урамшуулал тооцоолж байна...</div>
-        <div v-else-if="bountyProjects.length === 0" class="no-data-sm">
-          Энэ сард урамшуулалтай төсөл байхгүй байна
-        </div>
-        <template v-else>
-          <div v-for="proj in bountyProjects" :key="proj.docId" class="proj-card">
-            <div class="proj-card-top">
-              <span class="proj-ref">{{ proj.referenceIdfromCustomer || ('#' + proj.id) }}</span>
-              <span :class="['type-badge', proj.projectType]">{{ proj.projectType }}</span>
-            </div>
-            <div class="proj-card-name">{{ proj.customer || '—' }}</div>
-            <div class="proj-card-meta">📍 {{ proj.siteLocation || '—' }} &nbsp;·&nbsp; {{ proj.bountyPayDate }}</div>
-
-            <div v-if="proj._my.engineerBounty > 0" class="role-row">
-              <span class="role-icon">👷</span>
-              <span class="role-name">Инженерийн урамшуулал</span>
-              <span class="val-green">{{ proj._my.engineerBounty.toLocaleString() }}₮</span>
-            </div>
-            <div v-if="proj._my.nonEngineerBounty > 0" class="role-row">
-              <span class="role-icon">🔧</span>
-              <span class="role-name">Техникчийн урамшуулал</span>
-              <span class="role-hours">{{ proj._my.nonEngineerHours.toFixed(1) }}ц × 5,000</span>
-              <span class="val-green">{{ proj._my.nonEngineerBounty.toLocaleString() }}₮</span>
-            </div>
-            <div v-if="proj._my.overtimeBounty > 0" class="role-row">
-              <span class="role-icon">⏰</span>
-              <span class="role-name">Илүү цагийн урамшуулал</span>
-              <span class="role-hours">{{ proj._my.overtimeHours.toFixed(1) }}ц × 15,000</span>
-              <span class="val-green">{{ proj._my.overtimeBounty.toLocaleString() }}₮</span>
-            </div>
-            <div v-if="proj._my.total === 0" class="no-data-sm" style="padding:6px 0;">
-              Урамшуулал байхгүй
-            </div>
-
-            <div v-if="proj._my.total > 0" class="proj-card-total">
-              <span>Нийт</span>
-              <strong class="val-green">{{ proj._my.total.toLocaleString() }}₮</strong>
-            </div>
-          </div>
-
-          <div class="total-row">
-            <span>Нийт урамшуулал</span>
-            <strong class="val-amber">{{ bountyTotal.toLocaleString() }}₮</strong>
-          </div>
-        </template>
+        <input type="month" v-model="bountyMonth" @change="loadBounty" class="month-input" />
       </div>
-    </template>
+
+      <div v-if="bountyLoading" class="loading-spin-sm">
+        <div class="spinner"></div>
+        <span>Уншиж байна...</span>
+      </div>
+      <div v-else-if="bountyProjects.length === 0" class="no-data-sm">
+        Энэ сард урамшуулалтай төсөл байхгүй байна
+      </div>
+      <template v-else>
+        <div v-for="proj in bountyProjects" :key="proj.docId" class="proj-card">
+          <div class="proj-card-top">
+            <span class="proj-ref">{{ proj.referenceIdfromCustomer || ('#' + proj.id) }}</span>
+            <span :class="['type-badge', proj.projectType]">{{ proj.projectType }}</span>
+          </div>
+          <div class="proj-card-name">{{ proj.customer || '—' }}</div>
+          <div class="proj-card-meta">📍 {{ proj.siteLocation || '—' }} &nbsp;·&nbsp; {{ proj.bountyPayDate }}</div>
+
+          <div v-if="proj._my.engineerBounty > 0" class="role-row">
+            <span class="role-icon">👷</span>
+            <span class="role-name">Инженерийн урамшуулал</span>
+            <span class="val-green">{{ proj._my.engineerBounty.toLocaleString() }}₮</span>
+          </div>
+          <div v-if="proj._my.nonEngineerBounty > 0" class="role-row">
+            <span class="role-icon">🔧</span>
+            <span class="role-name">Техникчийн урамшуулал</span>
+            <span class="role-hours">{{ proj._my.nonEngineerHours.toFixed(1) }}ц × 5,000</span>
+            <span class="val-green">{{ proj._my.nonEngineerBounty.toLocaleString() }}₮</span>
+          </div>
+          <div v-if="proj._my.overtimeBounty > 0" class="role-row">
+            <span class="role-icon">⏰</span>
+            <span class="role-name">Илүү цагийн урамшуулал</span>
+            <span class="role-hours">{{ proj._my.overtimeHours.toFixed(1) }}ц × 15,000</span>
+            <span class="val-green">{{ proj._my.overtimeBounty.toLocaleString() }}₮</span>
+          </div>
+          <div v-if="proj._my.total === 0" class="no-data-sm" style="padding:6px 0;">
+            Урамшуулал байхгүй
+          </div>
+
+          <div v-if="proj._my.total > 0" class="proj-card-total">
+            <span>Нийт</span>
+            <strong class="val-green">{{ proj._my.total.toLocaleString() }}₮</strong>
+          </div>
+        </div>
+
+        <div class="total-row">
+          <span>Нийт урамшуулал</span>
+          <strong class="val-amber">{{ bountyTotal.toLocaleString() }}₮</strong>
+        </div>
+      </template>
+    </div>
+
+    <!-- ===== Labour Section ===== -->
+    <div class="section-card">
+      <div class="section-header-row">
+        <div class="section-title">🕐 Цагийн цалин</div>
+        <input type="month" v-model="labourMonth" @change="loadLabour" class="month-input" />
+      </div>
+
+      <div class="warning-banner">⚠️ Цалингийн тооцоолол баталгаажаагүй байна</div>
+
+      <div class="period-tabs">
+        <button @click="selectPeriod('first')" :class="['ptab', selectedPeriod === 'first' ? 'active' : '']">
+          1 – 15
+        </button>
+        <button @click="selectPeriod('second')" :class="['ptab', selectedPeriod === 'second' ? 'active' : '']">
+          16 – {{ lastDay }}
+        </button>
+      </div>
+
+      <div v-if="labourLoading" class="loading-spin-sm">
+        <div class="spinner"></div>
+        <span>Уншиж байна...</span>
+      </div>
+      <div v-else-if="labourData.projects.length === 0" class="no-data-sm">
+        Энэ хугацаанд цагийн бүртгэл олдсонгүй
+      </div>
+      <template v-else>
+        <div class="stat-row">
+          <span>Ажилласан цаг</span>
+          <span class="val-blue">{{ labourData.totalHours.toFixed(1) }} ц</span>
+        </div>
+        <div v-if="labourData.missedHours > 0" class="stat-row warn">
+          <span>Тасалсан (× 2 хасалт)</span>
+          <span class="val-red">−{{ labourData.missedHours.toFixed(1) }} ц</span>
+        </div>
+        <div class="stat-row">
+          <span>Ажилласан өдөр</span>
+          <span>{{ labourData.daysWorked }} өдөр</span>
+        </div>
+
+        <div v-for="proj in labourData.projects" :key="proj.projectId" class="proj-card">
+          <div class="proj-card-top">
+            <span class="proj-card-name">{{ proj.projectName || proj.projectId }}</span>
+            <span class="proj-card-hours">{{ proj.totalHours.toFixed(1) }} ц</span>
+          </div>
+          <div v-for="role in proj.roles" :key="role.role" class="role-row">
+            <span class="role-icon">{{ role.role === 'Инженер' ? '👷' : role.role === 'Техникч' ? '🔧' : '👤' }}</span>
+            <span class="role-name">{{ role.role }}</span>
+            <span class="role-hours">{{ role.totalHours.toFixed(1) }}ц</span>
+            <span v-if="role.salary > 0" class="val-green">{{ role.salary.toLocaleString() }}₮</span>
+            <span v-else class="val-gray">—</span>
+          </div>
+          <div v-if="proj.totalSalary > 0" class="proj-salary">{{ proj.totalSalary.toLocaleString() }}₮</div>
+        </div>
+
+        <div class="total-row">
+          <span>Нийт цалин</span>
+          <strong class="val-green">{{ labourTotal.toLocaleString() }}₮</strong>
+        </div>
+      </template>
+    </div>
+
   </div>
 </template>
 
@@ -148,10 +135,12 @@ const employeesStore = useEmployeesStore();
 
 // ── State ──────────────────────────────────────────────────────────────
 const now = new Date();
-const selectedMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+const bountyMonth = ref(thisMonth);
+const labourMonth = ref(thisMonth);
 const selectedPeriod = ref('first');
 
-const loading = ref(false);
 const labourLoading = ref(false);
 const bountyLoading = ref(false);
 
@@ -166,7 +155,7 @@ const HOURLY_RATES = {
 
 // ── Computed ────────────────────────────────────────────────────────────
 const lastDay = computed(() => {
-  const [y, m] = selectedMonth.value.split('-');
+  const [y, m] = labourMonth.value.split('-');
   return new Date(y, m, 0).getDate();
 });
 
@@ -181,11 +170,11 @@ const bountyTotal = computed(() =>
 // ── Labour data ──────────────────────────────────────────────────────────
 async function loadLabour() {
   const employeeId = authStore.userData?.employeeId;
-  if (!employeeId || !selectedMonth.value) return;
+  if (!employeeId || !labourMonth.value) return;
 
   labourLoading.value = true;
   try {
-    const [year, month] = selectedMonth.value.split('-');
+    const [year, month] = labourMonth.value.split('-');
     const startDay = selectedPeriod.value === 'first' ? 1 : 16;
     const endDay   = selectedPeriod.value === 'first' ? 15 : lastDay.value;
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
@@ -272,13 +261,13 @@ function selectPeriod(p) {
 // ── Bounty data ──────────────────────────────────────────────────────────
 async function loadBounty() {
   const employeeId = authStore.userData?.employeeId;
-  if (!employeeId || !selectedMonth.value) return;
+  if (!employeeId || !bountyMonth.value) return;
 
   bountyLoading.value = true;
   bountyProjects.value = [];
 
   try {
-    const [year, month] = selectedMonth.value.split('-');
+    const [year, month] = bountyMonth.value.split('-');
     const from = `${year}-${month}-01`;
     const to   = `${year}-${month}-31`;
 
@@ -363,14 +352,10 @@ async function loadBounty() {
   }
 }
 
-// ── Load all ─────────────────────────────────────────────────────────────
-async function loadAll() {
-  loading.value = true;
-  await Promise.all([loadLabour(), loadBounty()]);
-  loading.value = false;
-}
-
-onMounted(() => loadAll());
+onMounted(() => {
+  loadBounty();
+  loadLabour();
+});
 </script>
 
 <style scoped>
@@ -381,75 +366,54 @@ onMounted(() => loadAll());
   font-family: 'Segoe UI', sans-serif;
 }
 
-/* Header */
-.page-header {
+/* Section header row with title + month picker */
+.section-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-.page-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #1e293b;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 .month-input {
-  padding: 7px 10px;
+  padding: 6px 10px;
   border: 1.5px solid #d1d5db;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: #374151;
 }
 
-/* Loading */
-.loading-spin {
+/* Warning banner */
+.warning-banner {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Inline loading */
+.loading-spin-sm {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 48px 0;
+  gap: 10px;
+  padding: 16px 0;
   color: #94a3b8;
-  gap: 12px;
+  font-size: 13px;
 }
 .spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid #e2e8f0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* Summary chips */
-.summary-chips {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 18px;
-}
-.chip {
-  border-radius: 10px;
-  padding: 12px 10px;
-  text-align: center;
-}
-.chip-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
-  margin-bottom: 4px;
-}
-.chip-value {
-  font-size: 15px;
-  font-weight: 700;
-}
-.chip-green  { background: #dcfce7; color: #14532d; }
-.chip-amber  { background: #fef3c7; color: #78350f; }
-.chip-blue   { background: #dbeafe; color: #1e3a8a; }
 
 /* Section cards */
 .section-card {
