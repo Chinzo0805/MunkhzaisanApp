@@ -1,646 +1,622 @@
-<template>
-  <div class="salary-report-section">
-    <h3>💰 Цалингийн мэдээлэл</h3>
-    
-    <div class="warning-banner">
-      ⚠️ Хөгжүүлэлт бүрэн дуусаагүй байгаа учир алдаатай мэдээлэл байж болно
-    </div>
-    
-    <div class="period-selector">
-      <label>Хугацаа сонгох:</label>
-      <div class="period-buttons">
-        <button 
-          @click="selectPeriod('first-half')" 
-          :class="['period-btn', { active: selectedPeriod === 'first-half' }]"
-        >
-          1-15 (Сарын эхний хагас)
-        </button>
-        <button 
-          @click="selectPeriod('second-half')" 
-          :class="['period-btn', { active: selectedPeriod === 'second-half' }]"
-        >
-          16-{{ lastDayOfMonth }} (Сарын сүүлч хагас)
-        </button>
-      </div>
-      
-      <div class="month-selector">
-        <label>Сар сонгох:</label>
-        <input type="month" v-model="selectedMonth" @change="loadSalaryData" />
-      </div>
+﻿<template>
+  <div class="salary-page">
+    <!-- Header -->
+    <div class="page-header">
+      <h3>💰 Цалин &amp; Урамшуулал</h3>
+      <input type="month" v-model="selectedMonth" @change="loadAll" class="month-input" />
     </div>
 
-    <div v-if="loading" class="loading">
-      Ачааллаж байна...
+    <div v-if="loading" class="loading-spin">
+      <div class="spinner"></div>
+      <p>Ачааллаж байна...</p>
     </div>
 
-    <div v-else-if="salaryData" class="salary-summary">
-      <div class="summary-card">
-        <div class="card-header">
-          <h4>{{ periodLabel }}</h4>
-          <p class="date-range">{{ dateRangeLabel }}</p>
+    <template v-else>
+      <!-- Summary chips -->
+      <div class="summary-chips">
+        <div class="chip chip-green">
+          <div class="chip-label">Цалин</div>
+          <div class="chip-value">{{ labourTotal.toLocaleString() }}₮</div>
         </div>
-        
-        <div class="hours-breakdown">
-          <div class="hour-item total">
-            <span class="label">Нийт ажилласан цаг:</span>
-            <span class="value">{{ salaryData.totalHours.toFixed(2) }} цаг</span>
-          </div>
-          <div v-if="salaryData.missedHours > 0" class="hour-item missed">
-            <span class="label">Тасалсан цаг:</span>
-            <span class="value penalty">{{ salaryData.missedHours.toFixed(2) }} цаг</span>
-          </div>
-          <div v-if="salaryData.totalSalary > 0" class="hour-item salary-total">
-            <span class="label">Нийт цалингийн дүн:</span>
-            <span class="value salary">{{ salaryData.totalSalary.toLocaleString() }} ₮</span>
-          </div>
+        <div class="chip chip-amber">
+          <div class="chip-label">Урамшуулал</div>
+          <div class="chip-value">{{ bountyTotal.toLocaleString() }}₮</div>
+        </div>
+        <div class="chip chip-blue">
+          <div class="chip-label">Нийт</div>
+          <div class="chip-value">{{ (labourTotal + bountyTotal).toLocaleString() }}₮</div>
+        </div>
+      </div>
+
+      <!-- ===== Labour Section ===== -->
+      <div class="section-card">
+        <div class="section-title">🕐 Цагийн цалин</div>
+
+        <div class="period-tabs">
+          <button @click="selectPeriod('first')" :class="['ptab', selectedPeriod === 'first' ? 'active' : '']">
+            1 – 15
+          </button>
+          <button @click="selectPeriod('second')" :class="['ptab', selectedPeriod === 'second' ? 'active' : '']">
+            16 – {{ lastDay }}
+          </button>
         </div>
 
-        <div class="projects-section" v-if="salaryData.projectBreakdown.length > 0">
-          <h5>Төслүүдээр:</h5>
-          <div class="project-list">
-            <div v-for="project in salaryData.projectBreakdown" :key="project.projectId" class="project-card">
-              <div class="project-header">
-                <span class="project-name">{{ project.projectName }}</span>
-                <div class="project-summary">
-                  <span class="project-total">{{ project.totalHours.toFixed(2) }} цаг</span>
-                  <span v-if="project.totalSalary > 0" class="project-salary">{{ project.totalSalary.toLocaleString() }} ₮</span>
-                </div>
-              </div>
-              
-              <div class="role-breakdown">
-                <div v-for="roleData in project.roles" :key="roleData.role" class="role-item">
-                  <div class="role-info">
-                    <span class="role-icon">
-                      {{ roleData.role === 'Инженер' ? '👷' : roleData.role === 'Техникч' ? '🔧' : '👨‍💼' }}
-                    </span>
-                    <span class="role-name">{{ roleData.role }}</span>
-                  </div>
-                  <div class="role-hours">
-                    <span class="hours-detail">{{ roleData.totalHours.toFixed(2) }} цаг</span>
-                    <span v-if="roleData.salary > 0" class="role-salary">{{ roleData.salary.toLocaleString() }} ₮</span>
-                  </div>
-                </div>
-              </div>
+        <div v-if="labourLoading" class="no-data-sm">Цагийн мэдээлэл уншиж байна...</div>
+        <div v-else-if="labourData.projects.length === 0" class="no-data-sm">
+          Энэ хугацаанд цагийн бүртгэл олдсонгүй
+        </div>
+        <template v-else>
+          <div class="stat-row">
+            <span>Ажилласан цаг</span>
+            <span class="val-blue">{{ labourData.totalHours.toFixed(1) }} ц</span>
+          </div>
+          <div v-if="labourData.missedHours > 0" class="stat-row warn">
+            <span>Тасалсан (× 2 хасалт)</span>
+            <span class="val-red">−{{ labourData.missedHours.toFixed(1) }} ц</span>
+          </div>
+          <div class="stat-row">
+            <span>Ажилласан өдөр</span>
+            <span>{{ labourData.daysWorked }} өдөр</span>
+          </div>
+
+          <div v-for="proj in labourData.projects" :key="proj.projectId" class="proj-card">
+            <div class="proj-card-top">
+              <span class="proj-card-name">{{ proj.projectName || proj.projectId }}</span>
+              <span class="proj-card-hours">{{ proj.totalHours.toFixed(1) }} ц</span>
+            </div>
+            <div v-for="role in proj.roles" :key="role.role" class="role-row">
+              <span class="role-icon">{{ role.role === 'Инженер' ? '👷' : role.role === 'Техникч' ? '🔧' : '👤' }}</span>
+              <span class="role-name">{{ role.role }}</span>
+              <span class="role-hours">{{ role.totalHours.toFixed(1) }}ц</span>
+              <span v-if="role.salary > 0" class="val-green">{{ role.salary.toLocaleString() }}₮</span>
+              <span v-else class="val-gray">—</span>
+            </div>
+            <div v-if="proj.totalSalary > 0" class="proj-salary">{{ proj.totalSalary.toLocaleString() }}₮</div>
+          </div>
+
+          <div class="total-row">
+            <span>Нийт цалин</span>
+            <strong class="val-green">{{ labourTotal.toLocaleString() }}₮</strong>
+          </div>
+        </template>
+      </div>
+
+      <!-- ===== Bounty Section ===== -->
+      <div class="section-card">
+        <div class="section-title">🏆 Урамшуулал</div>
+
+        <div v-if="bountyLoading" class="no-data-sm">Урамшуулал тооцоолж байна...</div>
+        <div v-else-if="bountyProjects.length === 0" class="no-data-sm">
+          Энэ сард урамшуулалтай төсөл байхгүй байна
+        </div>
+        <template v-else>
+          <div v-for="proj in bountyProjects" :key="proj.docId" class="proj-card">
+            <div class="proj-card-top">
+              <span class="proj-ref">{{ proj.referenceIdfromCustomer || ('#' + proj.id) }}</span>
+              <span :class="['type-badge', proj.projectType]">{{ proj.projectType }}</span>
+            </div>
+            <div class="proj-card-name">{{ proj.customer || '—' }}</div>
+            <div class="proj-card-meta">📍 {{ proj.siteLocation || '—' }} &nbsp;·&nbsp; {{ proj.bountyPayDate }}</div>
+
+            <div v-if="proj._my.engineerBounty > 0" class="role-row">
+              <span class="role-icon">👷</span>
+              <span class="role-name">Инженерийн урамшуулал</span>
+              <span class="val-green">{{ proj._my.engineerBounty.toLocaleString() }}₮</span>
+            </div>
+            <div v-if="proj._my.nonEngineerBounty > 0" class="role-row">
+              <span class="role-icon">🔧</span>
+              <span class="role-name">Техникчийн урамшуулал</span>
+              <span class="role-hours">{{ proj._my.nonEngineerHours.toFixed(1) }}ц × 5,000</span>
+              <span class="val-green">{{ proj._my.nonEngineerBounty.toLocaleString() }}₮</span>
+            </div>
+            <div v-if="proj._my.overtimeBounty > 0" class="role-row">
+              <span class="role-icon">⏰</span>
+              <span class="role-name">Илүү цагийн урамшуулал</span>
+              <span class="role-hours">{{ proj._my.overtimeHours.toFixed(1) }}ц × 15,000</span>
+              <span class="val-green">{{ proj._my.overtimeBounty.toLocaleString() }}₮</span>
+            </div>
+            <div v-if="proj._my.total === 0" class="no-data-sm" style="padding:6px 0;">
+              Урамшуулал байхгүй
+            </div>
+
+            <div v-if="proj._my.total > 0" class="proj-card-total">
+              <span>Нийт</span>
+              <strong class="val-green">{{ proj._my.total.toLocaleString() }}₮</strong>
             </div>
           </div>
-        </div>
 
-        <div class="days-worked">
-          <span class="label">Ажилласан өдөр:</span>
-          <span class="value">{{ salaryData.daysWorked }} өдөр</span>
-        </div>
+          <div class="total-row">
+            <span>Нийт урамшуулал</span>
+            <strong class="val-amber">{{ bountyTotal.toLocaleString() }}₮</strong>
+          </div>
+        </template>
       </div>
-    </div>
-
-    <div v-else-if="!loading" class="no-data">
-      Сонгосон хугацаанд мэдээлэл олдсонгүй
-    </div>
+    </template>
   </div>
 </template>
+
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 const authStore = useAuthStore();
 const employeesStore = useEmployeesStore();
-const db = getFirestore();
 
-const currentEmployeeType = ref(null);
+// ── State ──────────────────────────────────────────────────────────────
+const now = new Date();
+const selectedMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+const selectedPeriod = ref('first');
 
-// Hourly rates by role (in MNT)
+const loading = ref(false);
+const labourLoading = ref(false);
+const bountyLoading = ref(false);
+
+const labourData = ref({ totalHours: 0, missedHours: 0, daysWorked: 0, projects: [] });
+const bountyProjects = ref([]);
+
+// ── Hourly labour rates (₮ per hour) ───────────────────────────────────
 const HOURLY_RATES = {
   'Техникч': 5000,
-  'Инженер': 0, // To be defined
-  'Ажилтан': 0  // To be defined
+  'Инженер': 0, // Paid via flat EngineerHand (bounty), not hourly
 };
 
-function calculateSalary(role, hours) {
-  // No payment for trainees (Дадлагжигч)
-  if (currentEmployeeType.value === 'Дадлагжигч') {
-    return 0;
-  }
-  
-  const rate = HOURLY_RATES[role] || 0;
-  return hours * rate;
-}
-
-const selectedPeriod = ref('first-half');
-const selectedMonth = ref('');
-const loading = ref(false);
-const salaryData = ref(null);
-
-// Get current month as default
-const now = new Date();
-selectedMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-const lastDayOfMonth = computed(() => {
-  if (!selectedMonth.value) return 31;
-  const [year, month] = selectedMonth.value.split('-');
-  return new Date(year, month, 0).getDate();
+// ── Computed ────────────────────────────────────────────────────────────
+const lastDay = computed(() => {
+  const [y, m] = selectedMonth.value.split('-');
+  return new Date(y, m, 0).getDate();
 });
 
-const periodLabel = computed(() => {
-  if (selectedPeriod.value === 'first-half') {
-    return 'Сарын эхний хагас';
-  }
-  return 'Сарын сүүлч хагас';
-});
+const labourTotal = computed(() =>
+  labourData.value.projects.reduce((s, p) => s + p.totalSalary, 0)
+);
 
-const dateRangeLabel = computed(() => {
-  if (!selectedMonth.value) return '';
-  const [year, month] = selectedMonth.value.split('-');
-  
-  if (selectedPeriod.value === 'first-half') {
-    return `${year}-${month}-01 - ${year}-${month}-15`;
-  }
-  return `${year}-${month}-16 - ${year}-${month}-${lastDayOfMonth.value}`;
-});
+const bountyTotal = computed(() =>
+  bountyProjects.value.reduce((s, p) => s + (p._my?.total || 0), 0)
+);
 
-function selectPeriod(period) {
-  selectedPeriod.value = period;
-  loadSalaryData();
-}
-
-async function loadSalaryData() {
+// ── Labour data ──────────────────────────────────────────────────────────
+async function loadLabour() {
   const employeeId = authStore.userData?.employeeId;
-  
-  if (!selectedMonth.value || !employeeId) {
-    console.log('Missing required data:', {
-      month: selectedMonth.value,
-      employeeId
-    });
-    return;
-  }
+  if (!employeeId || !selectedMonth.value) return;
 
-  loading.value = true;
-  
+  labourLoading.value = true;
   try {
-    // Load employee data to get Type
-    await employeesStore.fetchEmployees();
-    const currentEmployee = employeesStore.employees.find(emp => emp.Id === employeeId);
-    currentEmployeeType.value = currentEmployee?.Type || null;
-    
-    console.log('Employee type:', currentEmployeeType.value);
-    
     const [year, month] = selectedMonth.value.split('-');
-    let startDay, endDay;
-    
-    if (selectedPeriod.value === 'first-half') {
-      startDay = 1;
-      endDay = 15;
-    } else {
-      startDay = 16;
-      endDay = lastDayOfMonth.value;
-    }
-    
+    const startDay = selectedPeriod.value === 'first' ? 1 : 16;
+    const endDay   = selectedPeriod.value === 'first' ? 15 : lastDay.value;
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
-    const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
-    
-    console.log('Querying timeAttendance:', {
-      employeeId,
-      startDate,
-      endDate
-    });
-    
-    // Query timeAttendance collection for this employee by EmployeeID
-    const q = query(
-      collection(db, 'timeAttendance'),
-      where('EmployeeID', '==', employeeId)
+    const endDate   = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
+
+    await employeesStore.fetchEmployees();
+    const empRecord = employeesStore.employees.find(e => String(e.Id) === String(employeeId));
+    const isTrainee = empRecord?.Type === 'Дадлагжигч';
+
+    const snap = await getDocs(
+      query(collection(db, 'timeAttendance'), where('EmployeeID', '==', employeeId))
     );
-    
-    const snapshot = await getDocs(q);
-    console.log('Total records found:', snapshot.size);
-    
-    // Filter by date range in JavaScript
-    const recordsInRange = snapshot.docs
-      .map(doc => doc.data())
-      .filter(record => {
-        const day = record.Day || record.Date;
+
+    const records = snap.docs
+      .map(d => d.data())
+      .filter(r => {
+        const day = r.Day || r.Date || '';
         return day >= startDate && day <= endDate;
       });
-    
-    console.log('Records in date range:', recordsInRange.length);
-    
+
     let totalHours = 0;
     let missedHours = 0;
-    const projectMap = new Map();
-    const uniqueDays = new Set();
-    
-    recordsInRange.forEach(record => {
-      const status = record.Status;
-      const working = parseFloat(record.WorkingHour) || 0;
-      const overtime = parseFloat(record.overtimeHour) || 0;
-      
-      // Skip leave/rest days - don't count them
-      if (status === 'Чөлөөтэй/Амралт') {
-        return;
-      }
-      
-      let recordTotal = working + overtime;
-      
-      // Apply penalty for missed work: -2 * workingHour
-      if (status === 'тасалсан') {
-        const penalty = working * 2;
+    const daysSet = new Set();
+    const projMap = new Map();
+
+    for (const r of records) {
+      if (r.Status === 'Чөлөөтэй/Амралт') continue;
+
+      const wh = parseFloat(r.WorkingHour) || 0;
+      const oh = parseFloat(r.overtimeHour) || 0;
+      let hours = wh + oh;
+
+      if (r.Status === 'тасалсан') {
+        const penalty = wh * 2;
         missedHours += penalty;
-        recordTotal = -penalty; // Deduct from total
+        hours = -penalty;
       }
-      
-      totalHours += recordTotal;
-      
-      // Track unique days
-      if (record.Day) {
-        uniqueDays.add(record.Day);
+
+      totalHours += hours;
+      if (r.Day) daysSet.add(r.Day);
+
+      const projId   = r.ProjectID;
+      const projName = r.ProjectName || String(projId || '');
+      const role     = r.Role || 'Тодорхойгүй';
+      const rate     = isTrainee ? 0 : (HOURLY_RATES[role] ?? 0);
+      const salary   = Math.max(0, hours * rate);
+
+      if (!projMap.has(projId)) {
+        projMap.set(projId, { projectId: projId, projectName: projName, totalHours: 0, totalSalary: 0, roles: new Map() });
       }
-      
-      // Group by project and role
-      const projectId = record.ProjectID;
-      const projectName = record.ProjectName || projectId;
-      const role = record.Role || 'Тодорхойгүй';
-      
-      if (projectId) {
-        if (!projectMap.has(projectId)) {
-          projectMap.set(projectId, {
-            projectId,
-            projectName,
-            totalHours: 0,
-            roles: new Map()
-          });
-        }
-        
-        const proj = projectMap.get(projectId);
-        proj.totalHours += recordTotal;
-        
-        // Track hours by role within project
-        if (!proj.roles.has(role)) {
-          proj.roles.set(role, {
-            role,
-            totalHours: 0,
-            salary: 0
-          });
-        }
-        
-        const roleData = proj.roles.get(role);
-        roleData.totalHours += recordTotal;
-        roleData.salary += calculateSalary(role, recordTotal);
+      const proj = projMap.get(projId);
+      proj.totalHours += hours;
+
+      if (!proj.roles.has(role)) {
+        proj.roles.set(role, { role, totalHours: 0, salary: 0 });
       }
-    });
-    
-    // Convert project roles Map to array and calculate project salaries
-    const projectBreakdown = Array.from(projectMap.values()).map(proj => {
-      const roles = Array.from(proj.roles.values()).sort((a, b) => b.totalHours - a.totalHours);
-      const totalSalary = roles.reduce((sum, r) => sum + r.salary, 0);
-      
-      return {
-        ...proj,
-        roles,
-        totalSalary
-      };
-    }).sort((a, b) => b.totalHours - a.totalHours);
-    
-    // Calculate overall total salary
-    const totalSalary = projectBreakdown.reduce((sum, proj) => sum + proj.totalSalary, 0);
-    
-    console.log('Calculated salary data:', {
+      const rd = proj.roles.get(role);
+      rd.totalHours += hours;
+      rd.salary     += salary;
+      proj.totalSalary += salary;
+    }
+
+    labourData.value = {
       totalHours,
       missedHours,
-      totalSalary,
-      daysWorked: uniqueDays.size,
-      projectCount: projectBreakdown.length
-    });
-    
-    salaryData.value = {
-      totalHours,
-      missedHours,
-      totalSalary,
-      daysWorked: uniqueDays.size,
-      projectBreakdown
+      daysWorked: daysSet.size,
+      projects: Array.from(projMap.values())
+        .map(p => ({ ...p, roles: Array.from(p.roles.values()) }))
+        .sort((a, b) => b.totalHours - a.totalHours),
     };
-    
-  } catch (error) {
-    console.error('Error loading salary data:', error);
-    salaryData.value = null;
+  } catch (err) {
+    console.error('Labour load error:', err);
+    labourData.value = { totalHours: 0, missedHours: 0, daysWorked: 0, projects: [] };
   } finally {
-    loading.value = false;
+    labourLoading.value = false;
   }
 }
 
-onMounted(() => {
-  loadSalaryData();
-});
+function selectPeriod(p) {
+  selectedPeriod.value = p;
+  loadLabour();
+}
+
+// ── Bounty data ──────────────────────────────────────────────────────────
+async function loadBounty() {
+  const employeeId = authStore.userData?.employeeId;
+  if (!employeeId || !selectedMonth.value) return;
+
+  bountyLoading.value = true;
+  bountyProjects.value = [];
+
+  try {
+    const [year, month] = selectedMonth.value.split('-');
+    const from = `${year}-${month}-01`;
+    const to   = `${year}-${month}-31`;
+
+    const projSnap = await getDocs(
+      query(
+        collection(db, 'projects'),
+        where('bountyPayDate', '>=', from),
+        where('bountyPayDate', '<=', to)
+      )
+    );
+
+    const myIdStr = String(employeeId).trim();
+    const results = [];
+
+    for (const docSnap of projSnap.docs) {
+      const proj = { docId: docSnap.id, ...docSnap.data() };
+
+      if (proj.projectType === 'unpaid') {
+        proj._my = { engineerBounty: 0, nonEngineerBounty: 0, nonEngineerHours: 0, overtimeBounty: 0, overtimeHours: 0, total: 0 };
+        continue; // skip unpaid projects
+      }
+
+      const isOvertime  = proj.projectType === 'overtime';
+      const engineerHand = parseFloat(proj.EngineerHand) || 0;
+
+      const taSnap = await getDocs(
+        query(collection(db, 'timeAttendance'), where('ProjectID', '==', parseInt(proj.id)))
+      );
+
+      // Build full empMap to find main engineer
+      const empMap = new Map();
+      taSnap.forEach(d => {
+        const r   = d.data();
+        const rId = String(r.EmployeeID || '').trim();
+        const fn  = String(r.EmployeeFirstName || r.FirstName || '').trim();
+        const ln  = String(r.EmployeeLastName  || r.LastName  || '').trim();
+        const key = rId || `${ln}|${fn}`;
+        const role = (r.Role || '').trim();
+        const wh  = parseFloat(r.WorkingHour) || 0;
+        const oh  = parseFloat(r.overtimeHour) || 0;
+        if (!empMap.has(key)) empMap.set(key, { engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
+        const e = empMap.get(key);
+        if (role === 'Инженер') e.engineerHours += wh; else e.nonEngineerHours += wh;
+        e.overtimeHours += oh;
+      });
+
+      // Only process if this employee has TA records for this project
+      if (!empMap.has(myIdStr)) continue;
+
+      // Determine main engineer
+      let mainEngKey = null, maxEngH = 0;
+      for (const [k, e] of empMap.entries()) {
+        if (e.engineerHours > maxEngH) { maxEngH = e.engineerHours; mainEngKey = k; }
+      }
+
+      const myEntry = empMap.get(myIdStr);
+      const isMainEng = mainEngKey === myIdStr;
+
+      const engineerBounty    = (!isOvertime && isMainEng && engineerHand > 0) ? Math.max(0, engineerHand) : 0;
+      const nonEngineerBounty = !isOvertime ? Math.max(0, Math.round(myEntry.nonEngineerHours * 5000)) : 0;
+      const overtimeBounty    = isOvertime  ? Math.max(0, Math.round(myEntry.overtimeHours * 15000)) : 0;
+
+      proj._my = {
+        engineerBounty,
+        nonEngineerBounty,
+        nonEngineerHours: myEntry.nonEngineerHours,
+        overtimeBounty,
+        overtimeHours: myEntry.overtimeHours,
+        total: Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty),
+      };
+
+      results.push(proj);
+    }
+
+    bountyProjects.value = results.sort((a, b) =>
+      (a.bountyPayDate || '').localeCompare(b.bountyPayDate || '')
+    );
+  } catch (err) {
+    console.error('Bounty load error:', err);
+  } finally {
+    bountyLoading.value = false;
+  }
+}
+
+// ── Load all ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  loading.value = true;
+  await Promise.all([loadLabour(), loadBounty()]);
+  loading.value = false;
+}
+
+onMounted(() => loadAll());
 </script>
 
 <style scoped>
-.salary-report-section {
-  background: white;
+.salary-page {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+/* Header */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.page-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.month-input {
+  padding: 7px 10px;
+  border: 1.5px solid #d1d5db;
   border-radius: 8px;
-  padding: 24px;
-  margin: 20px 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.salary-report-section h3 {
-  margin: 0 0 20px 0;
-  color: #1f2937;
-  font-size: 20px;
-}
-
-.warning-banner {
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  color: #92400e;
   font-size: 14px;
-  font-weight: 500;
-  text-align: center;
-}
-
-.period-selector {
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.period-selector > label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 12px;
   color: #374151;
 }
 
-.period-buttons {
+/* Loading */
+.loading-spin {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 0;
+  color: #94a3b8;
   gap: 12px;
+}
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Summary chips */
+.summary-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.chip {
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+}
+.chip-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+.chip-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+.chip-green  { background: #dcfce7; color: #14532d; }
+.chip-amber  { background: #fef3c7; color: #78350f; }
+.chip-blue   { background: #dbeafe; color: #1e3a8a; }
+
+/* Section cards */
+.section-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px 16px;
   margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 14px;
 }
 
-.period-btn {
+/* Period tabs */
+.period-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ptab {
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid #e5e7eb;
-  background: white;
-  border-radius: 6px;
+  padding: 9px 0;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-  color: #6b7280;
+  transition: all .2s;
 }
-
-.period-btn:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
-}
-
-.period-btn.active {
+.ptab.active {
   background: #3b82f6;
   border-color: #3b82f6;
-  color: white;
-  font-weight: 600;
+  color: #fff;
 }
 
-.month-selector {
+/* Stat rows */
+.stat-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.month-selector label {
-  font-weight: 600;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1f5f9;
   color: #374151;
 }
-
-.month-selector input {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
+.stat-row.warn {
+  color: #92400e;
+  background: #fffbeb;
+  padding: 6px 8px;
   border-radius: 6px;
-  font-size: 14px;
-}
-
-.loading {
-  text-align: center;
-  padding: 40px;
-  color: #6b7280;
-}
-
-.no-data {
-  text-align: center;
-  padding: 40px;
-  color: #9ca3af;
-  font-style: italic;
-}
-
-.salary-summary {
-  margin-top: 20px;
-}
-
-.summary-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  padding: 24px;
-  color: white;
-}
-
-.card-header h4 {
-  margin: 0 0 4px 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.date-range {
-  margin: 0;
-  opacity: 0.9;
-  font-size: 14px;
-}
-
-.hours-breakdown {
-  margin: 24px 0;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.hour-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.hour-item:last-child {
   border-bottom: none;
+  margin-bottom: 4px;
 }
 
-.hour-item.total {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 2px solid rgba(255, 255, 255, 0.3);
-  font-weight: 600;
-  font-size: 18px;
+/* Project cards */
+.proj-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 12px 8px;
+  margin: 10px 0;
 }
-
-.hour-item .label {
-  opacity: 0.9;
-}
-
-.hour-item .value {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.hour-item .value.overtime {
-  color: #fbbf24;
-}
-
-.hour-item.missed {
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  margin-top: 8px;
-  padding-top: 12px;
-}
-
-.hour-item .value.penalty {
-  color: #fca5a5;
-  font-weight: 700;
-}
-
-.hour-item.salary-total {
-  border-top: 2px solid rgba(255, 255, 255, 0.3);
-  margin-top: 12px;
-  padding-top: 16px;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.hour-item .value.salary {
-  color: #86efac;
-  font-weight: 700;
-}
-
-.projects-section {
-  margin-top: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.projects-section h5 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.9;
-}
-
-.project-list {
+.proj-card-top {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.project-card {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.project-header {
-  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  font-weight: 600;
-}
-
-.project-name {
-  font-size: 15px;
-}
-
-.project-summary {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.project-total {
-  font-size: 14px;
-  color: #fbbf24;
-}
-
-.project-salary {
-  font-size: 16px;
-  color: #86efac;
-  font-weight: 700;
-}
-
-.role-breakdown {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
+  margin-bottom: 4px;
 }
-
-.role-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.role-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.role-icon {
-  font-size: 16px;
-}
-
-.role-name {
-  opacity: 0.9;
-}
-
-.role-hours {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.hours-detail {
-  font-weight: 600;
+.proj-card-name {
   font-size: 13px;
-  color: #fbbf24;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 2px;
 }
-
-.role-salary {
-  font-size: 14px;
-  color: #86efac;
+.proj-card-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+.proj-card-hours {
+  font-size: 12px;
+  color: #64748b;
   font-weight: 600;
 }
-
-.days-worked {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+.proj-ref {
+  font-weight: 700;
+  font-size: 13px;
+  color: #7c3aed;
+  background: #ede9fe;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.proj-salary {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: #16a34a;
+  margin-top: 4px;
+}
+.proj-card-total {
   display: flex;
   justify-content: space-between;
+  font-size: 13px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+/* Role rows */
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #374151;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.role-icon { font-size: 14px; }
+.role-name { flex: 1; min-width: 120px; }
+.role-hours { color: #64748b; }
+
+/* Total row */
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px solid #e2e8f0;
   font-size: 14px;
-}
-
-.days-worked .label {
-  opacity: 0.9;
-}
-
-.days-worked .value {
   font-weight: 600;
+  color: #1e293b;
+}
+
+/* Type badge */
+.type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.type-badge.overtime { background: #fef3c7; color: #92400e; }
+.type-badge.unpaid   { background: #fee2e2; color: #991b1b; }
+
+/* Value colors */
+.val-green { color: #16a34a; font-weight: 600; }
+.val-blue  { color: #2563eb; font-weight: 600; }
+.val-red   { color: #dc2626; font-weight: 600; }
+.val-amber { color: #d97706; font-weight: 700; }
+.val-gray  { color: #9ca3af; }
+
+/* No data */
+.no-data-sm {
+  text-align: center;
+  padding: 16px 0;
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
 }
 </style>
