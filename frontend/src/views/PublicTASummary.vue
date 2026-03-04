@@ -24,7 +24,7 @@
 
       <!-- Quick nav -->
       <div style="margin-bottom:16px;">
-        <router-link to="/supervisor-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
+        <router-link to="/public-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
       </div>
       <div class="filters-section">
         <div class="filter-group">

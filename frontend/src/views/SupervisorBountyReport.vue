@@ -1,27 +1,8 @@
 <template>
   <div class="bounty-container">
-
-    <!-- Password gate -->
-    <div v-if="!isAuthenticated" class="password-screen">
-      <div class="password-card">
-        <h2>🔐 Нэвтрэх</h2>
-        <p>Урамшуулал тайлан үзэхийн тулд нууц үг оруулна уу</p>
-        <input
-          v-model="passwordInput"
-          type="password"
-          placeholder="Нууц үг"
-          @keyup.enter="checkPassword"
-          class="password-input"
-        />
-        <button @click="checkPassword" class="btn-submit">Нэвтрэх</button>
-        <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
-      </div>
-    </div>
-
-    <div v-else>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <h3 style="margin:0;">🏆 Урамшуулал тайлан</h3>
-      <button @click="logout" class="btn-logout">Гарах</button>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
     </div>
 
     <!-- Filters -->
@@ -169,38 +150,14 @@
         </div>
       </div>
     </template>
-    </div><!-- /v-else -->
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../config/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
-
-const HARDCODED_PASSWORD = 'munkhzaisan2026';
-const isAuthenticated = ref(false);
-const passwordInput = ref('');
-const errorMessage = ref('');
-
-function checkPassword() {
-  if (passwordInput.value === HARDCODED_PASSWORD) {
-    isAuthenticated.value = true;
-    sessionStorage.setItem('bountyReportAuth', 'true');
-    errorMessage.value = '';
-    loadReport();
-  } else {
-    errorMessage.value = 'Нууц үг буруу байна';
-  }
-}
-
-function logout() {
-  isAuthenticated.value = false;
-  sessionStorage.removeItem('bountyReportAuth');
-  passwordInput.value = '';
-  projects.value = [];
-}
 
 const selectedMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
 const selectedRange = ref('10');
@@ -237,14 +194,60 @@ async function loadReport() {
   projects.value = [];
   errorMsg.value = '';
   try {
-    const [year, month] = selectedMonth.value.split('-');
-    const fn = httpsCallable(functions, 'getPublicBountyReport');
-    const result = await fn({
-      password: HARDCODED_PASSWORD,
-      month: selectedMonth.value,
-      day: selectedRange.value,
-    });
-    projects.value = result.data.projects;
+    const bountyPayDate = `${selectedMonth.value}-${String(selectedRange.value).padStart(2, '0')}`;
+    const projSnap = await getDocs(
+      query(collection(db, 'projects'), where('bountyPayDate', '==', bountyPayDate))
+    );
+    const projList = projSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+
+    for (const proj of projList) {
+      const isOvertime = proj.projectType === 'overtime';
+      const isUnpaid = proj.projectType === 'unpaid';
+      if (isUnpaid) { proj._employees = []; proj._totalBounty = 0; continue; }
+
+      const engineerHand = parseFloat(proj.EngineerHand) || 0;
+      const taSnap = await getDocs(
+        query(collection(db, 'timeAttendance'), where('ProjectID', '==', parseInt(proj.id)))
+      );
+      const empMap = new Map();
+      taSnap.forEach(doc => {
+        const r = doc.data();
+        const firstName = String(r.EmployeeFirstName || r.FirstName || '').trim();
+        const lastName  = String(r.EmployeeLastName  || r.LastName  || '').trim();
+        const empId = String(r.EmployeeID || '').trim();
+        const key = empId || `${lastName}|${firstName}`;
+        const name = firstName || lastName || 'Unknown';
+        const role = (r.Role || '').trim();
+        const wh = parseFloat(r.WorkingHour) || 0;
+        const oh = parseFloat(r.overtimeHour) || 0;
+        if (!empMap.has(key)) empMap.set(key, { name, engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
+        const e = empMap.get(key);
+        if (role === 'Инженер') e.engineerHours += wh; else e.nonEngineerHours += wh;
+        e.overtimeHours += oh;
+      });
+
+      let mainEngineerKey = null, maxEngHours = 0;
+      for (const [key, e] of empMap.entries()) {
+        if (e.engineerHours > maxEngHours) { maxEngHours = e.engineerHours; mainEngineerKey = key; }
+      }
+
+      let sumEH = 0, sumNEH = 0, sumOH = 0, sumEB = 0, sumNEB = 0, sumOB = 0;
+      const employees = Array.from(empMap.entries()).map(([key, e]) => {
+        const engineerBounty = (!isOvertime && key === mainEngineerKey && engineerHand > 0) ? Math.max(0, engineerHand) : 0;
+        const nonEngineerBounty = !isOvertime ? Math.max(0, Math.round(e.nonEngineerHours * 5000)) : 0;
+        const overtimeBounty = isOvertime ? Math.max(0, Math.round(e.overtimeHours * 15000)) : 0;
+        const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
+        sumEH += e.engineerHours; sumNEH += e.nonEngineerHours; sumOH += e.overtimeHours;
+        sumEB += engineerBounty; sumNEB += nonEngineerBounty; sumOB += overtimeBounty;
+        return { name: e.name, engineerHours: e.engineerHours, engineerBounty, nonEngineerHours: e.nonEngineerHours, nonEngineerBounty, overtimeHours: e.overtimeHours, overtimeBounty, totalBounty };
+      }).sort((a, b) => b.totalBounty - a.totalBounty);
+
+      proj._employees = employees;
+      proj._sumEngineerHours = sumEH; proj._sumNonEngineerHours = sumNEH; proj._sumOvertimeHours = sumOH;
+      proj._sumEngineerBounty = sumEB; proj._sumNonEngineerBounty = sumNEB; proj._sumOvertimeBounty = sumOB;
+      proj._totalBounty = sumEB + sumNEB + sumOB;
+    }
+    projects.value = projList.sort((a, b) => (a.bountyPayDate || '').localeCompare(b.bountyPayDate || ''));
   } catch (err) {
     console.error('Error loading bounty report:', err);
     errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
@@ -282,30 +285,14 @@ function exportToExcel() {
   XLSX.writeFile(wb, `BountyReport_${from}_${to}.xlsx`);
 }
 
-onMounted(() => {
-  const auth = sessionStorage.getItem('bountyReportAuth');
-  if (auth === 'true') {
-    isAuthenticated.value = true;
-    loadReport();
-  }
-});
+onMounted(() => loadReport());
 </script>
 
 <style scoped>
-.bounty-container { max-width: 1400px; margin: 0 auto; padding: 24px; font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+.bounty-container { max-width: 1400px; margin: 0 auto; padding: 24px; font-family: 'Segoe UI', sans-serif; }
 
-.password-screen { display: flex; align-items: center; justify-content: center; min-height: 80vh; }
-.password-card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 400px; width: 100%; text-align: center; }
-.password-card h2 { margin: 0 0 10px 0; color: #1f2937; }
-.password-card p { color: #6b7280; margin-bottom: 25px; }
-.password-input { width: 100%; padding: 12px 16px; font-size: 16px; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 15px; transition: border-color 0.3s; box-sizing: border-box; }
-.password-input:focus { outline: none; border-color: #667eea; }
-.btn-submit { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
-.btn-submit:hover { background: #5a6fd6; }
-.error-message { margin-top: 12px; color: #ef4444; font-size: 14px; }
-
-.btn-logout { padding: 7px 16px; background: #ef4444; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
-.btn-logout:hover { background: #dc2626; }
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
 h3 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; color: #1e293b; }
 h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 
