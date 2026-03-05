@@ -183,8 +183,13 @@ export const useAuthStore = defineStore('auth', () => {
       for (const existingDoc of existingUsersSnapshot.docs) {
         if (existingDoc.id !== user.value.uid) {
           console.log(`Found duplicate user with employeeId ${employeeData.Id}. Removing old user: ${existingDoc.id}`);
-          await deleteDoc(doc(db, 'users', existingDoc.id));
-          console.log(`Deleted duplicate user: ${existingDoc.id}`);
+          try {
+            await deleteDoc(doc(db, 'users', existingDoc.id));
+            console.log(`Deleted duplicate user: ${existingDoc.id}`);
+          } catch (deleteErr) {
+            console.warn(`Could not delete duplicate user doc ${existingDoc.id}:`, deleteErr.message);
+            // Non-fatal: proceed with registration even if cleanup fails
+          }
         }
       }
     }
