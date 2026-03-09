@@ -57,6 +57,9 @@
           <button @click="$router.push('/supervisor-bounty')" class="btn-action bounty">
             🏆 Урамшуулал тайлан
           </button>
+          <button @click="$router.push('/transaction-report')" class="btn-action finance">
+            💵 Гүйлгээний тайлан
+          </button>
         </div>
       </div>
 

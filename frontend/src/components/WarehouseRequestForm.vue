@@ -1,6 +1,9 @@
 <template>
   <div class="warehouse-request-form">
-    <h3>Request Warehouse Materials</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;">📦 Агуулахын хүсэлт</h3>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
     
     <form @submit.prevent="handleSubmit">
       <div class="form-group">
@@ -297,6 +300,9 @@ export default {
 </script>
 
 <style scoped>
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
+
 .warehouse-request-form {
   padding: 20px;
   background: white;

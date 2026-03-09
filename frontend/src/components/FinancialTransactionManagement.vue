@@ -1,6 +1,9 @@
 <template>
   <div class="management-section">
-    <h4>Financial Transaction Management</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <h4 style="margin:0;">💵 Санхүүгийн гүйлгээ</h4>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
     <div class="management-buttons">
       <button @click="handleAddItem" class="action-btn add-btn">
         + Add Transaction
@@ -484,13 +487,13 @@ const filteredTransactions = computed(() => {
   // Apply search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(t => 
-      t.projectID?.toLowerCase().includes(query) ||
-      t.projectLocation?.toLowerCase().includes(query) ||
-      t.employeeID?.toLowerCase().includes(query) ||
-      t.employeeFirstName?.toLowerCase().includes(query) ||
-      t.comment?.toLowerCase().includes(query) ||
-      t.type?.toLowerCase().includes(query)
+    result = result.filter(t =>
+      String(t.projectID ?? '').toLowerCase().includes(query) ||
+      String(t.projectLocation ?? '').toLowerCase().includes(query) ||
+      String(t.employeeID ?? '').toLowerCase().includes(query) ||
+      String(t.employeeFirstName ?? '').toLowerCase().includes(query) ||
+      String(t.comment ?? '').toLowerCase().includes(query) ||
+      String(t.type ?? '').toLowerCase().includes(query)
     );
   }
 
@@ -927,6 +930,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
+
 .management-section {
   padding: 20px;
   max-width: 1400px;

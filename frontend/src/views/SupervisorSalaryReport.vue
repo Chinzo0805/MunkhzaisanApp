@@ -1,6 +1,9 @@
 <template>
   <div class="salary-container">
-    <h3>💰 Цалингийн тооцоо (Удирдлага)</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <h3 style="margin:0;">💰 Цалингийн тооцоо (Удирдлага)</h3>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
 
     <!-- Filters -->
     <div class="filters-section">
@@ -528,6 +531,9 @@ function exportToExcel() {
 </script>
 
 <style scoped>
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
+
 .salary-container {
   padding: 20px;
   background: white;

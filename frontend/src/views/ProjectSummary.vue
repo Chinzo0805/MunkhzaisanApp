@@ -1,7 +1,10 @@
 <template>
   <div class="project-summary-container">
-    <h3>📊 Төслийн нэгтгэл</h3>
-    
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;">📊 Төслийн нэгтгэл</h3>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
+
     <!-- Filter Buttons -->
     <div class="filter-buttons-section">
       <button 

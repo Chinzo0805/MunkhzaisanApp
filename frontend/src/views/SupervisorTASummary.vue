@@ -1,7 +1,10 @@
 <template>
   <div class="ta-summary-container">
-    <h3>📊 Ирцийн нэгтгэл (Удирдлага)</h3>
-    
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;">📊 Ирцийн нэгтгэл (Удирдлага)</h3>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
+
     <!-- Quick nav -->
     <div style="margin-bottom:16px;">
       <router-link to="/supervisor-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
@@ -487,6 +490,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
+
 .ta-summary-container {
   max-width: 1400px;
   margin: 0 auto;

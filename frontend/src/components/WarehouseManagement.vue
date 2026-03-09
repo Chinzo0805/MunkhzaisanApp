@@ -1,6 +1,9 @@
 <template>
   <div class="management-section">
-    <h4>Warehouse Management</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <h4 style="margin:0;">📦 Агуулах</h4>
+      <button @click="$router.back()" class="btn-back">← Буцах</button>
+    </div>
     <div class="management-buttons">
       <button @click="handleAddItem" class="action-btn add-btn">
         + Add Item
@@ -830,6 +833,9 @@ function closeIncomeForm() {
 </script>
 
 <style scoped>
+.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-back:hover { background: #4b5563; }
+
 .management-section {
   margin: 20px 0;
 }
