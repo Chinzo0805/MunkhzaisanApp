@@ -164,6 +164,52 @@ export async function manageProject(action, projectData, projectId = null) {
   }
 }
 
+// Merge two projects: source is deleted, target is kept and recalculated
+export async function mergeProjects(sourceId, targetId) {
+  try {
+    const response = await api.post('/mergeProjects', { sourceId, targetId });
+    return response.data;
+  } catch (error) {
+    console.error('Error merging projects:', error);
+    throw error;
+  }
+}
+
+// Salary period CRUD
+export async function manageSalaryPeriod(action, periodData = null, yearMonth = null) {
+  try {
+    const response = await api.post('/manageSalaryPeriod', { action, periodData, yearMonth });
+    return response.data;
+  } catch (error) {
+    console.error('Error managing salary period:', error);
+    throw error;
+  }
+}
+
+// Calculate & save salary for a period
+export async function calculateSalary(yearMonth, range) {
+  try {
+    const response = await api.post('/calculateSalary', { yearMonth, range });
+    return response.data;
+  } catch (error) {
+    console.error('Error calculating salary:', error);
+    throw error;
+  }
+}
+
+// Update manual salary fields for a single employee row and recalculate
+export async function updateSalaryRow(yearMonth, range, employeeId, overrides) {
+  try {
+    const response = await api.post('/calculateSalary', {
+      action: 'updateRow', yearMonth, range, employeeId, overrides,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating salary row:', error);
+    throw error;
+  }
+}
+
 // Time Attendance Request functions
 export async function manageTimeAttendanceRequest(action, requestData, requestId = null) {
   try {

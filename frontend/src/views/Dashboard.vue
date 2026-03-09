@@ -40,6 +40,7 @@
           <button @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>
+
         </div>
 
         <!-- Supervisor: Report buttons -->

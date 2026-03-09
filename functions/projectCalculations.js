@@ -327,7 +327,9 @@ function needsRecalculation(oldData, newData) {
   const calculationFields = [
     'WosHour', 'PlannedHour', 'RealHour', 
     'EngineerWorkHour', 'NonEngineerWorkHour',
-    'additionalHour', 'additionalValue', 'projectType'
+    'additionalHour', 'additionalValue', 'projectType',
+    'IncomeHR', 'IncomeCar', 'IncomeMaterial',
+    'ExpenceHR', 'ExpenceCar', 'ExpenceMaterial', 'ExpenceHSE'
   ];
   
   for (const field of calculationFields) {

@@ -11,6 +11,7 @@
       <button @click="showKanban = !showKanban; if(showKanban) showList = false;" class="action-btn" :class="{ 'active-view-btn': showKanban }">
         {{ showKanban ? 'Hide Kanban' : '⊞ Kanban' }}
       </button>
+      <button @click="showMergeModal = true" class="action-btn merge-btn">⇄ Merge</button>
     </div>
     
     <!-- Project List -->
@@ -158,6 +159,7 @@
               @click="editItem(project)"
             >
               <div class="kcard-location">📍 {{ project.siteLocation }}</div>
+              <div class="kcard-ref" v-if="project.referenceIdfromCustomer">🔖 {{ project.referenceIdfromCustomer }}</div>
               <span v-if="project.projectType === 'unpaid'" class="kcard-unpaid-badge">🚫 Урамшуулалгүй</span>
               <span v-else-if="project.projectType === 'overtime'" class="kcard-overtime-badge">⏱️ Ашиглалт</span>
               <div class="kcard-type">
@@ -200,6 +202,10 @@
                   :class="{ 'kprofit-pos': (project.TotalProfit||0) > 0, 'kprofit-neg': (project.TotalProfit||0) < 0 }">
                   {{ formatNumber(project.TotalProfit || 0) }}₮
                 </span>
+              </div>
+              <div class="kcard-income-row" v-if="(project.projectType === 'paid' || project.projectType === 'overtime') && ((project.TotalIncome || 0) + (project.IncomeHR||0) + (project.IncomeCar||0) + (project.IncomeMaterial||0)) > 0">
+                <span class="kcard-income-label">💰 Нийт орлого</span>
+                <span class="kcard-income-value">{{ formatNumber(project.TotalIncome || ((project.IncomeHR||0) + (project.IncomeCar||0) + (project.IncomeMaterial||0))) }}₮</span>
               </div>
             </div>
             <div v-if="projectsInColumn(status).length === 0" class="kanban-empty">— хоосон —</div>
@@ -560,6 +566,103 @@
       </div>
     </div>
     </Teleport>
+
+    <!-- ═══════════════════════ MERGE MODAL ═══════════════════════ -->
+    <Teleport to="body">
+      <div v-if="showMergeModal" class="modal-overlay" @click.self="closeMergeModal">
+        <div class="modal-content" style="max-width: 560px;">
+          <div class="modal-header">
+            <h3>⇄ Merge Projects</h3>
+            <button class="modal-close" @click="closeMergeModal">✕</button>
+          </div>
+          <div class="modal-body" style="padding: 20px;">
+
+            <div class="merge-warning">
+              ⚠️ The <strong>Source</strong> project will be <strong>permanently deleted</strong>.
+              All its records (TA, financial, warehouse) will be re-linked to the <strong>Target</strong> project.
+            </div>
+
+            <!-- Source project -->
+            <div class="form-group" style="margin-top: 16px;">
+              <label>🗑️ Source project <small>(will be DELETED)</small></label>
+              <select v-model="mergeSourceId" class="form-control">
+                <option value="">— select project —</option>
+                <option v-for="p in mergeableProjects" :key="p.id" :value="p.id">
+                  #{{ p.id }} · {{ p.siteLocation }} · {{ p.customer }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Target project -->
+            <div class="form-group" style="margin-top: 12px;">
+              <label>✅ Target project <small>(will be KEPT)</small></label>
+              <select v-model="mergeTargetId" class="form-control">
+                <option value="">— select project —</option>
+                <option
+                  v-for="p in mergeableProjects"
+                  :key="p.id"
+                  :value="p.id"
+                  :disabled="p.id === mergeSourceId"
+                >
+                  #{{ p.id }} · {{ p.siteLocation }} · {{ p.customer }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Preview cards -->
+            <div v-if="mergeSourceProject || mergeTargetProject" class="merge-preview">
+              <div v-if="mergeSourceProject" class="merge-card merge-card-source">
+                <div class="mc-label">SOURCE (delete)</div>
+                <div class="mc-title">#{{ mergeSourceProject.id }} {{ mergeSourceProject.siteLocation }}</div>
+                <div class="mc-sub">{{ mergeSourceProject.customer }} · {{ mergeSourceProject.type }}</div>
+                <div class="mc-sub">Status: {{ mergeSourceProject.Status }}</div>
+              </div>
+              <div class="merge-arrow">→</div>
+              <div v-if="mergeTargetProject" class="merge-card merge-card-target">
+                <div class="mc-label">TARGET (keep)</div>
+                <div class="mc-title">#{{ mergeTargetProject.id }} {{ mergeTargetProject.siteLocation }}</div>
+                <div class="mc-sub">{{ mergeTargetProject.customer }} · {{ mergeTargetProject.type }}</div>
+                <div class="mc-sub">Status: {{ mergeTargetProject.Status }}</div>
+              </div>
+            </div>
+
+            <!-- Check rows -->
+            <div v-if="mergeChecks" class="merge-checks">
+              <div class="mcheck-row" :class="mergeChecks.customer.match ? 'mcheck-ok' : 'mcheck-fail'">
+                <span class="mcheck-icon">{{ mergeChecks.customer.match ? '✅' : '❌' }}</span>
+                <span class="mcheck-label">Customer</span>
+                <span class="mcheck-vals">{{ mergeChecks.customer.sVal || '—' }} / {{ mergeChecks.customer.tVal || '—' }}</span>
+              </div>
+              <div class="mcheck-row" :class="mergeChecks.projectType.match ? 'mcheck-ok' : 'mcheck-fail'">
+                <span class="mcheck-icon">{{ mergeChecks.projectType.match ? '✅' : '❌' }}</span>
+                <span class="mcheck-label">Project type</span>
+                <span class="mcheck-vals">{{ mergeChecks.projectType.sVal || '—' }} / {{ mergeChecks.projectType.tVal || '—' }}</span>
+              </div>
+              <div class="mcheck-row" :class="mergeChecks.responsible.match ? 'mcheck-ok' : 'mcheck-fail'">
+                <span class="mcheck-icon">{{ mergeChecks.responsible.match ? '✅' : '❌' }}</span>
+                <span class="mcheck-label">Responsible engineer</span>
+                <span class="mcheck-vals">{{ mergeChecks.responsible.sVal || '—' }} / {{ mergeChecks.responsible.tVal || '—' }}</span>
+              </div>
+            </div>
+
+            <div v-if="mergeError" class="merge-error">{{ mergeError }}</div>
+            <div v-if="mergeSuccess" class="merge-success">{{ mergeSuccess }}</div>
+
+            <div class="form-actions" style="margin-top: 20px;">
+              <button
+                class="save-btn"
+                style="background: #dc2626;"
+                :disabled="!mergeSourceId || !mergeTargetId || merging || !mergeAllowed"
+                @click="confirmMerge"
+              >
+                {{ merging ? 'Merging...' : '⇄ Confirm Merge & Delete Source' }}
+              </button>
+              <button class="cancel-btn" @click="closeMergeModal">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -568,7 +671,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useProjectsStore } from '../stores/projects';
 import { useCustomersStore } from '../stores/customers';
 import { useEmployeesStore } from '../stores/employees';
-import { manageProject } from '../services/api';
+import { manageProject, mergeProjects } from '../services/api';
 
 const projectsStore = useProjectsStore();
 const customersStore = useCustomersStore();
@@ -594,6 +697,74 @@ const filterStatus = ref('');
 const saving = ref(false);
 const formError = ref('');
 const activeTab = ref('basic');
+
+// ── Merge state ──────────────────────────────────────────────────────────────
+const showMergeModal = ref(false);
+const mergeSourceId = ref('');
+const mergeTargetId = ref('');
+const merging = ref(false);
+const mergeError = ref('');
+const mergeSuccess = ref('');
+
+const mergeableProjects = computed(() =>
+  [...projectsStore.projects].sort((a, b) => (a.id || 0) - (b.id || 0))
+);
+const mergeSourceProject = computed(() =>
+  mergeableProjects.value.find(p => p.id == mergeSourceId.value) || null
+);
+const mergeTargetProject = computed(() =>
+  mergeableProjects.value.find(p => p.id == mergeTargetId.value) || null
+);
+
+function closeMergeModal() {
+  showMergeModal.value = false;
+  mergeSourceId.value = '';
+  mergeTargetId.value = '';
+  mergeError.value = '';
+  mergeSuccess.value = '';
+}
+
+// Compute per-field match status for UI feedback
+const mergeChecks = computed(() => {
+  const s = mergeSourceProject.value;
+  const t = mergeTargetProject.value;
+  if (!s || !t) return null;
+  return {
+    customer:    { match: s.customer === t.customer,           sVal: s.customer,       tVal: t.customer },
+    projectType: { match: s.projectType === t.projectType,     sVal: s.projectType,    tVal: t.projectType },
+    responsible: { match: s.ResponsibleEmp === t.ResponsibleEmp, sVal: s.ResponsibleEmp, tVal: t.ResponsibleEmp },
+  };
+});
+const mergeAllowed = computed(() => {
+  const c = mergeChecks.value;
+  return c && c.customer.match && c.projectType.match && c.responsible.match;
+});
+
+async function confirmMerge() {
+  mergeError.value = '';
+  mergeSuccess.value = '';
+  if (!mergeSourceId.value || !mergeTargetId.value) return;
+  if (String(mergeSourceId.value) === String(mergeTargetId.value)) {
+    mergeError.value = 'Source and target must be different projects.';
+    return;
+  }
+  if (!mergeAllowed.value) {
+    mergeError.value = 'Merge not allowed: customer, project type, and responsible engineer must all match.';
+    return;
+  }
+  merging.value = true;
+  try {
+    const result = await mergeProjects(mergeSourceId.value, mergeTargetId.value);
+    mergeSuccess.value = result.message || 'Merge successful!';
+    mergeSourceId.value = '';
+    mergeTargetId.value = '';
+  } catch (err) {
+    mergeError.value = err?.response?.data?.error || err.message || 'Merge failed.';
+  } finally {
+    merging.value = false;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // List sort state
 const listSortField = ref('location');
@@ -1725,6 +1896,17 @@ defineExpose({
   line-height: 1.3;
 }
 
+.kcard-ref {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-bottom: 5px;
+  display: inline-block;
+}
+
 .kcard-type {
   font-size: 12px;
   color: #4b5563;
@@ -1766,6 +1948,28 @@ defineExpose({
   font-size: 12px;
   color: #4b5563;
   margin-bottom: 6px;
+}
+
+.kcard-income-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding: 3px 7px;
+  background: #dcfce7;
+  border-radius: 5px;
+}
+
+.kcard-income-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #15803d;
+}
+
+.kcard-income-value {
+  font-size: 12px;
+  font-weight: 800;
+  color: #15803d;
 }
 
 .kcard-footer {
@@ -2093,6 +2297,103 @@ defineExpose({
   resize: vertical;
   font-family: inherit;
   font-size: 14px;
+}
+
+/* ── Merge button ──────────────────────────────────────────────────────────── */
+.merge-btn {
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+}
+.merge-btn:hover { background: #6d28d9; }
+
+/* ── Merge modal ───────────────────────────────────────────────────────────── */
+.merge-checks {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mcheck-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.mcheck-ok  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.mcheck-fail { background: #fef2f2; border: 1px solid #fecaca; }
+.mcheck-icon { font-size: 14px; flex-shrink: 0; }
+.mcheck-label { font-weight: 600; color: #374151; min-width: 140px; }
+.mcheck-vals { color: #6b7280; font-style: italic; }
+
+.merge-warning {
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+.merge-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.merge-card {
+  flex: 1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.merge-card-source {
+  background: #fee2e2;
+  border: 1.5px solid #fca5a5;
+}
+.merge-card-target {
+  background: #dcfce7;
+  border: 1.5px solid #86efac;
+}
+.mc-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 4px;
+  color: #6b7280;
+}
+.mc-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #111827;
+  margin-bottom: 2px;
+}
+.mc-sub { color: #4b5563; font-size: 11px; }
+.merge-arrow {
+  font-size: 24px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.merge-error {
+  margin-top: 12px;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.merge-success {
+  margin-top: 12px;
+  background: #dcfce7;
+  color: #15803d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
 }
 </style>
 

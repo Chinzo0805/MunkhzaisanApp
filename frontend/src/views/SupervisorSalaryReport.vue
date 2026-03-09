@@ -9,19 +9,40 @@
     <div class="filters-section">
       <div class="filter-group">
         <label>Он сар:</label>
-        <input type="month" v-model="selectedMonth" @change="loadData" />
+        <input type="month" v-model="selectedMonth" @change="onMonthRangeChange" />
       </div>
       <div class="filter-group">
         <label>Хугацаа:</label>
-        <select v-model="selectedRange" @change="loadData">
+        <select v-model="selectedRange" @change="onMonthRangeChange">
           <option value="full">Бүтэн сар</option>
           <option value="1-15">1-15</option>
           <option value="16-31">16-31</option>
         </select>
       </div>
-      <button @click="loadData" class="btn-refresh" :disabled="loading">
+      <button @click="fetchSavedData" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
+    </div>
+
+    <!-- Ажлын өдөр тохиргоо -->
+    <div class="period-panel">
+      <span class="period-label">📅 Ажлын өдөр ({{ selectedMonth }}):</span>
+      <label class="wd-label">1–15: <input v-model.number="periodForm.workingDaysFirst" type="number" min="0" max="15" class="wd-input" placeholder="авто"></label>
+      <label class="wd-label">16–сүүл: <input v-model.number="periodForm.workingDaysSecond" type="number" min="0" max="16" class="wd-input" placeholder="авто"></label>
+      <label class="wd-label">Бүтэн: <input :value="(periodForm.workingDaysFirst||0)+(periodForm.workingDaysSecond||0)" readonly class="wd-input wd-readonly"></label>
+      <input v-model="periodForm.notes" type="text" placeholder="Тэмдэглэл..." class="wd-notes">
+      <button @click="savePeriodAndRecalc" :disabled="savingPeriod" class="btn-save-period">
+        {{ savingPeriod ? '...' : '💾 Хадгалах' }}
+      </button>
+      <span v-if="periodSaveMsg" class="period-save-msg">{{ periodSaveMsg }}</span>
+    </div>
+
+    <!-- Action row -->
+    <div class="action-row">
+      <button @click="calculateAndSave" :disabled="calculating" class="btn-calc">
+        {{ calculating ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+      </button>
+      <span v-if="savedReport" class="calc-ts">🕐 {{ formatDate(savedReport.calculatedAt) }}</span>
     </div>
 
     <!-- Summary cards -->
@@ -31,7 +52,10 @@
         <div class="stat-content">
           <div class="stat-label">Ажлын өдөр</div>
           <div class="stat-value">{{ expectedWorkingDays }} өдөр</div>
-          <div class="stat-detail">{{ expectedWorkingHours }} цаг</div>
+          <div class="stat-detail">{{ expectedWorkingHours }} цаг
+            <span v-if="workingDaysSource === 'manual'" class="wd-badge manual" title="Цалингийн үеэс авсан">✏️ гараар</span>
+            <span v-else class="wd-badge auto" title="Автоматаар тооцсон">🤖 авто</span>
+          </div>
         </div>
       </div>
       <div class="stat-card">
@@ -44,29 +68,22 @@
       <div class="stat-card">
         <div class="stat-icon">💵</div>
         <div class="stat-content">
-          <div class="stat-label">Нийт бруто цалин</div>
-          <div class="stat-value">{{ formatMnt(totalGross) }}</div>
+          <div class="stat-label">Нийт бодогдсон цалин</div>
+          <div class="stat-value">{{ formatMnt(totalTotalGross) }}</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📋</div>
         <div class="stat-content">
-          <div class="stat-label">НДШ + ХАОАТ</div>
-          <div class="stat-value">{{ formatMnt(totalNDS + totalHAOAT) }}</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">🏆</div>
-        <div class="stat-content">
-          <div class="stat-label">Нийт урамшуулал</div>
-          <div class="stat-value">{{ formatMnt(totalBounty) }}</div>
+          <div class="stat-label">НДШ байгааллага + ХХОАТ</div>
+          <div class="stat-value">{{ formatMnt(totalEmployerNDS + totalHHOATNet) }}</div>
         </div>
       </div>
       <div class="stat-card highlight">
-        <div class="stat-icon">💰</div>
+        <div class="stat-icon">💳</div>
         <div class="stat-content">
-          <div class="stat-label">Нийт олговор</div>
-          <div class="stat-value">{{ formatMnt(totalPay) }}</div>
+          <div class="stat-label">Нийт гарт олгох</div>
+          <div class="stat-value">{{ formatMnt(totalNetPay) }}</div>
         </div>
       </div>
     </div>
@@ -78,31 +95,31 @@
     <div v-else-if="salaryData.length > 0" class="table-container">
       <div class="table-header">
         <span>{{ dateRangeText }} · Ажлын {{ expectedWorkingDays }} өдөр</span>
-        <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
+        <div style="display:flex;gap:8px;">
+          <button @click="calculateAndSave" :disabled="calculating" class="btn-recalc">
+            {{ calculating ? '...' : '🔄 Дахин тооцоолох' }}
+          </button>
+          <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
+        </div>
       </div>
-
       <table class="salary-table">
         <thead>
           <tr>
             <th @click="toggleSort('name')" class="sortable">
               Ажилтан {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="toggleSort('workedHours')" class="sortable th-r">
-              Ажилласан цаг {{ sortColumn === 'workedHours' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th class="th-r">А.хоног → Ажилласан</th>
+            <th class="th-r">Үндсэн цалин</th>
+            <th @click="toggleSort('calculatedSalary')" class="sortable th-r">
+              Бодогдсон цалин {{ sortColumn === 'calculatedSalary' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="toggleSort('grossSalary')" class="sortable th-r">
-              Бруто цалин {{ sortColumn === 'grossSalary' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="toggleSort('totalGross')" class="sortable th-r">
+              Нийт бодогдсон {{ sortColumn === 'totalGross' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th class="th-r">НДШ (10%)</th>
-            <th class="th-r">ХАОАТ (10%)</th>
-            <th @click="toggleSort('netSalary')" class="sortable th-r">
-              Цэвэр цалин {{ sortColumn === 'netSalary' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="toggleSort('bounty')" class="sortable th-r">
-              Урамшуулал {{ sortColumn === 'bounty' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
-            <th @click="toggleSort('totalPay')" class="sortable th-r">
-              Нийт олговор {{ sortColumn === 'totalPay' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th class="th-r">Нийт нэмэгдэл</th>
+            <th class="th-r">Нийт суутгал</th>
+            <th @click="toggleSort('netPay')" class="sortable th-r">
+              Гарт олгох {{ sortColumn === 'netPay' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th class="th-expand"></th>
           </tr>
@@ -115,65 +132,72 @@
                 <div class="emp-meta">{{ emp.position }}<span v-if="emp.type"> · {{ emp.type }}</span></div>
               </td>
               <td class="tc-r">
-                <div>{{ emp.workedHours.toFixed(1) }}ц</div>
-                <div class="tc-sub">/ {{ expectedWorkingHours }}ц
-                  <span :class="emp.attendanceRate >= 1 ? 'perf-good' : emp.attendanceRate >= 0.8 ? 'perf-ok' : 'perf-bad'">
-                    ({{ Math.round(emp.attendanceRate * 100) }}%)
-                  </span>
-                </div>
+                <div>{{ emp.workingDays }}→<strong>{{ emp.workedDays }}</strong>өд</div>
+                <div class="tc-sub">{{ emp.workingHours }}→{{ emp.workedHours }}ц</div>
               </td>
-              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.grossSalary) : '—' }}</td>
-              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt(emp.нДШ) : '—' }}</td>
-              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt(emp.хАОАТ) : '—' }}</td>
-              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netSalary) : '—' }}</td>
-              <td class="tc-r tc-bounty">{{ emp.bounty > 0 ? formatMnt(emp.bounty) : '—' }}</td>
-              <td class="tc-r tc-total">{{ formatMnt(emp.totalPay) }}</td>
+              <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
+              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
+              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
+              <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
+              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employerNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
+              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
               <td class="tc-expand">
-                <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId)">
+                <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId, emp)">
                   {{ expandedRows.has(emp.employeeId) ? '▲' : '▼' }}
                 </button>
               </td>
             </tr>
-            <!-- Project detail expandable row -->
+            <!-- Expanded detail row -->
             <tr v-if="expandedRows.has(emp.employeeId)" class="detail-row">
               <td colspan="9">
                 <div class="project-details">
+                  <!-- Salary formula breakdown -->
                   <div class="detail-section">
                     <strong>📊 Цалингийн дэлгэрэнгүй</strong>
                     <div class="detail-grid">
-                      <span>Суурь цалин:</span><span>{{ formatMnt(emp.baseSalary) }}</span>
-                      <span>Хугацааны хувь:</span><span>×{{ emp.periodFactor }}</span>
-                      <span>Ирцийн хувь:</span><span>×{{ (emp.attendanceRate).toFixed(3) }} ({{ emp.workedDays }} өдөр / {{ expectedWorkingDays }} өдөр)</span>
-                      <span>Бруто цалин:</span><span class="val-money">{{ formatMnt(emp.grossSalary) }}</span>
-                      <span>НДШ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.нДШ) }}</span>
-                      <span>ХАОАТ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.хАОАТ) }}</span>
-                      <span>Цэвэр цалин:</span><span class="val-money">{{ formatMnt(emp.netSalary) }}</span>
+                      <span>Үндсэн цалин:</span><span class="val-money">{{ formatMnt(emp.baseSalary) }}</span>
+                      <span>А/хоног (А/цаг):</span><span>{{ emp.workingDays }} өдөр ({{ emp.workingHours }}ц)</span>
+                      <span>Ажилласан (цаг):</span><span>{{ emp.workedDays }} өдөр ({{ emp.workedHours }}ц)</span>
+                      <span>Бодогдсон цалин:</span><span class="val-money">{{ formatMnt(emp.calculatedSalary) }}</span>
+                      <span>Нэмэгдэл цалин:</span><span :class="(emp.additionalPay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.additionalPay || 0) }}</span>
+                      <span>Ээлжийн амралт:</span><span :class="(emp.annualLeavePay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.annualLeavePay || 0) }}</span>
+                      <span class="grid-sep">Нийт бодогдсон цалин:</span><span class="val-money grid-sep">{{ formatMnt(emp.totalGross) }}</span>
+                      <span>Байгааллагаас НДШ (12.5%):</span><span class="val-deduct">- {{ formatMnt(emp.employerNDS) }}</span>
+                      <span>НДШ ажилтан (11.5%):</span><span class="val-info">{{ formatMnt(emp.employeeNDS) }} ℹ</span>
+                      <span>ТНО:</span><span>{{ formatMnt(emp.tno) }}</span>
+                      <span>ХХОАТ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.hhoat) }}</span>
+                      <span>Хөнгөлөлт:</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
+                      <span>ХХОАТ хөнгөлөлт хассан:</span><span class="val-deduct">- {{ formatMnt(emp.hhoatNet) }}</span>
+                      <span>Урьдчилгаа:</span><span :class="(emp.advance||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.advance || 0) }}</span>
+                      <span>Бусад суутгал:</span><span :class="(emp.otherDeductions||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.otherDeductions || 0) }}</span>
+                      <span class="grid-sep total-line">Гарт олгох дүн:</span><span class="val-total grid-sep total-line">{{ formatMnt(emp.netPay) }}</span>
                     </div>
                   </div>
-                  <div class="detail-section" v-if="emp.projectDetails.length > 0">
-                    <strong>🏗️ Төслийн урамшуулал</strong>
-                    <table class="detail-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Байршил</th>
-                          <th>Цаг</th>
-                          <th>Хувь хэмжээ</th>
-                          <th>Урамшуулал</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="pd in emp.projectDetails" :key="pd.projectId">
-                          <td>{{ pd.projectId }}</td>
-                          <td>{{ pd.location || '—' }}</td>
-                          <td>{{ pd.hours.toFixed(1) }}ц</td>
-                          <td class="tc-sub">{{ pd.rateLabel }}</td>
-                          <td class="tc-bounty">{{ formatMnt(pd.bounty) }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+
+                  <!-- Manual edit form -->
+                  <div class="detail-section detail-edit-section">
+                    <strong>✏️ Гараар оруулах утгууд</strong>
+                    <div v-if="editingOverrides[emp.employeeId]" class="edit-form">
+                      <label class="edit-label">Нэмэгдэл цалин (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].additionalPay" class="edit-input" />
+                      </label>
+                      <label class="edit-label">Ээлжийн амралт (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].annualLeavePay" class="edit-input" />
+                      </label>
+                      <label class="edit-label">Хөнгөлөлт (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].discount" class="edit-input" />
+                      </label>
+                      <label class="edit-label">Урьдчилгаа (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].advance" class="edit-input" />
+                      </label>
+                      <label class="edit-label">Бусад суутгал (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].otherDeductions" class="edit-input" />
+                      </label>
+                      <button @click="saveRowOverrides(emp.employeeId)" :disabled="savingRows.has(emp.employeeId)" class="btn-save-row">
+                        {{ savingRows.has(emp.employeeId) ? 'Хадгалж байна...' : '💾 Хадгалах' }}
+                      </button>
+                    </div>
                   </div>
-                  <div v-else class="no-projects">Энэ хугацаанд төслийн бүртгэл байхгүй</div>
                 </div>
               </td>
             </tr>
@@ -182,13 +206,13 @@
         <tfoot>
           <tr class="total-row">
             <td><strong>НИЙТ ({{ salaryData.length }})</strong></td>
-            <td class="tc-r"><strong>{{ totalWorkedHours.toFixed(1) }}ц</strong></td>
-            <td class="tc-r tc-money"><strong>{{ formatMnt(totalGross) }}</strong></td>
-            <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalNDS) }}</strong></td>
-            <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalHAOAT) }}</strong></td>
-            <td class="tc-r tc-money"><strong>{{ formatMnt(totalNet) }}</strong></td>
-            <td class="tc-r tc-bounty"><strong>{{ formatMnt(totalBounty) }}</strong></td>
-            <td class="tc-r tc-total"><strong>{{ formatMnt(totalPay) }}</strong></td>
+            <td></td>
+            <td class="tc-r"><strong>{{ formatMnt(totalBaseSalary) }}</strong></td>
+            <td class="tc-r tc-money"><strong>{{ formatMnt(totalCalcSalary) }}</strong></td>
+            <td class="tc-r tc-money"><strong>{{ formatMnt(totalTotalGross) }}</strong></td>
+            <td class="tc-r tc-add"><strong>+ {{ formatMnt(totalAdditions) }}</strong></td>
+            <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalDeductions) }}</strong></td>
+            <td class="tc-r tc-money"><strong>{{ formatMnt(totalNetPay) }}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -196,19 +220,29 @@
     </div>
 
     <div v-else-if="!loading" class="no-data">
-      Сонгосон хугацаанд мэдээлэл олдсонгүй
+      <p>Сонгосон хугацаанд тооцоологдсон цалин байхгүй байна</p>
+      <button @click="calculateAndSave" :disabled="calculating" class="btn-calc-big">
+        {{ calculating ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { ref, computed, onMounted, reactive } from 'vue';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
+import { manageSalaryPeriod, calculateSalary, updateSalaryRow } from '../services/api';
 
-const loading = ref(false);
-const salaryData = ref([]);
+// ── State ────────────────────────────────────────────────────────
+const loading      = ref(false);
+const calculating  = ref(false);
+const savingPeriod = ref(false);
+const periodSaveMsg = ref('');
+
+const savedReport = ref(null); // full document from salaries collection
+const salaryData  = computed(() => savedReport.value?.employees || []);
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -219,38 +253,17 @@ const sortColumn = ref('name');
 const sortAsc = ref(true);
 const expandedRows = ref(new Set());
 
-// ── Mongolian Public Holidays ───────────────────────────────────
-const mongolianHolidays = [
-  '2024-01-01','2024-02-12','2024-02-13','2024-02-14','2024-03-08',
-  '2024-06-01','2024-07-11','2024-07-12','2024-07-13','2024-11-26',
-  '2025-01-01','2025-01-29','2025-01-30','2025-01-31','2025-03-08',
-  '2025-06-01','2025-07-11','2025-07-12','2025-07-13','2025-11-26',
-  '2026-01-01','2026-02-17','2026-02-18','2026-02-19','2026-03-08',
-  '2026-06-01','2026-07-11','2026-07-12','2026-07-13','2026-11-26',
-  '2027-01-01','2027-02-06','2027-02-07','2027-02-08','2027-03-08',
-  '2027-06-01','2027-07-11','2027-07-12','2027-07-13','2027-11-26',
-];
+// Inline edit state per employee
+const editingOverrides = ref({});
+const savingRows = ref(new Set());
 
-// ── Working days in selected range ─────────────────────────────
-const expectedWorkingDays = computed(() => {
-  if (!selectedMonth.value) return 0;
-  const [year, month] = selectedMonth.value.split('-');
-  const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-  let startDay = 1, endDay = lastDay;
-  if (selectedRange.value === '1-15') { startDay = 1; endDay = 15; }
-  else if (selectedRange.value === '16-31') { startDay = 16; endDay = lastDay; }
-  let count = 0;
-  for (let d = startDay; d <= endDay; d++) {
-    const ds = `${year}-${month}-${String(d).padStart(2, '0')}`;
-    const dow = new Date(ds).getDay();
-    if (dow !== 0 && dow !== 6 && !mongolianHolidays.includes(ds)) count++;
-  }
-  return count;
-});
+// ── Period form ──────────────────────────────────────────────────
+const periodForm = reactive({ workingDaysFirst: null, workingDaysSecond: null, notes: '' });
 
+// ── Derived from saved report ────────────────────────────────────
+const expectedWorkingDays  = computed(() => savedReport.value?.workingDays || 0);
+const workingDaysSource    = computed(() => savedReport.value?.workingDaysSource || 'auto');
 const expectedWorkingHours = computed(() => expectedWorkingDays.value * 8);
-
-const periodFactor = computed(() => selectedRange.value === 'full' ? 1.0 : 0.5);
 
 const dateRangeText = computed(() => {
   if (!selectedMonth.value) return '';
@@ -261,7 +274,7 @@ const dateRangeText = computed(() => {
   return `${y}/${m}/16 - ${y}/${m}/${lastDay}`;
 });
 
-// ── Sorting ─────────────────────────────────────────────────────
+// ── Sorting ──────────────────────────────────────────────────────
 const sortedData = computed(() => {
   const data = [...salaryData.value];
   data.sort((a, b) => {
@@ -278,252 +291,210 @@ function toggleSort(col) {
   else { sortColumn.value = col; sortAsc.value = col === 'name'; }
 }
 
-function toggleExpand(id) {
+function toggleExpand(id, emp) {
   const s = new Set(expandedRows.value);
-  s.has(id) ? s.delete(id) : s.add(id);
+  if (s.has(id)) {
+    s.delete(id);
+  } else {
+    s.add(id);
+    // Initialize edit form with current stored values
+    if (!editingOverrides.value[id]) {
+      editingOverrides.value = {
+        ...editingOverrides.value,
+        [id]: {
+          additionalPay:   emp?.additionalPay   || 0,
+          annualLeavePay:  emp?.annualLeavePay  || 0,
+          discount:        emp?.discount        || 0,
+          advance:         emp?.advance         || 0,
+          otherDeductions: emp?.otherDeductions || 0,
+        },
+      };
+    }
+  }
   expandedRows.value = s;
 }
 
 // ── Totals ───────────────────────────────────────────────────────
-const totalWorkedHours = computed(() => salaryData.value.reduce((s, e) => s + e.workedHours, 0));
-const totalGross       = computed(() => salaryData.value.reduce((s, e) => s + e.grossSalary, 0));
-const totalNDS         = computed(() => salaryData.value.reduce((s, e) => s + e.нДШ, 0));
-const totalHAOAT       = computed(() => salaryData.value.reduce((s, e) => s + e.хАОАТ, 0));
-const totalNet         = computed(() => salaryData.value.reduce((s, e) => s + e.netSalary, 0));
-const totalBounty      = computed(() => salaryData.value.reduce((s, e) => s + e.bounty, 0));
-const totalPay         = computed(() => salaryData.value.reduce((s, e) => s + e.totalPay, 0));
+const totalBaseSalary  = computed(() => salaryData.value.reduce((s, e) => s + (e.baseSalary       || 0), 0));
+const totalCalcSalary  = computed(() => salaryData.value.reduce((s, e) => s + (e.calculatedSalary || 0), 0));
+const totalTotalGross  = computed(() => salaryData.value.reduce((s, e) => s + (e.totalGross       || 0), 0));
+const totalEmployerNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employerNDS      || 0), 0));
+const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS      || 0), 0));
+const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
+const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
+const totalAdditions   = computed(() => salaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
+const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employerNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
 
-// ── Helpers ─────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────
 function formatMnt(n) {
   if (!n && n !== 0) return '0₮';
   return Math.round(n).toLocaleString('en-US') + '₮';
 }
 
-function isEngineer(position) {
-  return (position || '').toLowerCase().includes('инженер');
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-// ── Main data load ───────────────────────────────────────────────
-async function loadData() {
+// ── Load period form from salaryPeriods collection ───────────────
+async function loadPeriodForm() {
+  try {
+    const snap = await getDoc(doc(db, 'salaryPeriods', selectedMonth.value));
+    if (snap.exists()) {
+      const d = snap.data();
+      periodForm.workingDaysFirst  = d.workingDaysFirst  ?? null;
+      periodForm.workingDaysSecond = d.workingDaysSecond ?? null;
+      periodForm.notes             = d.notes || '';
+    } else {
+      periodForm.workingDaysFirst  = null;
+      periodForm.workingDaysSecond = null;
+      periodForm.notes             = '';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ── Fetch saved salary report from collection ────────────────────
+async function fetchSavedData() {
   if (!selectedMonth.value) return;
   loading.value = true;
   expandedRows.value = new Set();
-
+  editingOverrides.value = {};
   try {
-    const [year, month] = selectedMonth.value.split('-');
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    let startDay = 1, endDay = lastDay;
-    if (selectedRange.value === '1-15') { startDay = 1; endDay = 15; }
-    else if (selectedRange.value === '16-31') { startDay = 16; endDay = lastDay; }
-
-    const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
-    const endDate   = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
-
-    // 1. Fetch TA records for date range
-    const taSnap = await getDocs(query(
-      collection(db, 'timeAttendance'),
-      where('Day', '>=', startDate),
-      where('Day', '<=', endDate)
-    ));
-    const taRecords = taSnap.docs.map(d => d.data());
-
-    // 2. Fetch all employees
-    const empSnap = await getDocs(collection(db, 'employees'));
-    const employees = empSnap.docs.map(d => ({ _docId: d.id, ...d.data() }));
-    // Build a lookup map: Id (string) -> employee
-    const empMap = new Map();
-    employees.forEach(e => {
-      const key = String(e.Id || '').trim();
-      if (key) empMap.set(key, e);
-    });
-
-    // 3. Fetch all projects
-    const projSnap = await getDocs(collection(db, 'projects'));
-    const projects = projSnap.docs.map(d => d.data());
-    const projMap = new Map();
-    projects.forEach(p => {
-      const key = String(p.id || '').trim();
-      if (key) projMap.set(key, p);
-    });
-
-    // 4. Group TA records by EmployeeID
-    const empTA = new Map(); // employeeId -> { workedHours, workedDays, projectHours: Map, projectOvertimeHours: Map }
-    taRecords.forEach(r => {
-      const empId  = String(r.EmployeeID || '').trim();
-      const status = (r.Status || '').toLowerCase().trim();
-      const hours  = parseFloat(r.WorkingHour) || 0;
-      const overtimeHrs = parseFloat(r.overtimeHour) || 0;
-      const projId = String(r.ProjectID || '').trim();
-
-      if (!empId) return;
-      if (!empTA.has(empId)) {
-        empTA.set(empId, { workedHours: 0, workedDays: 0, projectHours: new Map(), projectOvertimeHours: new Map() });
-      }
-      const et = empTA.get(empId);
-
-      const isWorked = status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт';
-      if (isWorked && hours > 0) {
-        et.workedHours += hours;
-        et.workedDays++;
-        // Track per project (working hours)
-        if (projId) {
-          et.projectHours.set(projId, (et.projectHours.get(projId) || 0) + hours);
-        }
-      }
-      // Track overtime hours per project regardless of status
-      if (projId && overtimeHrs > 0) {
-        et.projectOvertimeHours.set(projId, (et.projectOvertimeHours.get(projId) || 0) + overtimeHrs);
-      }
-    });
-
-    // 5. Build salary rows (only employees that have TA records or have a Salary)
-    //    Show all employees that appeared in TA records
-    const result = [];
-    for (const [empId, ta] of empTA.entries()) {
-      const emp = empMap.get(empId);
-
-      const firstName  = emp?.FirstName || '';
-      const lastName   = emp?.LastName  || emp?.EmployeeLastName || '';
-      const name       = firstName ? `${firstName} ${lastName}`.trim() : (lastName || `ID:${empId}`);
-      const position   = emp?.Position || '';
-      const type       = emp?.Type || '';
-      const baseSalary = parseFloat(emp?.Salary) || 0;
-
-      // Attendance rate
-      const expDays = expectedWorkingDays.value || 1;
-      const attendanceRate = Math.min(1.0, ta.workedDays / expDays);
-
-      // Gross base salary
-      const grossSalary = (type === 'Дадлагжигч')
-        ? 0
-        : Math.round(baseSalary * periodFactor.value * attendanceRate);
-
-      // Deductions
-      const нДШ   = Math.round(grossSalary * 0.10);
-      const хАОАТ = Math.round((grossSalary - нДШ) * 0.10);
-      const netSalary = grossSalary - нДШ - хАОАТ;
-
-      // Bounty per project
-      let bounty = 0;
-      const projectDetails = [];
-      for (const [projId, empHours] of ta.projectHours.entries()) {
-        if (!projId) continue;
-        const proj = projMap.get(projId);
-        // Skip bounty for unpaid projects
-        if (proj?.projectType === 'unpaid') {
-          projectDetails.push({
-            projectId: projId,
-            location: proj?.siteLocation || proj?.customer || '—',
-            hours: empHours,
-            bounty: 0,
-            rateLabel: '🚫 Урамшуулалгүй (unpaid)',
-          });
-          continue;
-        }
-        // Overtime projects: bounty = employee overtimeHours * 20,000
-        if (proj?.projectType === 'overtime') {
-          const empOvertimeHrs = ta.projectOvertimeHours.get(projId) || 0;
-          const projBounty = Math.round(empOvertimeHrs * 20000);
-          bounty += projBounty;
-          projectDetails.push({
-            projectId: projId,
-            location: proj?.siteLocation || proj?.customer || '—',
-            hours: empHours,
-            bounty: projBounty,
-            rateLabel: `⏱️ ${empOvertimeHrs.toFixed(1)}ц илүү цаг × 20,000₮`,
-          });
-          continue;
-        }
-        let projBounty = 0;
-        let rateLabel = '';
-        if (isEngineer(position)) {
-          // Engineer: prorated share of EngineerHand
-          const totalEngHours = proj?.EngineerWorkHour || 0;
-          const engHand = proj?.EngineerHand || 0;
-          if (totalEngHours > 0 && engHand > 0) {
-            projBounty = Math.round(empHours / totalEngHours * engHand);
-            rateLabel = `${empHours.toFixed(1)}ц / ${totalEngHours}ц × ${formatMnt(engHand)}`;
-          } else {
-            rateLabel = 'Инженерийн мэдээлэл дутуу';
-          }
-        } else {
-          // Non-engineer: 5,000₮ per hour flat
-          projBounty = Math.round(empHours * 5000);
-          rateLabel = `${empHours.toFixed(1)}ц × 5,000₮`;
-        }
-        bounty += projBounty;
-        projectDetails.push({
-          projectId: projId,
-          location: proj?.siteLocation || proj?.customer || '—',
-          hours: empHours,
-          bounty: projBounty,
-          rateLabel,
-        });
-      }
-
-      projectDetails.sort((a, b) => b.bounty - a.bounty);
-
-      result.push({
-        employeeId: empId,
-        name,
-        position,
-        type,
-        baseSalary,
-        periodFactor: periodFactor.value,
-        attendanceRate,
-        workedHours: ta.workedHours,
-        workedDays: ta.workedDays,
-        grossSalary,
-        нДШ,
-        хАОАТ,
-        netSalary,
-        bounty,
-        totalPay: Math.max(0, netSalary + bounty),
-        projectDetails,
-      });
-    }
-
-    // Sort by name by default
-    result.sort((a, b) => a.name.localeCompare(b.name, 'mn'));
-    salaryData.value = result;
-  } catch (err) {
-    console.error('Error loading salary data:', err);
+    const snap = await getDoc(doc(db, 'salaries', `${selectedMonth.value}_${selectedRange.value}`));
+    savedReport.value = snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.error('fetchSavedData error:', e);
+    savedReport.value = null;
   } finally {
     loading.value = false;
   }
 }
 
+// ── Calculate & save to collection ───────────────────────────────
+async function calculateAndSave() {
+  calculating.value = true;
+  try {
+    const result = await calculateSalary(selectedMonth.value, selectedRange.value);
+    savedReport.value = result;
+    editingOverrides.value = {};
+    expandedRows.value = new Set();
+  } catch (e) {
+    console.error('calculateAndSave error:', e);
+    alert('Тооцооллын алдаа: ' + e.message);
+  } finally {
+    calculating.value = false;
+  }
+}
+
+// ── Save period working days → triggers backend recalc ────────────
+async function savePeriodAndRecalc() {
+  savingPeriod.value = true;
+  periodSaveMsg.value = '';
+  try {
+    const workingDaysTotal = (periodForm.workingDaysFirst || 0) + (periodForm.workingDaysSecond || 0);
+    await manageSalaryPeriod('upsert', {
+      yearMonth:         selectedMonth.value,
+      workingDaysFirst:  periodForm.workingDaysFirst,
+      workingDaysSecond: periodForm.workingDaysSecond,
+      workingDaysTotal,
+      notes: periodForm.notes,
+    });
+    periodSaveMsg.value = '✅ Хадгалагдлаа — цалин дахин тооцоологдлоо';
+    await fetchSavedData();
+    setTimeout(() => { periodSaveMsg.value = ''; }, 4000);
+  } catch (e) {
+    periodSaveMsg.value = '❌ ' + e.message;
+  } finally {
+    savingPeriod.value = false;
+  }
+}
+
+// ── Save manual field overrides for a single employee row ─────────
+async function saveRowOverrides(empId) {
+  const overrides = editingOverrides.value[empId];
+  if (!overrides) return;
+  const s = new Set(savingRows.value);
+  s.add(empId);
+  savingRows.value = s;
+  try {
+    const result = await updateSalaryRow(selectedMonth.value, selectedRange.value, empId, overrides);
+    if (savedReport.value && result.employee) {
+      savedReport.value = {
+        ...savedReport.value,
+        employees: savedReport.value.employees.map(e =>
+          String(e.employeeId) === String(empId) ? result.employee : e
+        ),
+      };
+      // Refresh edit form with updated values
+      editingOverrides.value = {
+        ...editingOverrides.value,
+        [empId]: {
+          additionalPay:   result.employee.additionalPay   || 0,
+          annualLeavePay:  result.employee.annualLeavePay  || 0,
+          discount:        result.employee.discount        || 0,
+          advance:         result.employee.advance         || 0,
+          otherDeductions: result.employee.otherDeductions || 0,
+        },
+      };
+    }
+  } catch (e) {
+    console.error('saveRowOverrides error:', e);
+    alert('Хадгалах алдаа: ' + e.message);
+  } finally {
+    const s2 = new Set(savingRows.value);
+    s2.delete(empId);
+    savingRows.value = s2;
+  }
+}
+
+// ── Month / range change ─────────────────────────────────────────
+async function onMonthRangeChange() {
+  await Promise.all([fetchSavedData(), loadPeriodForm()]);
+}
+
+onMounted(() => onMonthRangeChange());
+
 // ── Excel Export ─────────────────────────────────────────────────
 function exportToExcel() {
-  const headers = ['Ажилтан', 'Албан тушаал', 'Төрөл', 'Ажилласан цаг',
-    'Ажилласан өдөр', 'Ирц %', 'Бруто цалин', 'НДШ (10%)', 'ХАОАТ (10%)',
-    'Цэвэр цалин', 'Урамшуулал', 'Нийт олговор'];
+  const headers = [
+    'Ажилтан', 'Албан тушаал', 'Төрөл',
+    'А/хоног', 'А/цаг', 'Ажилласан хоног', 'Ажилласан цаг',
+    'Үндсэн цалин', 'Бодогдсон цалин', 'Нэмэгдэл цалин', 'Ээлжийн амралт',
+    'Нийт бодогдсон', 'Байгааллагаас НДШ (12.5%)', 'НДШ ажилтан (11.5%)',
+    'ТНО', 'ХХОАТ (10%)', 'Хөнгөлөлт', 'ХХОАТ хөнгөлөлт хассан',
+    'Урьдчилгаа', 'Бусад суутгал', 'Гарт олгох',
+  ];
 
   const rows = sortedData.value.map(e => [
-    e.name,
-    e.position,
-    e.type,
-    e.workedHours.toFixed(1),
-    e.workedDays,
-    Math.round(e.attendanceRate * 100) + '%',
-    e.grossSalary,
-    e.нДШ,
-    e.хАОАТ,
-    e.netSalary,
-    e.bounty,
-    e.totalPay,
+    e.name, e.position, e.type,
+    e.workingDays, e.workingHours, e.workedDays, e.workedHours,
+    e.baseSalary       || 0,
+    e.calculatedSalary || 0,
+    e.additionalPay    || 0,
+    e.annualLeavePay   || 0,
+    e.totalGross       || 0,
+    e.employerNDS      || 0,
+    e.employeeNDS      || 0,
+    e.tno              || 0,
+    e.hhoat            || 0,
+    e.discount         || 0,
+    e.hhoatNet         || 0,
+    e.advance          || 0,
+    e.otherDeductions  || 0,
+    e.netPay           || 0,
   ]);
 
   rows.push([
-    'НИЙТ', '', '',
-    totalWorkedHours.value.toFixed(1), '', '',
-    totalGross.value, totalNDS.value, totalHAOAT.value,
-    totalNet.value, totalBounty.value, totalPay.value,
+    'НИЙТ', '', '', '', '', '', '',
+    totalBaseSalary.value, totalCalcSalary.value, '', '',
+    totalTotalGross.value, totalEmployerNDS.value, totalEmployeeNDS.value,
+    '', '', '', totalHHOATNet.value,
+    '', '', totalNetPay.value,
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [20,14,10,12,10,8,14,14,14,14,14,14].map(w => ({ wch: w }));
-
+  ws['!cols'] = [20,14,10, 6,6,8,8, 14,14,14,14, 14,16,16, 14,14,14,18, 14,14,14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Цалин');
   XLSX.writeFile(wb, `salary_${selectedMonth.value}_${selectedRange.value}.xlsx`);
@@ -533,258 +504,104 @@ function exportToExcel() {
 <style scoped>
 .btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-back:hover { background: #4b5563; }
-
-.salary-container {
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.salary-container h3 {
-  margin: 0 0 20px;
-  color: #1e293b;
-}
-
-/* Filters */
-.filters-section {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-  padding: 14px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+.salary-container { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.salary-container h3 { margin: 0 0 20px; color: #1e293b; }
+.filters-section { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 14px 16px; background: #f8fafc; border-radius: 8px; }
+.filter-group { display: flex; align-items: center; gap: 8px; }
 .filter-group label { font-size: 13px; color: #6b7280; font-weight: 500; }
-
-.filter-group input[type="month"],
-.filter-group select {
-  padding: 7px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  background: white;
-}
-
-.btn-refresh {
-  padding: 7px 16px;
-  background: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
+.filter-group input[type="month"], .filter-group select { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; }
+.btn-refresh { padding: 7px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
-
-/* Stats */
-.stats-section {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  flex: 1;
-  min-width: 140px;
-}
-
-.stat-card.highlight {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
+.stats-section { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.stat-card { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb; flex: 1; min-width: 140px; }
+.stat-card.highlight { background: #eff6ff; border-color: #bfdbfe; }
 .stat-icon { font-size: 22px; }
 .stat-label { font-size: 11px; color: #6b7280; margin-bottom: 2px; }
 .stat-value { font-size: 16px; font-weight: 700; color: #1e293b; }
 .stat-detail { font-size: 11px; color: #9ca3af; }
-
-/* Table container */
-.table-container {
-  overflow-x: auto;
-}
-
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.btn-export {
-  padding: 6px 14px;
-  background: #16a34a;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
+.wd-badge { display: inline-block; margin-left: 4px; padding: 1px 5px; border-radius: 8px; font-size: 10px; font-weight: 600; }
+.wd-badge.manual { background: #dbeafe; color: #1d4ed8; }
+.wd-badge.auto { background: #f3f4f6; color: #6b7280; }
+.table-container { overflow-x: auto; }
+.table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; color: #6b7280; }
+.btn-export { padding: 6px 14px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-export:hover { background: #15803d; }
-
-/* Salary table */
-.salary-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.salary-table thead th {
-  background: #f1f5f9;
-  padding: 10px 12px;
-  text-align: left;
-  font-weight: 600;
-  color: #374151;
-  border-bottom: 2px solid #e5e7eb;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.salary-table thead th.sortable {
-  cursor: pointer;
-}
-.salary-table thead th.sortable:hover {
-  background: #e2e8f0;
-  color: #1d4ed8;
-}
-
+.salary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.salary-table thead th { background: #f1f5f9; padding: 10px 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb; white-space: nowrap; user-select: none; }
+.salary-table thead th.sortable { cursor: pointer; }
+.salary-table thead th.sortable:hover { background: #e2e8f0; color: #1d4ed8; }
 .th-r { text-align: right !important; }
 .th-expand { width: 40px; }
-
-.salary-table tbody .salary-row {
-  transition: background 0.1s;
-  cursor: default;
-}
-
-.salary-table tbody .salary-row:hover,
-.salary-table tbody .salary-row.row-expanded {
-  background: #f0f9ff;
-}
-
-.salary-table tbody .salary-row:nth-child(4n+1) {
-  background: #fafafa;
-}
-.salary-table tbody .salary-row:nth-child(4n+1):hover {
-  background: #f0f9ff;
-}
-
-.salary-table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  vertical-align: middle;
-}
-
+.salary-table tbody .salary-row { transition: background 0.1s; }
+.salary-table tbody .salary-row:hover, .salary-table tbody .salary-row.row-expanded { background: #f0f9ff; }
+.salary-table tbody .salary-row:nth-child(4n+1) { background: #fafafa; }
+.salary-table tbody .salary-row:nth-child(4n+1):hover { background: #f0f9ff; }
+.salary-table td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
 .emp-name { font-weight: 600; color: #111827; }
 .emp-meta { font-size: 11px; color: #9ca3af; margin-top: 1px; }
-
 .tc-r { text-align: right; }
 .tc-sub { font-size: 11px; color: #9ca3af; }
 .tc-money { color: #1d4ed8; font-weight: 600; }
 .tc-deduct { color: #dc2626; }
+.tc-add { color: #16a34a; font-weight: 600; }
 .tc-bounty { color: #16a34a; font-weight: 600; }
 .tc-total { color: #1e293b; font-weight: 700; font-size: 14px; }
 .tc-expand { text-align: center; }
-
 .perf-good { color: #16a34a; font-weight: 600; }
-.perf-ok   { color: #d97706; font-weight: 600; }
-.perf-bad  { color: #dc2626; font-weight: 600; }
-
-.btn-expand {
-  background: #f1f5f9;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 2px 8px;
-  cursor: pointer;
-  font-size: 11px;
-  color: #6b7280;
-}
+.perf-ok { color: #d97706; font-weight: 600; }
+.perf-bad { color: #dc2626; font-weight: 600; }
+.btn-expand { background: #f1f5f9; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; color: #6b7280; }
 .btn-expand:hover { background: #e2e8f0; }
-
-/* Detail row */
-.detail-row td {
-  background: #f8fafc;
-  padding: 0;
-  border-bottom: 2px solid #bfdbfe;
-}
-
-.project-details {
-  padding: 14px 20px;
-  display: flex;
-  gap: 28px;
-  flex-wrap: wrap;
-}
-
+.detail-row td { background: #f8fafc; padding: 0; border-bottom: 2px solid #bfdbfe; }
+.project-details { padding: 14px 20px; display: flex; gap: 28px; flex-wrap: wrap; }
 .detail-section { flex: 1; min-width: 280px; }
 .detail-section strong { font-size: 13px; color: #374151; display: block; margin-bottom: 8px; }
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 16px;
-  font-size: 12px;
-  color: #4b5563;
-}
-
+.detail-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 12px; color: #4b5563; }
 .val-money { color: #1d4ed8; font-weight: 600; }
 .val-deduct { color: #dc2626; }
-
-.detail-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.detail-table th {
-  background: #e2e8f0;
-  padding: 5px 8px;
-  text-align: left;
-  font-weight: 600;
-  color: #374151;
-}
-.detail-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: white;
-}
-
+.detail-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.detail-table th { background: #e2e8f0; padding: 5px 8px; text-align: left; font-weight: 600; color: #374151; }
+.detail-table td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; background: white; }
 .no-projects { font-size: 12px; color: #9ca3af; padding: 8px 0; }
+.total-row td { background: #f1f5f9; padding: 10px 12px; border-top: 2px solid #e5e7eb; border-bottom: none; }
+.loading { text-align: center; padding: 40px; color: #6b7280; }
+.no-data { text-align: center; padding: 40px; color: #9ca3af; font-size: 14px; }
+.period-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+.period-label { font-weight: 600; color: #166534; white-space: nowrap; }
+.wd-label { display: flex; align-items: center; gap: 4px; color: #374151; font-size: 13px; white-space: nowrap; }
+.wd-input { width: 52px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 13px; text-align: center; }
+.wd-readonly { background: #f3f4f6; color: #6b7280; }
+.wd-notes { flex: 1; min-width: 120px; max-width: 240px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 13px; }
+.btn-save-period { padding: 5px 12px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.btn-save-period:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-save-period:hover:not(:disabled) { background: #15803d; }
+.period-save-msg { font-size: 12px; color: #166534; font-weight: 500; }
+.action-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.btn-calc { padding: 8px 20px; background: #7c3aed; color: white; border: none; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: 700; }
+.btn-calc:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-calc:hover:not(:disabled) { background: #6d28d9; }
+.btn-calc-big { margin-top: 12px; padding: 12px 32px; background: #7c3aed; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 700; }
+.btn-calc-big:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-calc-big:hover:not(:disabled) { background: #6d28d9; }
+.btn-recalc { padding: 5px 12px; background: #f59e0b; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.btn-recalc:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-recalc:hover:not(:disabled) { background: #d97706; }
+.calc-ts { font-size: 11px; color: #9ca3af; }
 
-/* Footer */
-.total-row td {
-  background: #f1f5f9;
-  padding: 10px 12px;
-  border-top: 2px solid #e5e7eb;
-  border-bottom: none;
-}
+/* ── New formula detail classes ──────────────────────── */
+.val-zero  { color: #9ca3af; }
+.val-info  { color: #6b7280; font-style: italic; font-size: 11px; }
+.val-total { color: #1e293b; font-weight: 700; font-size: 13px; }
+.val-bounty { color: #16a34a; font-weight: 600; }
+.grid-sep  { border-top: 1px solid #e2e8f0; padding-top: 4px; margin-top: 2px; font-weight: 600; }
+.total-line { font-size: 13px; }
 
-.loading {
-  text-align: center;
-  padding: 40px;
-  color: #6b7280;
-}
-
-.no-data {
-  text-align: center;
-  padding: 40px;
-  color: #9ca3af;
-  font-size: 14px;
-}
+.detail-edit-section { min-width: 220px; max-width: 280px; }
+.edit-form { display: flex; flex-direction: column; gap: 8px; }
+.edit-label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #6b7280; font-weight: 500; }
+.edit-input { padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 13px; width: 100%; }
+.edit-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.btn-save-row { margin-top: 4px; padding: 7px 16px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-save-row:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-save-row:hover:not(:disabled) { background: #4338ca; }
 </style>

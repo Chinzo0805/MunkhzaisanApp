@@ -33,6 +33,11 @@ exports.syncWosHourFromExcel = require("./syncWosHourFromExcel").syncWosHourFrom
 exports.manageProject = require("./manageProject").manageProject;
 exports.updateProjectRealHours = require("./updateProjectRealHours").updateProjectRealHours;
 exports.recalculateAllProjects = require("./recalculateAllProjects").recalculateAllProjects;
+exports.mergeProjects = require("./mergeProjects").mergeProjects;
+
+// Salary functions
+exports.manageSalaryPeriod = require("./manageSalaryPeriod").manageSalaryPeriod;
+exports.calculateSalary    = require("./calculateSalary").calculateSalary;
 
 // Financial Transaction functions
 exports.manageFinancialTransaction = require("./manageFinancialTransaction").manageFinancialTransaction;

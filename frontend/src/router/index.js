@@ -19,6 +19,7 @@ import SupervisorBountyReport from '../views/SupervisorBountyReport.vue';
 import PublicBountyReport from '../views/PublicBountyReport.vue';
 import TransactionReport from '../views/TransactionReport.vue';
 
+
 const routes = [
   {
     path: '/',
