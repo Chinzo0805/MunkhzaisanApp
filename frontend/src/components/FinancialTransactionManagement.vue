@@ -43,6 +43,7 @@
           <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
           <option value="Хоолны мөнгө">Хоолны мөнгө</option>
           <option value="Томилолт">Томилолт</option>
+          <option value="Машин засварын зардал">Машин засварын зардал</option>
         </select>
         <div class="sum-display">
           <strong>Total:</strong> {{ formatNumber(totalAmount) }}₮
@@ -183,6 +184,7 @@
                 <option value="Бараа материал">Бараа материал</option>
                 <option value="Түлш">Түлш</option>
                 <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
+                <option value="Машин засварын зардал">Машин засварын зардал</option>
               </select>
             </div>
           </div>

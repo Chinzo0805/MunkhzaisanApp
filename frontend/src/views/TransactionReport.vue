@@ -71,21 +71,25 @@
       </div>
 
       <!-- By purpose -->
-      <div class="breakdown-block">
+      <div class="breakdown-block breakdown-block--wide">
         <h4>📂 Зориулалтаар</h4>
-        <table class="report-table">
+        <table class="report-table report-table--big">
           <thead>
-            <tr><th>Зориулалт</th><th>Тоо</th><th class="num">Нийт дүн</th></tr>
+            <tr>
+              <th @click="sortTable('purpose','purpose')" class="sortable">Зориулалт {{ getSortIcon('purpose','purpose') }}</th>
+              <th @click="sortTable('purpose','count')" class="sortable num">Тоо {{ getSortIcon('purpose','count') }}</th>
+              <th @click="sortTable('purpose','total')" class="sortable num">Нийт дүн {{ getSortIcon('purpose','total') }}</th>
+            </tr>
           </thead>
           <tbody>
-            <tr v-for="row in byPurpose" :key="row.purpose">
+            <tr v-for="row in sortedByPurpose" :key="row.purpose">
               <td>{{ row.purpose }}</td>
-              <td>{{ row.count }}</td>
+              <td class="num">{{ row.count }}</td>
               <td class="num">{{ formatMnt(row.total) }}</td>
             </tr>
           </tbody>
           <tfoot>
-            <tr><td><strong>Нийт</strong></td><td><strong>{{ reportData.length }}</strong></td><td class="num"><strong>{{ formatMnt(grandTotal) }}</strong></td></tr>
+            <tr><td><strong>Нийт</strong></td><td class="num"><strong>{{ reportData.length }}</strong></td><td class="num"><strong>{{ formatMnt(grandTotal) }}</strong></td></tr>
           </tfoot>
         </table>
       </div>
@@ -95,12 +99,16 @@
         <h4>🏷️ Төрлөөр</h4>
         <table class="report-table">
           <thead>
-            <tr><th>Төрөл</th><th>Тоо</th><th class="num">Нийт дүн</th></tr>
+            <tr>
+              <th @click="sortTable('type','type')" class="sortable">Төрөл {{ getSortIcon('type','type') }}</th>
+              <th @click="sortTable('type','count')" class="sortable num">Тоо {{ getSortIcon('type','count') }}</th>
+              <th @click="sortTable('type','total')" class="sortable num">Нийт дүн {{ getSortIcon('type','total') }}</th>
+            </tr>
           </thead>
           <tbody>
-            <tr v-for="row in byType" :key="row.type">
+            <tr v-for="row in sortedByType" :key="row.type">
               <td>{{ row.type || '—' }}</td>
-              <td>{{ row.count }}</td>
+              <td class="num">{{ row.count }}</td>
               <td class="num">{{ formatMnt(row.total) }}</td>
             </tr>
           </tbody>
@@ -112,13 +120,18 @@
         <h4>👤 Ажилтнаар</h4>
         <table class="report-table">
           <thead>
-            <tr><th>Ажилтан</th><th>ID</th><th>Тоо</th><th class="num">Нийт дүн</th></tr>
+            <tr>
+              <th @click="sortTable('emp','name')" class="sortable">Ажилтан {{ getSortIcon('emp','name') }}</th>
+              <th @click="sortTable('emp','employeeID')" class="sortable">ID {{ getSortIcon('emp','employeeID') }}</th>
+              <th @click="sortTable('emp','count')" class="sortable num">Тоо {{ getSortIcon('emp','count') }}</th>
+              <th @click="sortTable('emp','total')" class="sortable num">Нийт дүн {{ getSortIcon('emp','total') }}</th>
+            </tr>
           </thead>
           <tbody>
-            <tr v-for="row in byEmployee" :key="row.employeeID">
+            <tr v-for="row in sortedByEmployee" :key="row.employeeID">
               <td>{{ row.name }}</td>
               <td>{{ row.employeeID }}</td>
-              <td>{{ row.count }}</td>
+              <td class="num">{{ row.count }}</td>
               <td class="num">{{ formatMnt(row.total) }}</td>
             </tr>
           </tbody>
@@ -130,13 +143,18 @@
         <h4>🏗️ Төслөөр</h4>
         <table class="report-table">
           <thead>
-            <tr><th>Төсөл ID</th><th>Байршил</th><th>Тоо</th><th class="num">Нийт дүн</th></tr>
+            <tr>
+              <th @click="sortTable('proj','projectID')" class="sortable">Төсөл ID {{ getSortIcon('proj','projectID') }}</th>
+              <th @click="sortTable('proj','location')" class="sortable">Байршил {{ getSortIcon('proj','location') }}</th>
+              <th @click="sortTable('proj','count')" class="sortable num">Тоо {{ getSortIcon('proj','count') }}</th>
+              <th @click="sortTable('proj','total')" class="sortable num">Нийт дүн {{ getSortIcon('proj','total') }}</th>
+            </tr>
           </thead>
           <tbody>
-            <tr v-for="row in byProject" :key="row.projectID">
+            <tr v-for="row in sortedByProject" :key="row.projectID">
               <td>{{ row.projectID }}</td>
               <td>{{ row.location }}</td>
-              <td>{{ row.count }}</td>
+              <td class="num">{{ row.count }}</td>
               <td class="num">{{ formatMnt(row.total) }}</td>
             </tr>
           </tbody>
@@ -150,19 +168,19 @@
           <table class="report-table full-table">
             <thead>
               <tr>
-                <th>Огноо</th>
-                <th>Ажилтан</th>
-                <th>Төсөл</th>
-                <th>Зориулалт</th>
-                <th>Төрөл</th>
-                <th class="num">Дүн</th>
+                <th @click="sortTable('main','date')" class="sortable">Огноо {{ getSortIcon('main','date') }}</th>
+                <th @click="sortTable('main','employeeFirstName')" class="sortable">Ажилтан {{ getSortIcon('main','employeeFirstName') }}</th>
+                <th @click="sortTable('main','projectID')" class="sortable">Төсөл {{ getSortIcon('main','projectID') }}</th>
+                <th @click="sortTable('main','purpose')" class="sortable">Зориулалт {{ getSortIcon('main','purpose') }}</th>
+                <th @click="sortTable('main','type')" class="sortable">Төрөл {{ getSortIcon('main','type') }}</th>
+                <th @click="sortTable('main','amount')" class="sortable num">Дүн {{ getSortIcon('main','amount') }}</th>
                 <th>Эбаримт</th>
                 <th>НӨАТ</th>
                 <th>Сэтгэгдэл</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in reportData" :key="t.id">
+              <tr v-for="t in sortedMain" :key="t.id">
                 <td>{{ formatDate(t.date) }}</td>
                 <td>{{ t.employeeFirstName }}</td>
                 <td>{{ t.projectID || '—' }}</td>
@@ -203,6 +221,45 @@ const filterPurpose = ref('');
 const loading = ref(false);
 const searched = ref(false);
 const reportData = ref([]);
+
+// Table sort state: { tableKey: { col, order } }
+const sortStates = ref({
+  purpose: { col: 'total', order: 'desc' },
+  type:    { col: 'total', order: 'desc' },
+  emp:     { col: 'total', order: 'desc' },
+  proj:    { col: 'total', order: 'desc' },
+  main:    { col: 'date',  order: 'desc' },
+});
+
+function sortTable(table, col) {
+  const state = sortStates.value[table];
+  if (state.col === col) {
+    state.order = state.order === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.col = col;
+    state.order = col === 'total' || col === 'amount' || col === 'count' ? 'desc' : 'asc';
+  }
+}
+
+function getSortIcon(table, col) {
+  const state = sortStates.value[table];
+  if (state.col !== col) return '↕️';
+  return state.order === 'asc' ? '↑' : '↓';
+}
+
+function sortRows(rows, col, order) {
+  return [...rows].sort((a, b) => {
+    const av = a[col] ?? '';
+    const bv = b[col] ?? '';
+    let cmp;
+    if (typeof av === 'number' && typeof bv === 'number') {
+      cmp = av - bv;
+    } else {
+      cmp = String(av).localeCompare(String(bv));
+    }
+    return order === 'asc' ? cmp : -cmp;
+  });
+}
 
 function excelDateToISO(serial) {
   if (!serial || typeof serial !== 'number') return '';
@@ -287,6 +344,25 @@ const byProject = computed(() => {
     map[key].total += parseFloat(t.amount) || 0;
   }
   return Object.values(map).sort((a, b) => b.total - a.total);
+});
+
+const sortedByPurpose  = computed(() => sortRows(byPurpose.value,  sortStates.value.purpose.col, sortStates.value.purpose.order));
+const sortedByType     = computed(() => sortRows(byType.value,     sortStates.value.type.col,    sortStates.value.type.order));
+const sortedByEmployee = computed(() => sortRows(byEmployee.value, sortStates.value.emp.col,     sortStates.value.emp.order));
+const sortedByProject  = computed(() => sortRows(byProject.value,  sortStates.value.proj.col,    sortStates.value.proj.order));
+
+const sortedMain = computed(() => {
+  const { col, order } = sortStates.value.main;
+  return [...reportData.value].sort((a, b) => {
+    let av = a[col] ?? '';
+    let bv = b[col] ?? '';
+    if (col === 'date') { av = normalizeDate(av); bv = normalizeDate(bv); }
+    if (col === 'amount') { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
+    let cmp;
+    if (typeof av === 'number' && typeof bv === 'number') { cmp = av - bv; }
+    else { cmp = String(av).localeCompare(String(bv)); }
+    return order === 'asc' ? cmp : -cmp;
+  });
 });
 
 function formatMnt(val) {
@@ -462,6 +538,27 @@ onMounted(() => {
 .report-table tr:hover td { background: #f8fafc; }
 .report-table tfoot td { border-top: 2px solid #e2e8f0; border-bottom: none; background: #f8fafc; }
 .report-table .num { text-align: right; }
+
+.report-table--big {
+  font-size: 15px;
+}
+.report-table--big th, .report-table--big td {
+  padding: 10px 16px;
+}
+.breakdown-block--wide {
+  padding: 20px 24px;
+}
+.breakdown-block--wide h4 {
+  font-size: 17px;
+  margin-bottom: 14px;
+}
+
+.report-table .sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.report-table .sortable:hover { background: #e8edf3; }
 
 .table-scroll { overflow-x: auto; }
 .full-table { min-width: 800px; }
