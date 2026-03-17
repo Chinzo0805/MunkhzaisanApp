@@ -124,16 +124,19 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   // Working days: prefer manual from salaryPeriods collection
   let workingDays = 0;
   let workingDaysSource = 'auto';
+  let workingDaysMonth = 0; // full-month baseline for labour cost
   const periodSnap = await db.collection('salaryPeriods').doc(yearMonth).get();
   if (periodSnap.exists) {
     const p = periodSnap.data();
     if (range === '1-15'  && p.workingDaysFirst  != null) { workingDays = p.workingDaysFirst;  workingDaysSource = 'manual'; }
     if (range === '16-31' && p.workingDaysSecond != null) { workingDays = p.workingDaysSecond; workingDaysSource = 'manual'; }
     if (range === 'full'  && p.workingDaysTotal  != null) { workingDays = p.workingDaysTotal;  workingDaysSource = 'manual'; }
+    if (p.workingDaysTotal != null) workingDaysMonth = p.workingDaysTotal;
   }
   if (workingDaysSource === 'auto') {
     workingDays = autoWorkingDays(yearStr, monthStr, range);
   }
+  if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
   // Fetch employees and time attendance (no projects needed — bounty not calculated here)
   const [taSnap, empSnap] = await Promise.all([
@@ -144,54 +147,94 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     db.collection('employees').get(),
   ]);
 
+  // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
+  function normalizeId(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    return isNaN(n) ? String(v).trim() : String(Math.round(n));
+  }
+
   const empMap = new Map();
   empSnap.docs.forEach(d => {
     const e = d.data();
-    const key = String(e.ID || e.Id || '').trim();
+    const key = normalizeId(e.ID ?? e.Id);
     if (key) empMap.set(key, e);
   });
 
   // Group time attendance by employee
-  // workedDays = count of qualifying attendance records (status = ирсэн/ажилласан/томилолт)
+  // workedDays   = count of qualifying days (ірсэн/ажилласан/томилолт) for salary formula
+  // normalHours  = sum of hours for ірсэн + томилолт (used in labour cost)
+  // absentHours  = sum of hours for тасалсан (penalty ×2 subtracted from normalHours)
+  // Чөлөөтэй    = not counted in either
   const empTA = new Map();
   taSnap.docs.forEach(d => {
     const r = d.data();
-    const empId = String(r.EmployeeID || '').trim();
+    const empId = normalizeId(r.EmployeeID);
     const status = (r.Status || '').toLowerCase().trim();
     if (!empId) return;
-    if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0 });
-    const isWorked = status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт';
-    if (isWorked) empTA.get(empId).workedDays++;
+    if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
+    const entry = empTA.get(empId);
+    const workingHour  = parseFloat(r.WorkingHour)  || 0;
+    const overtimeHour = parseFloat(r.overtimeHour) || 0;
+    if (status === 'ірсэн' || status === 'ажилласан' || status === 'томилолт') {
+      entry.workedDays++;
+      entry.normalHours += workingHour + overtimeHour;
+    } else if (status === 'тасалсан') {
+      entry.absentHours += workingHour; // typically 8h per absent day
+    }
+    // Чөлөөтэй — not counted in salary or labour cost
   });
 
   const result = [];
 
-  for (const [empId, ta] of empTA.entries()) {
-    const emp      = empMap.get(empId);
+  function buildRow(empId, ta, emp) {
     const first    = emp?.FirstName || '';
     const last     = emp?.LastName || emp?.EmployeeLastName || '';
     const name     = (first + ' ' + last).trim() || `ID:${empId}`;
     const position = emp?.Position || '';
     const type     = emp?.Type || '';
-    const baseSalary = parseFloat(emp?.Salary) || 0;
+    const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
 
-    // Build base row with manual-field defaults, then derive all computed fields
-    const baseRow = {
+    // Labour cost: Salary / (workingDaysMonth × 8) × effectiveHours
+    // effectiveHours = normalHours − (absentHours × 2)
+    const effectiveHours = Math.max(0, ta.normalHours - (ta.absentHours * 2));
+    const laborCost = (workingDaysMonth > 0 && baseSalary > 0)
+      ? Math.round(baseSalary / (workingDaysMonth * 8) * effectiveHours)
+      : 0;
+
+    return recalcEmployeeRow({
       employeeId: empId,
       name, position, type, baseSalary,
-      workedDays: ta.workedDays,
+      workedDays:     ta.workedDays,
+      normalHours:    Math.round(ta.normalHours),
+      absentHours:    Math.round(ta.absentHours),
+      effectiveHours: Math.round(effectiveHours),
+      laborCost,
       additionalPay:   0,
       annualLeavePay:  0,
       discount:        0,
       advance:         0,
       otherDeductions: 0,
-    };
+    }, workingDays);
+  }
 
-    result.push(recalcEmployeeRow(baseRow, workingDays));
+  // Employees WITH TA records in this period
+  for (const [empId, ta] of empTA.entries()) {
+    result.push(buildRow(empId, ta, empMap.get(empId)));
+  }
+
+  // Employees WITHOUT any TA records — include them with 0 worked days
+  // (only those who have a salary set, i.e. payroll employees)
+  const emptyTA = { workedDays: 0, normalHours: 0, absentHours: 0 };
+  for (const [empId, emp] of empMap.entries()) {
+    if (empTA.has(empId)) continue; // already processed above
+    const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
+    if (!baseSalary) continue; // skip employees with no salary record (trainees etc.)
+    result.push(buildRow(empId, emptyTA, emp));
   }
 
   result.sort((a, b) => a.name.localeCompare(b.name, 'mn'));
-  return { workingDays, workingDaysSource, employees: result };
+  return { workingDays, workingDaysSource, workingDaysMonth, employees: result };
 }
 
 module.exports = { calculateSalaryForPeriod, recalcEmployeeRow };

@@ -28,6 +28,15 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
     if (!action || !projectData) {
       return res.status(400).send({ error: 'Missing required fields' });
     }
+
+    // Always trim referenceIdfromCustomer to prevent lookup mismatches
+    // Handles standard spaces, non-breaking spaces, zero-width spaces, BOM, etc.
+    if (projectData.referenceIdfromCustomer != null) {
+      projectData.referenceIdfromCustomer = projectData.referenceIdfromCustomer
+        .toString()
+        .replace(/[\u00A0\u200B\u200C\u200D\uFEFF\u2028\u2029\u3000]/g, ' ')
+        .trim();
+    }
     
     if (action === 'add') {
       // For new projects, use basic calculations (no TA data yet)

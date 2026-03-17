@@ -73,6 +73,7 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
       calculatedAt,
       workingDays: data.workingDays,
       workingDaysSource: data.workingDaysSource,
+      workingDaysMonth: data.workingDaysMonth,
       employees: data.employees,
     };
 

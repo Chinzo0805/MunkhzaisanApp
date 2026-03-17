@@ -11,14 +11,6 @@
         <label>Он сар:</label>
         <input type="month" v-model="selectedMonth" @change="onMonthRangeChange" />
       </div>
-      <div class="filter-group">
-        <label>Хугацаа:</label>
-        <select v-model="selectedRange" @change="onMonthRangeChange">
-          <option value="full">Бүтэн сар</option>
-          <option value="1-15">1-15</option>
-          <option value="16-31">16-31</option>
-        </select>
-      </div>
       <button @click="fetchSavedData" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
@@ -26,10 +18,8 @@
 
     <!-- Ажлын өдөр тохиргоо -->
     <div class="period-panel">
-      <span class="period-label">📅 Ажлын өдөр ({{ selectedMonth }}):</span>
-      <label class="wd-label">1–15: <input v-model.number="periodForm.workingDaysFirst" type="number" min="0" max="15" class="wd-input" placeholder="авто"></label>
-      <label class="wd-label">16–сүүл: <input v-model.number="periodForm.workingDaysSecond" type="number" min="0" max="16" class="wd-input" placeholder="авто"></label>
-      <label class="wd-label">Бүтэн: <input :value="(periodForm.workingDaysFirst||0)+(periodForm.workingDaysSecond||0)" readonly class="wd-input wd-readonly"></label>
+      <span class="period-label">📅 Сарын ажлын өдөр ({{ selectedMonth }}):</span>
+      <label class="wd-label">Нийт: <input v-model.number="periodForm.workingDaysTotal" type="number" min="0" max="31" class="wd-input" placeholder="авто"></label>
       <input v-model="periodForm.notes" type="text" placeholder="Тэмдэглэл..." class="wd-notes">
       <button @click="savePeriodAndRecalc" :disabled="savingPeriod" class="btn-save-period">
         {{ savingPeriod ? '...' : '💾 Хадгалах' }}
@@ -121,6 +111,9 @@
             <th @click="toggleSort('netPay')" class="sortable th-r">
               Гарт олгох {{ sortColumn === 'netPay' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="toggleSort('laborCost')" class="sortable th-r">
+              Хөдөлмөрийн зардал {{ sortColumn === 'laborCost' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
             <th class="th-expand"></th>
           </tr>
         </thead>
@@ -141,6 +134,7 @@
               <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
               <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employerNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
+              <td class="tc-r tc-labor">{{ emp.laborCost ? formatMnt(emp.laborCost) : '—' }}</td>
               <td class="tc-expand">
                 <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId, emp)">
                   {{ expandedRows.has(emp.employeeId) ? '▲' : '▼' }}
@@ -170,8 +164,11 @@
                       <span>ХХОАТ хөнгөлөлт хассан:</span><span class="val-deduct">- {{ formatMnt(emp.hhoatNet) }}</span>
                       <span>Урьдчилгаа:</span><span :class="(emp.advance||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.advance || 0) }}</span>
                       <span>Бусад суутгал:</span><span :class="(emp.otherDeductions||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.otherDeductions || 0) }}</span>
-                      <span class="grid-sep total-line">Гарт олгох дүн:</span><span class="val-total grid-sep total-line">{{ formatMnt(emp.netPay) }}</span>
-                    </div>
+                      <span>Ажилласан цаг (ірсэн+томилолт):</span><span>{{ emp.normalHours ?? 0 }}ц</span>
+                      <span>Тасалсан цаг (×2 тороогд)оо):</span><span class="val-deduct">−{{ (emp.absentHours ?? 0) * 2 }}ц</span>
+                      <span>Урьшилсан цаг (эффектив):</span><span>{{ emp.effectiveHours ?? 0 }}ц</span>
+                      <span class="grid-sep">Хөдөлмөрийн зардал:</span><span class="val-labor grid-sep">{{ formatMnt(emp.laborCost || 0) }}</span>
+                  </div>
                   </div>
 
                   <!-- Manual edit form -->
@@ -213,6 +210,7 @@
             <td class="tc-r tc-add"><strong>+ {{ formatMnt(totalAdditions) }}</strong></td>
             <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalDeductions) }}</strong></td>
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalNetPay) }}</strong></td>
+            <td class="tc-r tc-labor"><strong>{{ formatMnt(totalLaborCost) }}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -247,7 +245,7 @@ const salaryData  = computed(() => savedReport.value?.employees || []);
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const selectedMonth = ref(currentMonth);
-const selectedRange = ref('1-15');
+const selectedRange = 'full';
 
 const sortColumn = ref('name');
 const sortAsc = ref(true);
@@ -258,7 +256,7 @@ const editingOverrides = ref({});
 const savingRows = ref(new Set());
 
 // ── Period form ──────────────────────────────────────────────────
-const periodForm = reactive({ workingDaysFirst: null, workingDaysSecond: null, notes: '' });
+const periodForm = reactive({ workingDaysTotal: null, notes: '' });
 
 // ── Derived from saved report ────────────────────────────────────
 const expectedWorkingDays  = computed(() => savedReport.value?.workingDays || 0);
@@ -268,10 +266,7 @@ const expectedWorkingHours = computed(() => expectedWorkingDays.value * 8);
 const dateRangeText = computed(() => {
   if (!selectedMonth.value) return '';
   const [y, m] = selectedMonth.value.split('-');
-  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
-  if (selectedRange.value === 'full') return `${y}/${m}`;
-  if (selectedRange.value === '1-15') return `${y}/${m}/01 - ${y}/${m}/15`;
-  return `${y}/${m}/16 - ${y}/${m}/${lastDay}`;
+  return `${y}/${m}`;
 });
 
 // ── Sorting ──────────────────────────────────────────────────────
@@ -322,7 +317,7 @@ const totalEmployerNDS = computed(() => salaryData.value.reduce((s, e) => s + (e
 const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS      || 0), 0));
 const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
 const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
-const totalAdditions   = computed(() => salaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
+const totalLaborCost    = computed(() => salaryData.value.reduce((s, e) => s + (e.laborCost         || 0), 0));
 const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employerNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -343,13 +338,11 @@ async function loadPeriodForm() {
     const snap = await getDoc(doc(db, 'salaryPeriods', selectedMonth.value));
     if (snap.exists()) {
       const d = snap.data();
-      periodForm.workingDaysFirst  = d.workingDaysFirst  ?? null;
-      periodForm.workingDaysSecond = d.workingDaysSecond ?? null;
-      periodForm.notes             = d.notes || '';
+      periodForm.workingDaysTotal = d.workingDaysTotal ?? null;
+      periodForm.notes            = d.notes || '';
     } else {
-      periodForm.workingDaysFirst  = null;
-      periodForm.workingDaysSecond = null;
-      periodForm.notes             = '';
+      periodForm.workingDaysTotal = null;
+      periodForm.notes            = '';
     }
   } catch (e) { /* ignore */ }
 }
@@ -361,7 +354,7 @@ async function fetchSavedData() {
   expandedRows.value = new Set();
   editingOverrides.value = {};
   try {
-    const snap = await getDoc(doc(db, 'salaries', `${selectedMonth.value}_${selectedRange.value}`));
+    const snap = await getDoc(doc(db, 'salaries', `${selectedMonth.value}_${selectedRange}`));
     savedReport.value = snap.exists() ? snap.data() : null;
   } catch (e) {
     console.error('fetchSavedData error:', e);
@@ -375,7 +368,7 @@ async function fetchSavedData() {
 async function calculateAndSave() {
   calculating.value = true;
   try {
-    const result = await calculateSalary(selectedMonth.value, selectedRange.value);
+    const result = await calculateSalary(selectedMonth.value, selectedRange);
     savedReport.value = result;
     editingOverrides.value = {};
     expandedRows.value = new Set();
@@ -392,16 +385,18 @@ async function savePeriodAndRecalc() {
   savingPeriod.value = true;
   periodSaveMsg.value = '';
   try {
-    const workingDaysTotal = (periodForm.workingDaysFirst || 0) + (periodForm.workingDaysSecond || 0);
+    const workingDaysTotal = periodForm.workingDaysTotal || null;
     await manageSalaryPeriod('upsert', {
-      yearMonth:         selectedMonth.value,
-      workingDaysFirst:  periodForm.workingDaysFirst,
-      workingDaysSecond: periodForm.workingDaysSecond,
+      yearMonth:        selectedMonth.value,
       workingDaysTotal,
       notes: periodForm.notes,
     });
+    // Re-run full calculation so laborCost uses the new workingDaysTotal
+    const result = await calculateSalary(selectedMonth.value, selectedRange);
+    savedReport.value = result;
+    editingOverrides.value = {};
+    expandedRows.value = new Set();
     periodSaveMsg.value = '✅ Хадгалагдлаа — цалин дахин тооцоологдлоо';
-    await fetchSavedData();
     setTimeout(() => { periodSaveMsg.value = ''; }, 4000);
   } catch (e) {
     periodSaveMsg.value = '❌ ' + e.message;
@@ -418,7 +413,7 @@ async function saveRowOverrides(empId) {
   s.add(empId);
   savingRows.value = s;
   try {
-    const result = await updateSalaryRow(selectedMonth.value, selectedRange.value, empId, overrides);
+    const result = await updateSalaryRow(selectedMonth.value, selectedRange, empId, overrides);
     if (savedReport.value && result.employee) {
       savedReport.value = {
         ...savedReport.value,
@@ -497,7 +492,7 @@ function exportToExcel() {
   ws['!cols'] = [20,14,10, 6,6,8,8, 14,14,14,14, 14,16,16, 14,14,14,18, 14,14,14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Цалин');
-  XLSX.writeFile(wb, `salary_${selectedMonth.value}_${selectedRange.value}.xlsx`);
+  XLSX.writeFile(wb, `salary_${selectedMonth.value}.xlsx`);
 }
 </script>
 
@@ -544,6 +539,7 @@ function exportToExcel() {
 .tc-money { color: #1d4ed8; font-weight: 600; }
 .tc-deduct { color: #dc2626; }
 .tc-add { color: #16a34a; font-weight: 600; }
+.tc-labor { color: #7c3aed; font-weight: 600; }
 .tc-bounty { color: #16a34a; font-weight: 600; }
 .tc-total { color: #1e293b; font-weight: 700; font-size: 14px; }
 .tc-expand { text-align: center; }
@@ -591,8 +587,7 @@ function exportToExcel() {
 /* ── New formula detail classes ──────────────────────── */
 .val-zero  { color: #9ca3af; }
 .val-info  { color: #6b7280; font-style: italic; font-size: 11px; }
-.val-total { color: #1e293b; font-weight: 700; font-size: 13px; }
-.val-bounty { color: #16a34a; font-weight: 600; }
+.val-total { color: #1e293b; font-weight: 700; font-size: 13px; }.val-labor { color: #7c3aed; font-weight: 700; }.val-bounty { color: #16a34a; font-weight: 600; }
 .grid-sep  { border-top: 1px solid #e2e8f0; padding-top: 4px; margin-top: 2px; font-weight: 600; }
 .total-line { font-size: 13px; }
 

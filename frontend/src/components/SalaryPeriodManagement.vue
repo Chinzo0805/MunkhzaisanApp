@@ -11,9 +11,7 @@
         <thead>
           <tr>
             <th>Он / Сар</th>
-            <th class="tc">1–15 ажлын өдөр</th>
-            <th class="tc">16–Сүүл ажлын өдөр</th>
-            <th class="tc">Нийт ажлын өдөр</th>
+            <th class="tc">Сарын нийт ажлын өдөр</th>
             <th>Тэмдэглэл</th>
             <th class="tc">Үйлдэл</th>
           </tr>
@@ -21,12 +19,6 @@
         <tbody>
           <tr v-for="p in store.periods" :key="p.yearMonth" class="period-row">
             <td class="td-ym">{{ p.yearMonth }}</td>
-            <td class="tc">
-              <span class="day-badge">{{ p.workingDaysFirst ?? '—' }}</span>
-            </td>
-            <td class="tc">
-              <span class="day-badge">{{ p.workingDaysSecond ?? '—' }}</span>
-            </td>
             <td class="tc">
               <span class="day-badge total">{{ p.workingDaysTotal ?? '—' }}</span>
             </td>
@@ -56,25 +48,9 @@
             <input v-model="form.yearMonth" type="month" required :disabled="!!editing" />
           </div>
 
-          <div class="form-row-3">
-            <div class="form-group">
-              <label>1–15 ажлын өдөр</label>
-              <input v-model.number="form.workingDaysFirst" type="number" min="0" max="15" placeholder="e.g. 11" />
-            </div>
-            <div class="form-group">
-              <label>16–Сүүл ажлын өдөр</label>
-              <input v-model.number="form.workingDaysSecond" type="number" min="0" max="16" placeholder="e.g. 10" />
-            </div>
-            <div class="form-group">
-              <label>Нийт ажлын өдөр</label>
-              <input
-                :value="computedTotal"
-                type="number"
-                min="0" max="31"
-                readonly
-                style="background:#f9fafb; font-weight:700;"
-              />
-            </div>
+          <div class="form-group">
+            <label>Сарын нийт ажлын өдөр</label>
+            <input v-model.number="form.workingDaysTotal" type="number" min="0" max="31" placeholder="e.g. 21" />
           </div>
 
           <div class="form-group">
@@ -125,19 +101,14 @@ const saving      = ref(false);
 const formError   = ref('');
 
 const emptyForm = () => ({
-  yearMonth:         '',
-  workingDaysFirst:  null,
-  workingDaysSecond: null,
-  notes:             '',
+  yearMonth:        '',
+  workingDaysTotal: null,
+  notes:            '',
 });
 
 const form = ref(emptyForm());
 
-const computedTotal = computed(() => {
-  const a = Number(form.value.workingDaysFirst)  || 0;
-  const b = Number(form.value.workingDaysSecond) || 0;
-  return a + b || null;
-});
+const computedTotal = computed(() => form.value.workingDaysTotal || null);
 
 function openAdd() {
   editing.value = null;
@@ -149,10 +120,9 @@ function openAdd() {
 function openEdit(period) {
   editing.value = period;
   form.value = {
-    yearMonth:         period.yearMonth,
-    workingDaysFirst:  period.workingDaysFirst  ?? null,
-    workingDaysSecond: period.workingDaysSecond ?? null,
-    notes:             period.notes || '',
+    yearMonth:        period.yearMonth,
+    workingDaysTotal: period.workingDaysTotal ?? null,
+    notes:            period.notes || '',
   };
   formError.value = '';
   showModal.value = true;
@@ -169,13 +139,10 @@ async function handleSave() {
   if (!form.value.yearMonth) { formError.value = 'Он / сар оруулна уу.'; return; }
   saving.value = true;
   try {
-    const total = (Number(form.value.workingDaysFirst) || 0) + (Number(form.value.workingDaysSecond) || 0);
     await manageSalaryPeriod('upsert', {
-      yearMonth:         form.value.yearMonth,
-      workingDaysFirst:  form.value.workingDaysFirst  ?? null,
-      workingDaysSecond: form.value.workingDaysSecond ?? null,
-      workingDaysTotal:  total || null,
-      notes:             form.value.notes,
+      yearMonth:        form.value.yearMonth,
+      workingDaysTotal: form.value.workingDaysTotal ?? null,
+      notes:            form.value.notes,
     });
     closeModal();
   } catch (err) {

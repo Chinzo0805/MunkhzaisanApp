@@ -105,7 +105,10 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const refId = (row[refIdx] || '').toString().trim();
+      const refId = (row[refIdx] || '')
+        .toString()
+        .replace(/[\u00A0\u200B\u200C\u200D\uFEFF\u2028\u2029\u3000]/g, ' ')
+        .trim();
       const wosHourRaw = row[wosIdx];
       const incomeCarRaw = carIdx !== -1 ? row[carIdx] : null;
       const incomeMaterialRaw = matIdx !== -1 ? row[matIdx] : null;
@@ -115,29 +118,36 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
 
       const wosHourFromExcel = parseFloat(wosHourRaw);
       if (isNaN(wosHourFromExcel)) {
-        skipped.push({ refId, reason: `Invalid Хүн/цаг value: "${wosHourRaw}"` });
+        const reason = `Invalid Хүн/цаг value: "${wosHourRaw}"`;
+        skipped.push({ refId, reason });
+        console.warn(`⚠ SKIPPED [${refId}]: ${reason}`);
         continue;
       }
 
       const incomeCar = incomeCarRaw !== null && incomeCarRaw !== '' ? parseFloat(incomeCarRaw) : null;
       const incomeMaterial = incomeMaterialRaw !== null && incomeMaterialRaw !== '' ? parseFloat(incomeMaterialRaw) : null;
 
-      // Find project by referenceIdfromCustomer where type is paid or overtime
+      // Find project by referenceIdfromCustomer — prefer paid/overtime over unpaid
       const query = await db.collection('projects')
         .where('referenceIdfromCustomer', '==', refId)
-        .limit(1)
         .get();
 
       if (query.empty) {
-        skipped.push({ refId, reason: 'No matching project found' });
+        const reason = 'No matching project found';
+        skipped.push({ refId, reason });
+        console.warn(`⚠ SKIPPED [${refId}]: ${reason}`);
         continue;
       }
 
-      const projectDoc = query.docs[0];
+      // Prefer first non-unpaid doc; fall back to the first doc if all are unpaid
+      const projectDoc =
+        query.docs.find(d => d.data().projectType !== 'unpaid') || query.docs[0];
       const projectData = projectDoc.data();
 
       if (projectData.projectType === 'unpaid') {
-        skipped.push({ refId, reason: 'unpaid project — skipped' });
+        const reason = 'unpaid project — skipped';
+        skipped.push({ refId, reason });
+        console.warn(`⚠ SKIPPED [${refId}]: ${reason}`);
         continue;
       }
 
@@ -177,7 +187,7 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
 
         // Merge into project data then recalculate
         const updatedData = { ...projectData, ...fieldUpdates };
-        const calculations = await calculateProjectMetrics(updatedData, projectDoc.id, db);
+        const calculations = await calculateProjectMetrics(projectData.id.toString(), updatedData, db);
 
         await projectDoc.ref.update({
           ...fieldUpdates,

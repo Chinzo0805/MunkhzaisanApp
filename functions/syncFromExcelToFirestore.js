@@ -135,8 +135,22 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
     
     console.log(`Found ${headers.length} columns in Excel table`);
     
-    // Step 1: Clear all employees from Firestore collection
+    // Step 0: Snapshot existing employees to preserve custom fields (Salary etc.) not in Excel
     const allEmployeesSnapshot = await db.collection('employees').get();
+    // Fields that are manually set via the UI and not in Excel — must be preserved across syncs
+    const customFieldsToPreserve = ['Salary'];
+    const savedCustomFields = new Map(); // numericId (string) → { Salary, ... }
+    allEmployeesSnapshot.docs.forEach(doc => {
+      const e = doc.data();
+      const id = String(e.Id || e.ID || '').trim();
+      if (!id) return;
+      const saved = {};
+      customFieldsToPreserve.forEach(f => { if (e[f] !== undefined) saved[f] = e[f]; });
+      if (Object.keys(saved).length > 0) savedCustomFields.set(id, saved);
+    });
+    console.log(`Preserved custom fields for ${savedCustomFields.size} employees`);
+
+    // Step 1: Clear all employees from Firestore collection
     const batch = db.batch();
     let batchCount = 0;
     
@@ -163,6 +177,7 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
     const skipped = [];
     const errors = [];
     const stateIdx = headers.findIndex(h => h === 'State');
+    const idIdx    = headers.findIndex(h => h === 'Id' || h === 'ID');
     
     for (const row of rows) {
       const values = row.values[0];
@@ -185,6 +200,12 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
         const header = headers[i];
         const value = values[i];
         employeeData[header] = value === null || value === undefined ? '' : value;
+      }
+
+      // Restore custom fields (Salary etc.) that are not in Excel
+      const numericId = idIdx !== -1 ? String(values[idIdx]).trim() : '';
+      if (numericId && savedCustomFields.has(numericId)) {
+        Object.assign(employeeData, savedCustomFields.get(numericId));
       }
       
       // Ensure Role is one of the valid types
