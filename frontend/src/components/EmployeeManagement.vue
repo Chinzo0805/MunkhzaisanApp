@@ -188,6 +188,11 @@
               <input v-model.number="form.Salary" type="number" min="0" step="1000" placeholder="1500000" />
               <small style="color:#6b7280;font-size:11px;">Default: 1,500,000₮</small>
             </div>
+            <div class="form-group">
+              <label>ХХОАТ хөнгөлөлт ₮</label>
+              <input v-model.number="form.hhoatDiscount" type="number" min="0" step="1000" placeholder="0" />
+              <small style="color:#6b7280;font-size:11px;">Сарын ХХОАТ хөнгөлөлт</small>
+            </div>
           </div>
           
           <div class="form-actions">
@@ -237,6 +242,7 @@ const form = ref({
   Role: 'Employee',
   Email: '',
   Salary: 1500000,
+  hhoatDiscount: 0,
 });
 
 const emit = defineEmits(['saved']);
@@ -327,6 +333,7 @@ function editItem(employee) {
     Role: validRole,
     Email: employee.Email || '',
     Salary: parseFloat(employee.Salary) || 1500000,
+    hhoatDiscount: parseFloat(employee.hhoatDiscount) || 0,
   };
 }
 
@@ -354,6 +361,7 @@ function closeModal() {
     Role: 'Employee',
     Email: '',
     Salary: 1500000,
+    hhoatDiscount: 0,
   };
 }
 

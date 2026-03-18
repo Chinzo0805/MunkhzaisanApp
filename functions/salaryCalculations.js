@@ -40,6 +40,24 @@ function autoWorkingDays(yearStr, monthStr, range) {
 }
 
 /**
+ * ============================================================
+ * LABOUR COST FORMULA — edit here to change calculation policy
+ * ============================================================
+ * normalHours    = sum of WorkingHour for ирсэн + томилолт records
+ *                  (overtimeHour is NOT included — used only for bounty)
+ * absentHours    = sum of WorkingHour for тасалсан records
+ * effectiveHours = normalHours − (absentHours × 2)
+ * laborCost      = baseSalary ÷ (workingDaysMonth × 8) × effectiveHours
+ */
+function computeLaborCost(baseSalary, normalHours, absentHours, workingDaysMonth) {
+  const effectiveHours = Math.max(0, normalHours - absentHours * 2);
+  const laborCost = (workingDaysMonth > 0 && baseSalary > 0)
+    ? Math.round(baseSalary / (workingDaysMonth * 8) * effectiveHours)
+    : 0;
+  return { effectiveHours, laborCost };
+}
+
+/**
  * Recalculate all derived salary fields for one employee row.
  * Accepts the row with raw + stored manual fields, returns the row
  * with every computed field updated.
@@ -66,13 +84,13 @@ function recalcEmployeeRow(row, workingDays) {
   // Нийт бодогдсон цалин
   const totalGross = calculatedSalary + additionalPay + annualLeavePay;
 
-  // Байгааллагаас төлөх НДШ 12.5%
-  const employerNDS = Math.round(totalGross * 0.125);
-  // НДШ ажилтан 11.5% (displayed for reference only)
+  // НДШ ажилтан 11.5% — deducted from employee netPay
   const employeeNDS = Math.round(totalGross * 0.115);
+  // Байгааллагаас НДШ 12.5% — reference only for managers (NOT deducted from netPay)
+  const employerNDS = Math.round(totalGross * 0.125);
 
-  // ТНО = Нийт бодогдсон − Байгааллагаас НДШ
-  const tno = totalGross - employerNDS;
+  // ТНО = Нийт бодогдсон − НДШ ажилтан
+  const tno = totalGross - employeeNDS;
   // ХХОАТ = ТНО × 10%
   const hhoat = Math.round(tno * 0.10);
 
@@ -83,8 +101,8 @@ function recalcEmployeeRow(row, workingDays) {
   // ХХОАТ хөнгөлөлт хассан дүн
   const hhoatNet = Math.max(0, hhoat - discount);
 
-  // Гарт олгох дүн
-  const netPay = totalGross - employerNDS - hhoatNet - advance - otherDeductions;
+  // Гарт олгох дүн = Нийт бодогдсон − НДШ ажилтан − ХХОАТ(хөнг.) − Урьдчилгаа − Бусад суутгал
+  const netPay = totalGross - employeeNDS - hhoatNet - advance - otherDeductions;
 
   return {
     ...row,
@@ -175,13 +193,12 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     if (!empId) return;
     if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
     const entry = empTA.get(empId);
-    const workingHour  = parseFloat(r.WorkingHour)  || 0;
-    const overtimeHour = parseFloat(r.overtimeHour) || 0;
+    const workingHour = parseFloat(r.WorkingHour) || 0;
     if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
       entry.workedDays++;
-      entry.normalHours += workingHour + overtimeHour;
+      entry.normalHours += workingHour; // overtimeHour excluded — bounty calculation only
     } else if (status === 'тасалсан') {
-      entry.absentHours += workingHour; // typically 8h per absent day
+      entry.absentHours += workingHour;
     }
     // Чөлөөтэй — not counted in salary or labour cost
   });
@@ -195,13 +212,10 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const position = emp?.Position || '';
     const type     = emp?.Type || '';
     const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-
-    // Labour cost: Salary / (workingDaysMonth × 8) × effectiveHours
-    // effectiveHours = normalHours − (absentHours × 2)
-    const effectiveHours = Math.max(0, ta.normalHours - (ta.absentHours * 2));
-    const laborCost = (workingDaysMonth > 0 && baseSalary > 0)
-      ? Math.round(baseSalary / (workingDaysMonth * 8) * effectiveHours)
-      : 0;
+    const hhoatDiscount = parseFloat(emp?.hhoatDiscount) || 0;
+    const { effectiveHours, laborCost } = computeLaborCost(
+      baseSalary, ta.normalHours, ta.absentHours, workingDaysMonth
+    );
 
     return recalcEmployeeRow({
       employeeId: empId,
@@ -213,7 +227,7 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       laborCost,
       additionalPay:   0,
       annualLeavePay:  0,
-      discount:        0,
+      discount:        hhoatDiscount,
       advance:         0,
       otherDeductions: 0,
     }, workingDays);

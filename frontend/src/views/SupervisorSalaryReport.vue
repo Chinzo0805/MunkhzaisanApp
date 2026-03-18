@@ -65,8 +65,8 @@
       <div class="stat-card">
         <div class="stat-icon">📋</div>
         <div class="stat-content">
-          <div class="stat-label">НДШ байгааллага + ХХОАТ</div>
-          <div class="stat-value">{{ formatMnt(totalEmployerNDS + totalHHOATNet) }}</div>
+          <div class="stat-label">НДШ ажилтан + ХХОАТ</div>
+          <div class="stat-value">{{ formatMnt(totalEmployeeNDS + totalHHOATNet) }}</div>
         </div>
       </div>
       <div class="stat-card highlight">
@@ -131,7 +131,7 @@
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
               <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
-              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employerNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
+              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employeeNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
               <td class="tc-r tc-labor">{{ emp.laborCost ? formatMnt(emp.laborCost) : '—' }}</td>
               <td class="tc-expand">
@@ -155,11 +155,11 @@
                       <span>Нэмэгдэл цалин:</span><span :class="(emp.additionalPay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.additionalPay || 0) }}</span>
                       <span>Ээлжийн амралт:</span><span :class="(emp.annualLeavePay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.annualLeavePay || 0) }}</span>
                       <span class="grid-sep">Нийт бодогдсон цалин:</span><span class="val-money grid-sep">{{ formatMnt(emp.totalGross) }}</span>
-                      <span>Байгааллагаас НДШ (12.5%):</span><span class="val-deduct">- {{ formatMnt(emp.employerNDS) }}</span>
-                      <span>НДШ ажилтан (11.5%):</span><span class="val-info">{{ formatMnt(emp.employeeNDS) }} ℹ</span>
+                      <span>НДШ ажилтан (11.5%):</span><span class="val-deduct">- {{ formatMnt(emp.employeeNDS) }}</span>
+                      <span>Байгааллагаас НДШ (12.5%):</span><span class="val-info">{{ formatMnt(emp.employerNDS) }} ℹ</span>
                       <span>ТНО:</span><span>{{ formatMnt(emp.tno) }}</span>
                       <span>ХХОАТ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.hhoat) }}</span>
-                      <span>Хөнгөлөлт:</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
+                      <span>ХХОАТ хөнгөлөлт (emp):</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
                       <span>ХХОАТ хөнгөлөлт хассан:</span><span class="val-deduct">- {{ formatMnt(emp.hhoatNet) }}</span>
                       <span>Урьдчилгаа:</span><span :class="(emp.advance||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.advance || 0) }}</span>
                       <span>Бусад суутгал:</span><span :class="(emp.otherDeductions||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.otherDeductions || 0) }}</span>
@@ -179,9 +179,6 @@
                       </label>
                       <label class="edit-label">Ээлжийн амралт (₮):
                         <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].annualLeavePay" class="edit-input" />
-                      </label>
-                      <label class="edit-label">Хөнгөлөлт (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].discount" class="edit-input" />
                       </label>
                       <label class="edit-label">Урьдчилгаа (₮):
                         <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].advance" class="edit-input" />
@@ -318,7 +315,7 @@ const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e
 const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
 const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
 const totalLaborCost    = computed(() => salaryData.value.reduce((s, e) => s + (e.laborCost         || 0), 0));
-const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employerNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
+const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
 
 // ── Helpers ──────────────────────────────────────────────────────
 function formatMnt(n) {

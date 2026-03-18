@@ -165,6 +165,10 @@ exports.syncFromExcelToTimeAttendance = functions.region('asia-east2').https.onR
           recordData.endTime = value === null || value === undefined ? '' : value;
         } else if (header === 'илүү цаг') {
           recordData.overtimeHour = value === null || value === undefined ? 0 : value;
+        } else if (header === 'Status') {
+          // Normalize Unicode: Excel stores Ірсэн with Ukrainian І (U+0406), normalize to Russian И (U+0418)
+          const v = value === null || value === undefined ? '' : String(value);
+          recordData.Status = v.replace(/І/g, 'И').replace(/і/g, 'и');
         } else {
           // Include all other values directly
           recordData[header] = value === null || value === undefined ? '' : value;
