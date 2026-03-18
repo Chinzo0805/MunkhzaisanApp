@@ -224,12 +224,15 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   }
 
   // Employees WITHOUT any TA records — include them with 0 worked days
-  // (only those who have a salary set, i.e. payroll employees)
+  // Only include active employees (State === 'Ажиллаж байгаа').
+  // Inactive/left employees are skipped unless they have actual TA records above.
   const emptyTA = { workedDays: 0, normalHours: 0, absentHours: 0 };
   for (const [empId, emp] of empMap.entries()) {
     if (empTA.has(empId)) continue; // already processed above
     const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
     if (!baseSalary) continue; // skip employees with no salary record (trainees etc.)
+    const state = (emp?.State || '').trim();
+    if (state && state !== 'Ажиллаж байгаа') continue; // skip inactive/left employees with no attendance
     result.push(buildRow(empId, emptyTA, emp));
   }
 
