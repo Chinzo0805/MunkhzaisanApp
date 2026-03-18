@@ -367,8 +367,8 @@ async function loadSummary() {
 
       const employee = employeeMap.get(empKey);
       const hours = parseFloat(record.WorkingHour) || 0;
-      // Normalize status: lowercase + trim to avoid casing/whitespace mismatches
-      const status = (record.Status || '').toLowerCase().trim();
+      // Normalize status: lowercase + trim + replace Ukrainian і (U+0456) with Russian и (U+0438)
+      const status = (record.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
 
       // Categorize by status
       if (status === 'томилолт') {

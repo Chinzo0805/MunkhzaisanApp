@@ -170,7 +170,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   taSnap.docs.forEach(d => {
     const r = d.data();
     const empId = normalizeId(r.EmployeeID);
-    const status = (r.Status || '').toLowerCase().trim();
+    // Normalize і (U+0456, Ukrainian) → и (U+0438, Russian) to handle both Excel and app records
+    const status = (r.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
     if (!empId) return;
     if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
     const entry = empTA.get(empId);
