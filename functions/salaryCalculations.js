@@ -176,7 +176,7 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const entry = empTA.get(empId);
     const workingHour  = parseFloat(r.WorkingHour)  || 0;
     const overtimeHour = parseFloat(r.overtimeHour) || 0;
-    if (status === 'ірсэн' || status === 'ажилласан' || status === 'томилолт') {
+    if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
       entry.workedDays++;
       entry.normalHours += workingHour + overtimeHour;
     } else if (status === 'тасалсан') {

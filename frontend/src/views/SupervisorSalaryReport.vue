@@ -98,7 +98,8 @@
             <th @click="toggleSort('name')" class="sortable">
               Ажилтан {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th class="th-r">А.хоног → Ажилласан</th>
+            <th class="th-r">Ажилласан</th>
+            <th class="th-r">Ажилласан цаг</th>
             <th class="th-r">Үндсэн цалин</th>
             <th @click="toggleSort('calculatedSalary')" class="sortable th-r">
               Бодогдсон цалин {{ sortColumn === 'calculatedSalary' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -124,10 +125,8 @@
                 <div class="emp-name">{{ emp.name }}</div>
                 <div class="emp-meta">{{ emp.position }}<span v-if="emp.type"> · {{ emp.type }}</span></div>
               </td>
-              <td class="tc-r">
-                <div>{{ emp.workingDays }}→<strong>{{ emp.workedDays }}</strong>өд</div>
-                <div class="tc-sub">{{ emp.workingHours }}→{{ emp.workedHours }}ц</div>
-              </td>
+              <td class="tc-r"><strong>{{ emp.workedDays }}</strong>өд</td>
+              <td class="tc-r">{{ emp.normalHours ?? 0 }}ц</td>
               <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
@@ -143,7 +142,7 @@
             </tr>
             <!-- Expanded detail row -->
             <tr v-if="expandedRows.has(emp.employeeId)" class="detail-row">
-              <td colspan="9">
+              <td colspan="10">
                 <div class="project-details">
                   <!-- Salary formula breakdown -->
                   <div class="detail-section">
@@ -203,6 +202,7 @@
         <tfoot>
           <tr class="total-row">
             <td><strong>НИЙТ ({{ salaryData.length }})</strong></td>
+            <td></td>
             <td></td>
             <td class="tc-r"><strong>{{ formatMnt(totalBaseSalary) }}</strong></td>
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalCalcSalary) }}</strong></td>
@@ -454,7 +454,7 @@ onMounted(() => onMonthRangeChange());
 function exportToExcel() {
   const headers = [
     'Ажилтан', 'Албан тушаал', 'Төрөл',
-    'А/хоног', 'А/цаг', 'Ажилласан хоног', 'Ажилласан цаг',
+    'А/хоног', 'А/цаг', 'Ажилласан хоног', 'Ажилласан цаг', 'Нийт ажилласан цаг (TA)',
     'Үндсэн цалин', 'Бодогдсон цалин', 'Нэмэгдэл цалин', 'Ээлжийн амралт',
     'Нийт бодогдсон', 'Байгааллагаас НДШ (12.5%)', 'НДШ ажилтан (11.5%)',
     'ТНО', 'ХХОАТ (10%)', 'Хөнгөлөлт', 'ХХОАТ хөнгөлөлт хассан',
@@ -463,7 +463,7 @@ function exportToExcel() {
 
   const rows = sortedData.value.map(e => [
     e.name, e.position, e.type,
-    e.workingDays, e.workingHours, e.workedDays, e.workedHours,
+    e.workingDays, e.workingHours, e.workedDays, e.workedHours, e.normalHours || 0,
     e.baseSalary       || 0,
     e.calculatedSalary || 0,
     e.additionalPay    || 0,
@@ -481,7 +481,7 @@ function exportToExcel() {
   ]);
 
   rows.push([
-    'НИЙТ', '', '', '', '', '', '',
+    'НИЙТ', '', '', '', '', '', '', '',
     totalBaseSalary.value, totalCalcSalary.value, '', '',
     totalTotalGross.value, totalEmployerNDS.value, totalEmployeeNDS.value,
     '', '', '', totalHHOATNet.value,
