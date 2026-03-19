@@ -98,8 +98,10 @@
             <th @click="toggleSort('name')" class="sortable">
               Ажилтан {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th class="th-r">Ажилласан</th>
+            <th class="th-r">Ажилласан өдөр</th>
             <th class="th-r">Ажилласан цаг</th>
+            <th class="th-r">Тасалсан өдөр</th>
+            <th class="th-r">Эффектив цаг</th>
             <th class="th-r">Үндсэн цалин</th>
             <th @click="toggleSort('calculatedSalary')" class="sortable th-r">
               Бодогдсон цалин {{ sortColumn === 'calculatedSalary' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -127,6 +129,8 @@
               </td>
               <td class="tc-r"><strong>{{ emp.workedDays }}</strong>өд</td>
               <td class="tc-r">{{ emp.normalHours ?? 0 }}ц</td>
+              <td class="tc-r" :class="(emp.absentHours||0) > 0 ? 'tc-deduct' : ''">{{ emp.absentHours ? Math.round((emp.absentHours||0)/8) + 'өд' : '—' }}</td>
+              <td class="tc-r" :class="(emp.effectiveHours||0) === 0 && (emp.normalHours||0) > 0 ? 'tc-zero' : ''">{{ emp.effectiveHours ?? 0 }}ц</td>
               <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
@@ -142,7 +146,7 @@
             </tr>
             <!-- Expanded detail row -->
             <tr v-if="expandedRows.has(emp.employeeId)" class="detail-row">
-              <td colspan="10">
+              <td colspan="12">
                 <div class="project-details">
                   <!-- Salary formula breakdown -->
                   <div class="detail-section">
@@ -201,6 +205,8 @@
             <td><strong>НИЙТ ({{ salaryData.length }})</strong></td>
             <td></td>
             <td></td>
+            <td></td>
+            <td></td>
             <td class="tc-r"><strong>{{ formatMnt(totalBaseSalary) }}</strong></td>
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalCalcSalary) }}</strong></td>
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalTotalGross) }}</strong></td>
@@ -220,6 +226,54 @@
         {{ calculating ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
       </button>
     </div>
+
+    <!-- Formula Reference -->
+    <details class="formula-ref">
+      <summary>📐 Тооцооллын лавлах (талбарууд)</summary>
+      <div class="formula-grid">
+        <div class="fref-section">
+          <div class="fref-title">Ажилтан (employees collection)</div>
+          <table class="fref-table">
+            <tr><td>Salary</td><td>Үндсэн цалин ₮ — гараар оруулна, Excel sync-д устдаггүй</td></tr>
+            <tr><td>hhoatDiscount</td><td>ХХОАТ хөнгөлөлт ₮ — Employee Management-д тохируулна</td></tr>
+            <tr><td>State</td><td>Ажиллаж байгаа / Гарсан / Чөлөөтэй/Амралт — TA-гүй үед шүүлт</td></tr>
+            <tr><td>Type</td><td>Дадлагжигч бол бодогдсон цалин = 0</td></tr>
+          </table>
+        </div>
+        <div class="fref-section">
+          <div class="fref-title">Цаг бүртгэл (timeAttendance collection)</div>
+          <table class="fref-table">
+            <tr><td>Status</td><td>Ирсэн / Томилолт → normalHours += WorkingHour<br>Тасалсан → absentHours += WorkingHour<br>Чөлөөтэй/Амралт → тооцохгүй</td></tr>
+            <tr><td>WorkingHour</td><td>Ажилласан цаг (overtime тооцохгүй)</td></tr>
+            <tr><td>overtimeHour</td><td>Зөвхөн bounty тооцоолоход ашиглагдана — цалинд ороогүй</td></tr>
+            <tr><td>Day</td><td>Сараар шүүнэ (YYYY-MM-DD)</td></tr>
+            <tr><td>EmployeeID</td><td>employees.Id-тай тохируулна (float 5.0 → "5" нормалчилна)</td></tr>
+          </table>
+        </div>
+        <div class="fref-section">
+          <div class="fref-title">Цалингийн хугацаа (salaryPeriods collection)</div>
+          <table class="fref-table">
+            <tr><td>workingDaysTotal</td><td>А/хоног — Salary Period Management-д тохируулна</td></tr>
+          </table>
+        </div>
+        <div class="fref-section">
+          <div class="fref-title">Томьёо</div>
+          <table class="fref-table">
+            <tr><td>Ажилласан цаг</td><td>Σ WorkingHour (Ирсэн + Томилолт)</td></tr>
+            <tr><td>Тасалсан цаг</td><td>Σ WorkingHour (Тасалсан)</td></tr>
+            <tr><td>Эффектив цаг</td><td>normalHours − absentHours × 2</td></tr>
+            <tr><td>Хөдөлмөрийн зардал</td><td>Salary ÷ (workingDaysTotal × 8) × effectiveHours</td></tr>
+            <tr class="fref-sep"><td>Бодогдсон цалин</td><td>Salary × (workedDays ÷ workingDaysTotal)</td></tr>
+            <tr><td>НДШ ажилтан (11.5%)</td><td>totalGross × 11.5% → суутгагдана</td></tr>
+            <tr><td>НДШ байгааллага (12.5%)</td><td>totalGross × 12.5% → лавлах, суутгагдахгүй</td></tr>
+            <tr><td>ТНО</td><td>totalGross − employeeNDS</td></tr>
+            <tr><td>ХХОАТ</td><td>ТНО × 10%</td></tr>
+            <tr><td>ХХОАТ хөнгөлөлт хассан</td><td>ХХОАТ − hhoatDiscount</td></tr>
+            <tr class="fref-sep"><td>Гарт олгох</td><td>totalGross − employeeNDS − hhoatNet − урьдчилгаа − бусад суутгал</td></tr>
+          </table>
+        </div>
+      </div>
+    </details>
   </div>
 </template>
 
@@ -596,4 +650,22 @@ function exportToExcel() {
 .btn-save-row { margin-top: 4px; padding: 7px 16px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-save-row:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-save-row:hover:not(:disabled) { background: #4338ca; }
+
+/* ── Attendance column cell highlights ───────────────── */
+.tc-zero { color: #f59e0b; font-weight: 700; }
+
+/* ── Formula reference panel ─────────────────────────── */
+.formula-ref { margin-top: 24px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; }
+.formula-ref > summary { cursor: pointer; padding: 10px 16px; font-size: 14px; font-weight: 600; color: #374151; border-radius: 10px; user-select: none; }
+.formula-ref > summary:hover { background: #f1f5f9; border-radius: 10px; }
+.formula-ref[open] > summary { border-bottom: 1px solid #e5e7eb; border-radius: 10px 10px 0 0; }
+.formula-grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
+.fref-section { flex: 1; min-width: 260px; }
+.fref-title { font-size: 12px; font-weight: 700; color: #6d28d9; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.fref-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fref-table tr { border-bottom: 1px solid #e5e7eb; }
+.fref-table tr.fref-sep { border-top: 2px solid #c7d2fe; }
+.fref-table td { padding: 4px 7px; vertical-align: top; line-height: 1.4; }
+.fref-table td:first-child { white-space: nowrap; font-weight: 600; color: #374151; width: 1%; padding-right: 12px; }
+.fref-table td:last-child { color: #4b5563; }
 </style>
