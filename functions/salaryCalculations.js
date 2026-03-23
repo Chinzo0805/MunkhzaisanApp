@@ -74,9 +74,7 @@ function recalcEmployeeRow(row, workingDays) {
 
   // Бодогдсон цалин = Үндсэн цалин ÷ (А/хоног×8) × (Ажилласан хоног×8)
   //                 = Үндсэн цалин × (Ажилласан хоног / А/хоног)
-  const calculatedSalary = (row.type === 'Дадлагжигч')
-    ? 0
-    : Math.round(baseSalary * workedDays / wd);
+  const calculatedSalary = Math.round(baseSalary * workedDays / wd);
 
   const additionalPay  = row.additionalPay  || 0;  // manual
   const annualLeavePay = row.annualLeavePay || 0;  // manual
