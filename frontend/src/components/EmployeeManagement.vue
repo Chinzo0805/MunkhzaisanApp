@@ -208,7 +208,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useEmployeesStore } from '../stores/employees';
 import { manageEmployee } from '../services/api';
 
@@ -246,6 +246,17 @@ const form = ref({
 });
 
 const emit = defineEmits(['saved']);
+
+// Auto-fill Date-Leave with today when State is changed to Гарсан
+watch(() => form.value.State, (newState) => {
+  if (newState === 'Гарсан' && !form.value['Date-Leave']) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    form.value['Date-Leave'] = `${yyyy}-${mm}-${dd}`;
+  }
+});
 
 const filteredAndSorted = computed(() => {
   let items = [...employeesStore.employees];

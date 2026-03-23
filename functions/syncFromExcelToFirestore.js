@@ -138,8 +138,9 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
     // Step 0: Snapshot existing employees to preserve custom fields (Salary etc.) not in Excel
     const allEmployeesSnapshot = await db.collection('employees').get();
     // Fields that are manually set via the UI and not in Excel — must be preserved across syncs
-    const customFieldsToPreserve = ['Salary'];
-    const savedCustomFields = new Map(); // numericId (string) → { Salary, ... }
+      // Note: Salary and HHOAT_deduction are now in Excel so they are synced from there directly
+      const customFieldsToPreserve = [];
+      const savedCustomFields = new Map();
     allEmployeesSnapshot.docs.forEach(doc => {
       const e = doc.data();
       const id = String(e.Id || e.ID || '').trim();
@@ -202,10 +203,15 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
         employeeData[header] = value === null || value === undefined ? '' : value;
       }
 
-      // Restore custom fields (Salary etc.) that are not in Excel
+      // Restore custom fields that are not in Excel
       const numericId = idIdx !== -1 ? String(values[idIdx]).trim() : '';
       if (numericId && savedCustomFields.has(numericId)) {
         Object.assign(employeeData, savedCustomFields.get(numericId));
+      }
+
+      // Map HHOAT_deduction column → hhoatDiscount field used by salary calculations
+      if (employeeData.HHOAT_deduction !== undefined && employeeData.HHOAT_deduction !== '') {
+        employeeData.hhoatDiscount = parseFloat(employeeData.HHOAT_deduction) || 0;
       }
       
       // Ensure Role is one of the valid types
