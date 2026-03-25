@@ -154,6 +154,12 @@
               </div>
             </div>
             <div class="field-group span-full">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="request.usesPrivateCar" class="checkbox-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'" />
+                хувийн машинтай ажилд явсан
+              </label>
+            </div>
+            <div class="field-group span-full">
               <label>Юу хийсэн <span class="required">*</span></label>
               <textarea v-model="request.comment" class="textarea-field" placeholder="Юу хийсэн талаар бичнэ үү..." rows="3" required></textarea>
             </div>
@@ -176,6 +182,7 @@
               <th>Дуусах цаг</th>
               <th>Ажилласан цаг</th>
               <th>Илүү цаг</th>
+              <th>Хувийн машин</th>
               <th>Юу хийсэн талаар</th>
               <th></th>
             </tr>
@@ -227,6 +234,9 @@
               <td>
                 <input type="checkbox" v-model="request.isOvertimeRequest" @change="calculateRow(index)" class="checkbox-field" />
                 <input type="number" v-model="request.overtimeHour" readonly class="input-field overtime-input" step="0.5" />
+              </td>
+              <td class="center-cell">
+                <input type="checkbox" v-model="request.usesPrivateCar" class="checkbox-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'" />
               </td>
               <td>
                 <textarea v-model="request.comment" class="textarea-field" placeholder="Юу хийсэн талаар*" rows="2" required></textarea>
@@ -368,6 +378,7 @@ function addRow() {
     WorkingHour: 8,
     isOvertimeRequest: false,
     overtimeHour: 0,
+    usesPrivateCar: false,
     comment: '',
     Week: getWeekNumber(new Date()),
   });
@@ -1269,6 +1280,19 @@ function showMessage(text, type) {
   width: 22px;
   height: 22px;
   flex-shrink: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.center-cell {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .required {

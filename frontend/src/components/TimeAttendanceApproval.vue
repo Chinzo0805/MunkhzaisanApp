@@ -147,6 +147,7 @@
             <th>Цаг</th>
             <th>Илүү</th>
             <th>Статус</th>
+            <th>Хувийн машин</th>
             <th v-if="activeTab === 'invalid' || activeTab === 'notSynced'">Өгөгдөл</th>
             <th>Тэмдэглэл</th>
             <th v-if="activeTab === 'pending'">Үйлдэл</th>
@@ -207,6 +208,10 @@
               <span v-else :class="['status-badge', getStatusClass(request.Status)]">
                 {{ request.Status }}
               </span>
+            </td>
+            <td class="center-cell">
+              <input type="checkbox" v-model="request.usesPrivateCar" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <span v-else>{{ request.usesPrivateCar ? '🚗 Тийм' : '–' }}</span>
             </td>
             <td v-if="activeTab === 'invalid' || activeTab === 'notSynced'">
               <span :class="['data-status-badge', getDataStatusClass(request.dataStatus)]">
@@ -1075,6 +1080,11 @@ function showSyncMessage(text, type) {
   width: 18px;
   height: 18px;
   cursor: pointer;
+}
+
+.center-cell {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .edit-input {
