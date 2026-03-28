@@ -13,7 +13,13 @@
       <div class="welcome-card">
         <h2>Welcome, {{ authStore.userData?.employeeFirstName }}!</h2>
         <p><strong>Position:</strong> {{ authStore.userData?.position || 'N/A' }}</p>
-        <p><strong>Role:</strong> {{ authStore.userData?.role || 'Employee' }}</p>
+        <p>
+          <strong>Role:</strong> {{ authStore.userData?.role || 'Employee' }}
+          <button @click="handleRefreshRole" :disabled="refreshingRole" style="margin-left:10px;padding:2px 10px;font-size:0.78rem;background:#6366f1;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+            {{ refreshingRole ? '...' : '🔄 Дүр шинэчлэх' }}
+          </button>
+          <span v-if="refreshRoleMsg" style="margin-left:8px;font-size:0.8rem;color:#166534;">{{ refreshRoleMsg }}</span>
+        </p>
         <p v-if="authStore.userData?.isSupervisor" class="supervisor-badge">
           ✓ Supervisor Account
         </p>
@@ -28,6 +34,9 @@
           </button>
           <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
+          </button>
+          <button v-if="authStore.userData?.isAccountant" @click="$router.push('/supervisor-salary')" class="btn-action salary">
+            💰 Цалин батлах
           </button>
         </div>
 
@@ -200,6 +209,24 @@ const projectsStore = useProjectsStore();
 const syncing = ref(false);
 const syncResult = ref(null);
 const loading = ref(false);
+const refreshingRole = ref(false);
+const refreshRoleMsg = ref('');
+
+async function handleRefreshRole() {
+  refreshingRole.value = true;
+  refreshRoleMsg.value = '';
+  try {
+    const result = await authStore.refreshUserRole();
+    if (result.success) {
+      refreshRoleMsg.value = `Дүр шинэчлэгдлээ: ${result.role}`;
+    } else {
+      refreshRoleMsg.value = 'Алдаа: ' + result.message;
+    }
+  } finally {
+    refreshingRole.value = false;
+    setTimeout(() => { refreshRoleMsg.value = ''; }, 4000);
+  }
+}
 const showSyncDialog = ref(false);
 const syncType = ref('employee'); // 'employee', 'customer', or 'project'
 const showTimeAttendance = ref(false);

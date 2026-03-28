@@ -11,32 +11,49 @@
         <label>Он сар:</label>
         <input type="month" v-model="selectedMonth" @change="onMonthRangeChange" />
       </div>
+      <div class="filter-group">
+        <label>Төрол:</label>
+        <select v-model="reportType" class="report-type-select" @change="onMonthRangeChange">
+          <option value="full">Сүүл цалин</option>
+          <option value="advance">Урьдчилгаа</option>
+        </select>
+      </div>
       <button @click="fetchSavedData" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
     </div>
 
     <!-- Ажлын өдөр тохиргоо -->
-    <div class="period-panel">
+    <div v-if="reportType === 'full'" class="period-panel">
       <span class="period-label">📅 Сарын ажлын өдөр ({{ selectedMonth }}):</span>
-      <label class="wd-label">Нийт: <input v-model.number="periodForm.workingDaysTotal" type="number" min="0" max="31" class="wd-input" placeholder="авто"></label>
-      <input v-model="periodForm.notes" type="text" placeholder="Тэмдэглэл..." class="wd-notes">
-      <button @click="savePeriodAndRecalc" :disabled="savingPeriod" class="btn-save-period">
-        {{ savingPeriod ? '...' : '💾 Хадгалах' }}
-      </button>
-      <span v-if="periodSaveMsg" class="period-save-msg">{{ periodSaveMsg }}</span>
+      <template v-if="!isSalaryLocked">
+        <label class="wd-label">Нийт: <input v-model.number="periodForm.workingDaysTotal" type="number" min="0" max="31" class="wd-input" placeholder="авто"></label>
+        <input v-model="periodForm.notes" type="text" placeholder="Тэмдэглэл..." class="wd-notes">
+        <button @click="savePeriodAndRecalc" :disabled="savingPeriod" class="btn-save-period">
+          {{ savingPeriod ? '...' : '💾 Хадгалах' }}
+        </button>
+        <span v-if="periodSaveMsg" class="period-save-msg">{{ periodSaveMsg }}</span>
+      </template>
+      <template v-else>
+        <span class="wd-label">Ажлын өдөр: <strong>{{ periodForm.workingDaysTotal ?? 'авто' }}</strong></span>
+        <span v-if="periodForm.notes" class="wd-notes" style="cursor:default;">{{ periodForm.notes }}</span>
+        <span class="salary-locked-badge">🔒 Батлагдсан — өөрчлөх боломжгүй</span>
+      </template>
     </div>
 
     <!-- Action row -->
-    <div class="action-row">
+    <div v-if="reportType === 'full' && !isSalaryLocked" class="action-row">
       <button @click="calculateAndSave" :disabled="calculating" class="btn-calc">
         {{ calculating ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
       </button>
       <span v-if="savedReport" class="calc-ts">🕐 {{ formatDate(savedReport.calculatedAt) }}</span>
     </div>
+    <div v-else-if="reportType === 'full' && isSalaryLocked && savedReport" class="action-row">
+      <span class="calc-ts">🕐 {{ formatDate(savedReport.calculatedAt) }}</span>
+    </div>
 
     <!-- Summary cards -->
-    <div v-if="!loading && salaryData.length > 0" class="stats-section">
+    <div v-if="!loading && salaryData.length > 0 && reportType === 'full'" class="stats-section">
       <div class="stat-card">
         <div class="stat-icon">📅</div>
         <div class="stat-content">
@@ -81,12 +98,149 @@
     <!-- Loading -->
     <div v-if="loading" class="loading">Тооцоолж байна...</div>
 
-    <!-- Table -->
+    <!-- Advance (Урьдчилгаа) table -->
+    <div v-else-if="reportType === 'advance'" class="table-container">
+      <!-- Advance confirmed banners -->
+      <div v-if="confirmedAdvanceInfo?.fullyConfirmed" class="confirmed-banner confirmed-full">
+        ✅ <strong>Урьдчилгаа бүрэн батлагдсан</strong>
+        <span class="conf-stamp">
+          👤 {{ confirmedAdvanceInfo.supervisorApproval?.name }} (Supervisor) · {{ fmtDate(confirmedAdvanceInfo.supervisorApproval?.approvedAt) }}
+        </span>
+        <span class="conf-sep">&amp;</span>
+        <span class="conf-stamp">
+          👤 {{ confirmedAdvanceInfo.accountantApproval?.name }} (Accountant) · {{ fmtDate(confirmedAdvanceInfo.accountantApproval?.approvedAt) }}
+        </span>
+      </div>
+      <div v-else-if="confirmedAdvanceInfo" class="confirmed-banner confirmed-partial">
+        ⏳ <strong>Урьдчилгаа батлалт хүлээж байна</strong>
+        <span v-if="confirmedAdvanceInfo.supervisorApproval" class="conf-stamp conf-done">
+          ✓ Supervisor: {{ confirmedAdvanceInfo.supervisorApproval.name }} · {{ fmtDate(confirmedAdvanceInfo.supervisorApproval.approvedAt) }}
+        </span>
+        <span v-else class="conf-stamp conf-wait">⏳ Supervisor: Хүлээгүй</span>
+        <span class="conf-sep">·</span>
+        <span v-if="confirmedAdvanceInfo.accountantApproval" class="conf-stamp conf-done">
+          ✓ Accountant: {{ confirmedAdvanceInfo.accountantApproval.name }} · {{ fmtDate(confirmedAdvanceInfo.accountantApproval.approvedAt) }}
+        </span>
+        <span v-else class="conf-stamp conf-wait">⏳ Accountant: Хүлээгүй</span>
+      </div>
+
+      <div class="table-header">
+        <span>{{ dateRangeText }} · 1-15 хоног · Урьдчилгаа</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span v-if="advanceCalculatedAt" class="calc-ts">🕐 {{ formatDate(advanceCalculatedAt) }}</span>
+          <button v-if="canApproveSalary && !confirmedAdvanceInfo?.fullyConfirmed && !alreadyApprovedAdvance && advanceData.length > 0"
+            @click="confirmAdvance" :disabled="confirmingAdvance" class="btn-confirm">
+            {{ confirmingAdvance ? 'Түтнүүлж...' : (confirmedAdvanceInfo ? '✅ Миний батласан оруулах' : '✅ Урьдчилгаа батлах') }}
+          </button>
+          <button v-if="!isAdvanceLocked" @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc">
+            {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+          </button>
+        </div>
+      </div>
+      <div v-if="advanceData.length === 0" class="no-data">
+        <p>1-15-н цагийн бүртгэл байхгүй байна</p>
+        <button v-if="!isAdvanceLocked" @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc-big">
+          {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+        </button>
+      </div>
+      <table v-else class="salary-table">
+        <thead>
+          <tr>
+            <th class="sortable" @click="toggleSort('name')">Ажилтан {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+            <th class="th-r">Ажилласан өдөр</th>
+            <th class="th-r">Ажилласан цаг</th>
+            <th class="th-r">Тасалсан цаг</th>
+            <th class="th-r">Эффектив цаг</th>
+            <th class="th-r">Үндсэн цалин</th>
+            <th class="th-r advance-pay-col">Гарт олгох (Урьдчилгаа)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="emp in sortedAdvanceData" :key="emp.employeeId"
+              :class="['salary-row', emp.advancePay === 0 ? 'row-no-advance' : '']">
+            <td>
+              <div class="emp-name">{{ emp.name }}<span class="emp-id">#{{ emp.employeeId }}</span></div>
+              <div class="emp-meta">{{ emp.position }}<span v-if="emp.type"> · {{ emp.type }}</span></div>
+            </td>
+            <td class="tc-r"><strong>{{ emp.workedDays }}</strong>өд</td>
+            <td class="tc-r">{{ emp.normalHours ?? 0 }}ц</td>
+            <td class="tc-r" :class="(emp.absentHours||0) > 0 ? 'tc-deduct' : ''">{{ emp.absentHours ? Math.round((emp.absentHours||0)/8) + 'өд (−'+(emp.absentHours*2)+'ц)' : '—' }}</td>
+            <td class="tc-r" :class="emp.effectiveHours >= 80 ? 'tc-add' : 'tc-zero'">{{ emp.effectiveHours ?? 0 }}ц</td>
+            <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
+            <td class="tc-r advance-pay-col">
+              <div class="advance-pay-cell">
+                <!-- Editable input shown when forceAdvance is on -->
+                <template v-if="emp.forceAdvance && !isAdvanceLocked">
+                  <input
+                    type="number" min="0" step="10000"
+                    v-model.number="emp.advancePay"
+                    @change="onForceAdvanceChange(emp)"
+                    class="advance-amount-input"
+                  />
+                </template>
+                <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
+                  {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : `— (${emp.effectiveHours ?? 0}ц < 80)` }}
+                </span>
+                <label v-if="!isAdvanceLocked && (emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance)" class="force-check"
+                  :title="emp.forceAdvance ? 'Урамшуулал олгохоос татгалзах' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох'">
+                  <input type="checkbox" v-model="emp.forceAdvance" @change="onForceAdvanceChange(emp)" />
+                  <span>{{ emp.forceAdvance ? 'Урамшуулал олгосон' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох' }}</span>
+                </label>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td><strong>НИЙТ ({{ advanceData.length }})</strong></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td class="tc-r tc-money"><strong>{{ formatMnt(totalAdvancePay) }}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Table (full / Сүүл цалин) -->
     <div v-else-if="salaryData.length > 0" class="table-container">
+
+      <!-- Confirmed banner -->
+      <!-- Fully confirmed -->
+      <div v-if="confirmedInfo?.fullyConfirmed" class="confirmed-banner confirmed-full">
+        ✅ <strong>Цалин бүрэн батлагдсан</strong>
+        <span class="conf-stamp">
+          👤 {{ confirmedInfo.supervisorApproval?.name }} (Supervisor) · {{ fmtDate(confirmedInfo.supervisorApproval?.approvedAt) }}
+        </span>
+        <span class="conf-sep">&amp;</span>
+        <span class="conf-stamp">
+          👤 {{ confirmedInfo.accountantApproval?.name }} (Accountant) · {{ fmtDate(confirmedInfo.accountantApproval?.approvedAt) }}
+        </span>
+      </div>
+      <!-- Partially confirmed -->
+      <div v-else-if="confirmedInfo" class="confirmed-banner confirmed-partial">
+        ⏳ <strong>Хүлээгээгүй батлалт хүлээж байна</strong>
+        <span v-if="confirmedInfo.supervisorApproval" class="conf-stamp conf-done">
+          ✓ Supervisor: {{ confirmedInfo.supervisorApproval.name }} · {{ fmtDate(confirmedInfo.supervisorApproval.approvedAt) }}
+        </span>
+        <span v-else class="conf-stamp conf-wait">⏳ Supervisor: Хүлээгүй</span>
+        <span class="conf-sep">·</span>
+        <span v-if="confirmedInfo.accountantApproval" class="conf-stamp conf-done">
+          ✓ Accountant: {{ confirmedInfo.accountantApproval.name }} · {{ fmtDate(confirmedInfo.accountantApproval.approvedAt) }}
+        </span>
+        <span v-else class="conf-stamp conf-wait">⏳ Accountant: Хүлээгүй</span>
+      </div>
+
       <div class="table-header">
         <span>{{ dateRangeText }} · Ажлын {{ expectedWorkingDays }} өдөр</span>
         <div style="display:flex;gap:8px;">
-          <button @click="calculateAndSave" :disabled="calculating" class="btn-recalc">
+          <button v-if="canApproveSalary && !confirmedInfo?.fullyConfirmed && !alreadyApproved"
+            @click="confirmSalary" :disabled="confirming" class="btn-confirm">
+            {{ confirming ? 'Түтнүүлж...' : (confirmedInfo ? '✅ Миний батласан оруулах' : '✅ Цалин батлах') }}
+          </button>
+          <button v-if="!isSalaryLocked" @click="calculateAndSave" :disabled="calculating" class="btn-recalc">
             {{ calculating ? '...' : '🔄 Дахин тооцоолох' }}
           </button>
           <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
@@ -98,10 +252,10 @@
             <th @click="toggleSort('name')" class="sortable">
               Ажилтан {{ sortColumn === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="toggleSort('employerNDS')" class="sortable th-r">Байгууллага төлөх НДШ (12.5%)</th>
             <th class="th-r">Ажилласан өдөр</th>
             <th class="th-r">Ажилласан цаг</th>
             <th class="th-r">Тасалсан өдөр</th>
-            <th class="th-r">Эффектив цаг</th>
             <th class="th-r">Үндсэн цалин</th>
             <th @click="toggleSort('calculatedSalary')" class="sortable th-r">
               Бодогдсон цалин {{ sortColumn === 'calculatedSalary' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -114,9 +268,6 @@
             <th @click="toggleSort('netPay')" class="sortable th-r">
               Гарт олгох {{ sortColumn === 'netPay' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="toggleSort('laborCost')" class="sortable th-r">
-              Хөдөлмөрийн зардал {{ sortColumn === 'laborCost' ? (sortAsc ? '↑' : '↓') : '' }}
-            </th>
             <th class="th-expand"></th>
           </tr>
         </thead>
@@ -124,20 +275,19 @@
           <template v-for="emp in sortedData" :key="emp.employeeId">
             <tr class="salary-row" :class="{ 'row-expanded': expandedRows.has(emp.employeeId) }">
               <td>
-                <div class="emp-name">{{ emp.name }}</div>
+                <div class="emp-name">{{ emp.name }}<span class="emp-id">#{{ emp.employeeId }}</span></div>
                 <div class="emp-meta">{{ emp.position }}<span v-if="emp.type"> · {{ emp.type }}</span></div>
               </td>
+              <td class="tc-r tc-info">{{ emp.baseSalary ? formatMnt(emp.employerNDS) : '—' }}</td>
               <td class="tc-r"><strong>{{ emp.workedDays }}</strong>өд</td>
-              <td class="tc-r">{{ emp.normalHours ?? 0 }}ц</td>
-              <td class="tc-r" :class="(emp.absentHours||0) > 0 ? 'tc-deduct' : ''">{{ emp.absentHours ? Math.round((emp.absentHours||0)/8) + 'өд' : '—' }}</td>
               <td class="tc-r" :class="(emp.effectiveHours||0) === 0 && (emp.normalHours||0) > 0 ? 'tc-zero' : ''">{{ emp.effectiveHours ?? 0 }}ц</td>
+              <td class="tc-r" :class="(emp.absentHours||0) > 0 ? 'tc-deduct' : ''">{{ emp.absentHours ? Math.round((emp.absentHours||0)/8) + 'өд' : '—' }}</td>
               <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
               <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
               <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employeeNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
-              <td class="tc-r tc-labor">{{ emp.laborCost ? formatMnt(emp.laborCost) : '—' }}</td>
               <td class="tc-expand">
                 <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId, emp)">
                   {{ expandedRows.has(emp.employeeId) ? '▲' : '▼' }}
@@ -153,42 +303,44 @@
                     <strong>📊 Цалингийн дэлгэрэнгүй</strong>
                     <div class="detail-grid">
                       <span>Үндсэн цалин:</span><span class="val-money">{{ formatMnt(emp.baseSalary) }}</span>
-                      <span>А/хоног (А/цаг):</span><span>{{ emp.workingDays }} өдөр ({{ emp.workingHours }}ц)</span>
-                      <span>Ажилласан (цаг):</span><span>{{ emp.workedDays }} өдөр ({{ emp.workedHours }}ц)</span>
+                      <span>Ажиллах хоног:</span><span>{{ emp.workingDays }} өдөр ({{ emp.workingHours }}ц)</span>
+                      <span>Ажилласан өдөр:</span><span>{{ emp.workedDays }} өдөр</span>
+                      <span>Ажилласан цаг:</span><span>{{ emp.effectiveHours ?? 0 }}ц</span>
                       <span>Бодогдсон цалин:</span><span class="val-money">{{ formatMnt(emp.calculatedSalary) }}</span>
                       <span>Нэмэгдэл цалин:</span><span :class="(emp.additionalPay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.additionalPay || 0) }}</span>
                       <span>Ээлжийн амралт:</span><span :class="(emp.annualLeavePay||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.annualLeavePay || 0) }}</span>
                       <span class="grid-sep">Нийт бодогдсон цалин:</span><span class="val-money grid-sep">{{ formatMnt(emp.totalGross) }}</span>
                       <span>НДШ ажилтан (11.5%):</span><span class="val-deduct">- {{ formatMnt(emp.employeeNDS) }}</span>
-                      <span>Байгааллагаас НДШ (12.5%):</span><span class="val-info">{{ formatMnt(emp.employerNDS) }} ℹ</span>
                       <span>ТНО:</span><span>{{ formatMnt(emp.tno) }}</span>
                       <span>ХХОАТ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.hhoat) }}</span>
                       <span>ХХОАТ хөнгөлөлт (emp):</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
                       <span>ХХОАТ хөнгөлөлт хассан:</span><span class="val-deduct">- {{ formatMnt(emp.hhoatNet) }}</span>
                       <span>Урьдчилгаа:</span><span :class="(emp.advance||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.advance || 0) }}</span>
                       <span>Бусад суутгал:</span><span :class="(emp.otherDeductions||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.otherDeductions || 0) }}</span>
-                      <span>Ажилласан цаг (ірсэн+томилолт):</span><span>{{ emp.normalHours ?? 0 }}ц</span>
-                      <span>Тасалсан цаг (×2 тороогд)оо):</span><span class="val-deduct">−{{ (emp.absentHours ?? 0) * 2 }}ц</span>
-                      <span>Урьшилсан цаг (эффектив):</span><span>{{ emp.effectiveHours ?? 0 }}ц</span>
-                      <span class="grid-sep">Хөдөлмөрийн зардал:</span><span class="val-labor grid-sep">{{ formatMnt(emp.laborCost || 0) }}</span>
+                      <span>Ажилласан цаг (ирсэн+томилолт):</span><span>{{ emp.normalHours ?? 0 }}ц</span>
+                      <span>Тасалсан цаг (×2 тооцогдоно):</span><span class="val-deduct">−{{ (emp.absentHours ?? 0) * 2 }}ц</span>
+                      <span>Цалин тооцоолох цаг:</span><span>{{ emp.effectiveHours ?? 0 }}ц</span>
                   </div>
                   </div>
 
-                  <!-- Manual edit form -->
-                  <div class="detail-section detail-edit-section">
-                    <strong>✏️ Гараар оруулах утгууд</strong>
-                    <div v-if="editingOverrides[emp.employeeId]" class="edit-form">
-                      <label class="edit-label">Нэмэгдэл цалин (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].additionalPay" class="edit-input" />
-                      </label>
-                      <label class="edit-label">Ээлжийн амралт (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].annualLeavePay" class="edit-input" />
-                      </label>
-                      <label class="edit-label">Урьдчилгаа (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].advance" class="edit-input" />
-                      </label>
-                      <label class="edit-label">Бусад суутгал (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].otherDeductions" class="edit-input" />
+                  <!-- Adjustments panel (additions / deductions) -->
+                  <div class="detail-section">
+                    <SalaryAdjustmentsPanel
+                      :employeeId="String(emp.employeeId)"
+                      :employeeName="emp.name"
+                      :yearMonth="selectedMonth"
+                      :advancePaid="advanceMapForEOM.get(String(emp.employeeId)) || 0"
+                      :readonly="isSalaryLocked"
+                      @updated="onAdjustmentsUpdated(emp.employeeId, $event)"
+                    />
+                  </div>
+
+                  <!-- ХХОАТ хөнгөлөлт override -->
+                  <div v-if="editingOverrides[emp.employeeId] && !isSalaryLocked" class="detail-section detail-edit-section">
+                    <strong>✏️ ХХОАТ хөнгөлөлт тохируулах</strong>
+                    <div class="edit-form">
+                      <label class="edit-label">ХХОАТ хөнгөлөлт (₮):
+                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].discount" class="edit-input" />
                       </label>
                       <button @click="saveRowOverrides(emp.employeeId)" :disabled="savingRows.has(emp.employeeId)" class="btn-save-row">
                         {{ savingRows.has(emp.employeeId) ? 'Хадгалж байна...' : '💾 Хадгалах' }}
@@ -203,7 +355,7 @@
         <tfoot>
           <tr class="total-row">
             <td><strong>НИЙТ ({{ salaryData.length }})</strong></td>
-            <td></td>
+            <td class="tc-r tc-info"><strong>{{ formatMnt(totalEmployerNDS) }}</strong></td>
             <td></td>
             <td></td>
             <td></td>
@@ -213,7 +365,6 @@
             <td class="tc-r tc-add"><strong>+ {{ formatMnt(totalAdditions) }}</strong></td>
             <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalDeductions) }}</strong></td>
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalNetPay) }}</strong></td>
-            <td class="tc-r tc-labor"><strong>{{ formatMnt(totalLaborCost) }}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -261,9 +412,8 @@
           <table class="fref-table">
             <tr><td>Ажилласан цаг</td><td>Σ WorkingHour (Ирсэн + Томилолт)</td></tr>
             <tr><td>Тасалсан цаг</td><td>Σ WorkingHour (Тасалсан)</td></tr>
-            <tr><td>Эффектив цаг</td><td>normalHours − absentHours × 2</td></tr>
-            <tr><td>Хөдөлмөрийн зардал</td><td>Salary ÷ (workingDaysTotal × 8) × effectiveHours</td></tr>
-            <tr class="fref-sep"><td>Бодогдсон цалин</td><td>Salary × (workedDays ÷ workingDaysTotal)</td></tr>
+            <tr><td>Ажилласан цаг</td><td>normalHours − absentHours × 2 (эффектив цаг)</td></tr>
+            <tr class="fref-sep"><td>Бодогдсон цалин</td><td>Salary ÷ (Ажиллах хоног × 8) × Ажилласан цаг</td></tr>
             <tr><td>НДШ ажилтан (11.5%)</td><td>totalGross × 11.5% → суутгагдана</td></tr>
             <tr><td>НДШ байгааллага (12.5%)</td><td>totalGross × 12.5% → лавлах, суутгагдахгүй</td></tr>
             <tr><td>ТНО</td><td>totalGross − employeeNDS</td></tr>
@@ -279,16 +429,228 @@
 
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue';
-import { doc, getDoc } from 'firebase/firestore';
+import { useAuthStore } from '../stores/auth';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
 import { manageSalaryPeriod, calculateSalary, updateSalaryRow } from '../services/api';
+import SalaryAdjustmentsPanel from '../components/SalaryAdjustmentsPanel.vue';
+
+// ── Auth ─────────────────────────────────────────────────────────
+const authStore = useAuthStore();
+const canApproveSalary = computed(() =>
+  authStore.userData?.isSupervisor || authStore.userData?.isAccountant
+);
+const isSalaryLocked = computed(() => confirmedInfo.value?.fullyConfirmed === true);
 
 // ── State ────────────────────────────────────────────────────────
 const loading      = ref(false);
 const calculating  = ref(false);
 const savingPeriod = ref(false);
 const periodSaveMsg = ref('');
+
+// ── Confirmed salary state ────────────────────────────────────────
+const confirmedInfo   = ref(null);  // null | Firestore doc data
+const confirming      = ref(false);
+
+// ── Confirmed advance state ───────────────────────────────────────
+const confirmedAdvanceInfo   = ref(null);
+const confirmingAdvance      = ref(false);
+
+// Derived helpers
+const iAmSupervisor   = computed(() => authStore.userData?.isSupervisor);
+const iAmAccountant   = computed(() => authStore.userData?.isAccountant);
+const myApprovalKey   = computed(() => iAmSupervisor.value ? 'supervisorApproval' : 'accountantApproval');
+const alreadyApproved = computed(() => {
+  if (!confirmedInfo.value || !canApproveSalary.value) return false;
+  return !!confirmedInfo.value[myApprovalKey.value];
+});
+const isAdvanceLocked = computed(() => confirmedAdvanceInfo.value?.fullyConfirmed === true);
+const alreadyApprovedAdvance = computed(() => {
+  if (!confirmedAdvanceInfo.value || !canApproveSalary.value) return false;
+  return !!confirmedAdvanceInfo.value[myApprovalKey.value];
+});
+
+async function fetchConfirmedInfo() {
+  if (!selectedMonth.value) return;
+  try {
+    const snap = await getDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_full`));
+    confirmedInfo.value = snap.exists() ? snap.data() : null;
+  } catch (e) {
+    confirmedInfo.value = null;
+  }
+}
+
+async function fetchConfirmedAdvanceInfo() {
+  if (!selectedMonth.value) return;
+  try {
+    const snap = await getDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_advance`));
+    confirmedAdvanceInfo.value = snap.exists() ? snap.data() : null;
+  } catch (e) {
+    confirmedAdvanceInfo.value = null;
+  }
+}
+
+// Snapshot of advance payouts — used to detect changes before resetting approvals.
+function advanceSnapshot(employees) {
+  if (!employees?.length) return '';
+  return JSON.stringify(
+    [...employees]
+      .sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId)))
+      .map(e => ({ id: String(e.employeeId), pay: Math.round(e.advancePay || 0) }))
+  );
+}
+
+// Produce a comparable string of key financial figures across all employees.
+// Used to detect whether a recalculation actually changed any numbers.
+function salarySnapshot(employees) {
+  if (!employees?.length) return '';
+  return JSON.stringify(
+    [...employees]
+      .sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId)))
+      .map(e => ({
+        id:    String(e.employeeId),
+        net:   Math.round(e.netPay           || 0),
+        calc:  Math.round(e.calculatedSalary || 0),
+        gross: Math.round(e.totalGross       || 0),
+        hhv:   Math.round(e.hhoatNet         || 0),
+        add:   Math.round((e.additionalPay   || 0) + (e.annualLeavePay || 0)),
+        ded:   Math.round((e.advance         || 0) + (e.otherDeductions || 0)),
+        disc:  Math.round(e.discount         || 0),
+      }))
+  );
+}
+
+// Reset both approvals when salary data changes (while not fully confirmed)
+async function resetApprovals() {
+  if (!confirmedInfo.value) return;          // no approval doc yet — nothing to reset
+  if (confirmedInfo.value.fullyConfirmed) return; // fully locked — caller should have blocked change
+  // Check if there’s actually anything to reset
+  if (!confirmedInfo.value.supervisorApproval && !confirmedInfo.value.accountantApproval) return;
+  try {
+    await updateDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_full`), {
+      supervisorApproval: null,
+      accountantApproval: null,
+      fullyConfirmed:     false,
+      confirmedAt:        null,
+    });
+    confirmedInfo.value = {
+      ...confirmedInfo.value,
+      supervisorApproval: null,
+      accountantApproval: null,
+      fullyConfirmed:     false,
+      confirmedAt:        null,
+    };
+  } catch (e) {
+    console.error('resetApprovals error:', e);
+  }
+}
+
+async function resetAdvanceApprovals() {
+  if (!confirmedAdvanceInfo.value) return;
+  if (confirmedAdvanceInfo.value.fullyConfirmed) return;
+  if (!confirmedAdvanceInfo.value.supervisorApproval && !confirmedAdvanceInfo.value.accountantApproval) return;
+  try {
+    await updateDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_advance`), {
+      supervisorApproval: null,
+      accountantApproval: null,
+      fullyConfirmed:     false,
+      confirmedAt:        null,
+    });
+    confirmedAdvanceInfo.value = { ...confirmedAdvanceInfo.value, supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null };
+  } catch (e) {
+    console.error('resetAdvanceApprovals error:', e);
+  }
+}
+
+function myApprovalStamp() {
+  return {
+    uid:        authStore.user?.uid,
+    name:       (authStore.userData?.employeeFirstName + ' ' + (authStore.userData?.employeeLastName || '')).trim(),
+    role:       authStore.userData?.role,
+    approvedAt: new Date().toISOString(),
+  };
+}
+
+async function confirmAdvance() {
+  if (!advanceData.value.length) return;
+  if (!confirm('Урьдчилгааны батлалтыг үсэх үү? Таны батлалтаа өөрчлөх боломжгүй.')) return;
+  confirmingAdvance.value = true;
+  try {
+    const docRef = doc(db, 'confirmedSalaries', `${selectedMonth.value}_advance`);
+    const stamp  = myApprovalStamp();
+    const otherKey = iAmSupervisor.value ? 'accountantApproval' : 'supervisorApproval';
+    if (!confirmedAdvanceInfo.value) {
+      const newDoc = {
+        yearMonth:          selectedMonth.value,
+        supervisorApproval: iAmSupervisor.value ? stamp : null,
+        accountantApproval: iAmAccountant.value ? stamp : null,
+        fullyConfirmed:     false,
+        confirmedAt:        null,
+        employees:          advanceData.value,
+      };
+      await setDoc(docRef, newDoc);
+      confirmedAdvanceInfo.value = newDoc;
+    } else {
+      const otherApproval  = confirmedAdvanceInfo.value[otherKey];
+      const fullyConfirmed = !!otherApproval;
+      const confirmedAt    = fullyConfirmed ? new Date().toISOString() : null;
+      const updates = { [myApprovalKey.value]: stamp, fullyConfirmed, confirmedAt };
+      await updateDoc(docRef, updates);
+      confirmedAdvanceInfo.value = { ...confirmedAdvanceInfo.value, ...updates };
+    }
+  } catch (err) {
+    console.error('confirmAdvance error:', err);
+    alert('Батлахад алдаа гарлаа: ' + err.message);
+  } finally {
+    confirmingAdvance.value = false;
+  }
+}
+
+async function confirmSalary() {
+  if (!salaryData.value.length) return;
+  if (!confirm('Цалингийн батлалтыг үсэх үү? Таны батлалтаа өөрчлөх боломжгүй.')) return;
+  confirming.value = true;
+  try {
+    const docRef = doc(db, 'confirmedSalaries', `${selectedMonth.value}_full`);
+    const stamp  = myApprovalStamp();
+    const otherKey = iAmSupervisor.value ? 'accountantApproval' : 'supervisorApproval';
+
+    if (!confirmedInfo.value) {
+      // First approval — create the doc
+      const newDoc = {
+        yearMonth:          selectedMonth.value,
+        supervisorApproval: iAmSupervisor.value ? stamp : null,
+        accountantApproval: iAmAccountant.value ? stamp : null,
+        fullyConfirmed:     false,
+        confirmedAt:        null,
+        workingDays:        savedReport.value?.workingDays || 0,
+        workingDaysSource:  savedReport.value?.workingDaysSource || 'auto',
+        employees:          salaryData.value,
+      };
+      await setDoc(docRef, newDoc);
+      confirmedInfo.value = newDoc;
+    } else {
+      // Second approval — the other role already approved, now fully confirmed
+      const otherApproval = confirmedInfo.value[otherKey];
+      const fullyConfirmed = !!otherApproval;
+      const confirmedAt    = fullyConfirmed ? new Date().toISOString() : null;
+      const updates = {
+        [myApprovalKey.value]: stamp,
+        fullyConfirmed,
+        confirmedAt,
+      };
+      await updateDoc(docRef, updates);
+      confirmedInfo.value = { ...confirmedInfo.value, ...updates };
+    }
+  } catch (err) {
+    console.error('confirmSalary error:', err);
+    alert('Батлахад алдаа гарлаа: ' + err.message);
+  } finally {
+    confirming.value = false;
+  }
+}
 
 const savedReport = ref(null); // full document from salaries collection
 const salaryData  = computed(() => savedReport.value?.employees || []);
@@ -297,6 +659,175 @@ const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const selectedMonth = ref(currentMonth);
 const selectedRange = 'full';
+const reportType = ref('full'); // 'full' | 'advance'
+
+// ── Advance (Урьдчилгаа) state ────────────────────────────────────
+const ADVANCE_AMOUNT   = 500_000;
+const ADVANCE_MIN_HOURS = 80;
+const calculatingAdvance = ref(false);
+const advanceData = ref([]);
+const advanceCalculatedAt = ref(null);
+
+const sortedAdvanceData = computed(() => {
+  const data = [...advanceData.value];
+  data.sort((a, b) => {
+    const av = a[sortColumn.value];
+    const bv = b[sortColumn.value];
+    let cmp = (typeof av === 'number') ? av - bv : String(av).localeCompare(String(bv), 'mn');
+    return sortAsc.value ? cmp : -cmp;
+  });
+  return data;
+});
+
+const totalAdvancePay = computed(() =>
+  advanceData.value.reduce((s, e) => s + (e.advancePay || 0), 0)
+);
+
+async function onForceAdvanceChange(emp) {
+  if (isAdvanceLocked.value) return;
+  const prev = !emp.forceAdvance; // current value already toggled by v-model
+  // When first checking, default to ADVANCE_AMOUNT; when unchecking, zero it out.
+  // When the amount input fires this handler, forceAdvance is already true — keep the entered value.
+  if (emp.forceAdvance && emp.advancePay === 0) {
+    emp.advancePay = ADVANCE_AMOUNT;
+  } else if (!emp.forceAdvance) {
+    emp.advancePay = 0;
+  }
+  try {
+    const calculatedAt = advanceCalculatedAt.value || new Date().toISOString();
+    await setDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`), {
+      yearMonth: selectedMonth.value,
+      calculatedAt,
+      employees: advanceData.value,
+    });
+    await resetAdvanceApprovals(); // pay explicitly changed — always reset
+  } catch (err) {
+    console.error('overrideAdvance save error:', err);
+    emp.forceAdvance = prev;
+    emp.advancePay = prev ? ADVANCE_AMOUNT : 0;
+    alert('Хадгалахад алдаа гарлаа: ' + err.message);
+  }
+}
+
+async function calculateAdvance() {
+  calculatingAdvance.value = true;
+  try {
+    const [y, m] = selectedMonth.value.split('-');
+    const startDate = `${y}-${m}-01`;
+    const endDate   = `${y}-${m}-15`;
+
+    // Fetch TA records for 1–15 and all employees in parallel
+    const [taSnap, empSnap] = await Promise.all([
+      getDocs(query(collection(db, 'timeAttendance'),
+        where('Day', '>=', startDate),
+        where('Day', '<=', endDate)
+      )),
+      getDocs(collection(db, 'employees')),
+    ]);
+
+    // Build employee map keyed by normalised ID
+    function normalizeId(v) {
+      if (v === null || v === undefined || v === '') return '';
+      const n = Number(v);
+      return isNaN(n) ? String(v).trim() : String(Math.round(n));
+    }
+    const empMap = new Map();
+    empSnap.docs.forEach(d => {
+      const e = d.data();
+      const key = normalizeId(e.ID ?? e.Id);
+      if (key) empMap.set(key, e);
+    });
+
+    // Aggregate TA per employee
+    const empTA = new Map();
+    taSnap.docs.forEach(d => {
+      const r = d.data();
+      const empId = normalizeId(r.EmployeeID);
+      const status = (r.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
+      if (!empId) return;
+      if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
+      const entry = empTA.get(empId);
+      const wh = parseFloat(r.WorkingHour) || 0;
+      if (status === '\u0438\u0440\u0441\u044d\u043d' || status === '\u0430\u0436\u0438\u043b\u043b\u0430\u0441\u0430\u043d' || status === '\u0442\u043e\u043c\u0438\u043b\u043e\u043b\u0442') {
+        entry.workedDays++;
+        entry.normalHours += wh;
+      } else if (status === '\u0442\u0430\u0441\u0430\u043b\u0441\u0430\u043d') {
+        entry.absentHours += wh;
+      }
+    });
+
+    // autoTA employees: compute working days for 1-15 and override their TA entry.
+    // Count working days from 1–15 (Mon–Fri, non-holiday).
+    const mongolianHolidays = [
+      '2024-01-01','2024-02-12','2024-02-13','2024-02-14','2024-06-01','2024-07-11','2024-07-12','2024-07-13','2024-11-26',
+      '2025-01-01','2025-01-29','2025-01-30','2025-01-31','2025-06-01','2025-07-11','2025-07-12','2025-07-13','2025-11-26',
+      '2026-01-01','2026-02-17','2026-02-18','2026-02-19','2026-06-01','2026-07-11','2026-07-12','2026-07-13','2026-11-26',
+    ];
+    let advanceWorkingDays = 0;
+    for (let d = 1; d <= 15; d++) {
+      const ds = `${y}-${m}-${String(d).padStart(2,'0')}`;
+      const dow = new Date(ds).getDay();
+      if (dow !== 0 && dow !== 6 && !mongolianHolidays.includes(ds)) advanceWorkingDays++;
+    }
+    for (const [empId, emp] of empMap.entries()) {
+      if (emp.autoTA !== true) continue;
+      const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
+      if (!baseSalary) continue;
+      const state = (emp?.State || '').trim();
+      if (state && state !== 'Ажиллаж байгаа') continue;
+      empTA.set(empId, {
+        workedDays:  advanceWorkingDays,
+        normalHours: advanceWorkingDays * 8,
+        absentHours: 0,
+      });
+    }
+
+    // Build result rows
+    const rows = [];
+    for (const [empId, ta] of empTA.entries()) {
+      const emp = empMap.get(empId);
+      const first    = emp?.FirstName || '';
+      const last     = emp?.LastName || emp?.EmployeeLastName || '';
+      const name     = (first + ' ' + last).trim() || `ID:${empId}`;
+      const isNDS = emp?.isNDS !== false;
+      // isNDS=false employees are bounty-only — no advance pay.
+      const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
+      const effectiveHours = Math.max(0, Math.round(ta.normalHours - ta.absentHours * 2));
+      rows.push({
+        employeeId:     empId,
+        name,
+        position:       emp?.Position || '',
+        type:           emp?.Type || '',
+        baseSalary,
+        workedDays:     ta.workedDays,
+        normalHours:    Math.round(ta.normalHours),
+        absentHours:    Math.round(ta.absentHours),
+        effectiveHours,
+        advancePay:     isNDS && effectiveHours >= ADVANCE_MIN_HOURS ? ADVANCE_AMOUNT : 0,
+        forceAdvance:   false,
+        autoTA:         emp?.autoTA === true,
+      });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name, 'mn'));
+
+    // Save to Firestore: salaries/{yearMonth}_advance
+    const before = advanceSnapshot(advanceData.value);
+    const calculatedAt = new Date().toISOString();
+    await setDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`), {
+      yearMonth: selectedMonth.value,
+      calculatedAt,
+      employees: rows,
+    });
+    advanceData.value = rows;
+    advanceCalculatedAt.value = calculatedAt;
+    if (advanceSnapshot(rows) !== before) await resetAdvanceApprovals();
+  } catch (err) {
+    console.error('calculateAdvance error:', err);
+    alert('\u0423\u0440\u044c\u0434\u0447\u0438\u043b\u0433\u0430\u0430 \u0442\u043e\u043e\u0446\u043e\u043e\u043b\u043e\u043b\u0434 \u0430\u043b\u0434\u0430\u0430 \u0433\u0430\u0440\u043b\u0430\u0430: ' + err.message);
+  } finally {
+    calculatingAdvance.value = false;
+  }
+}
 
 const sortColumn = ref('name');
 const sortAsc = ref(true);
@@ -305,6 +836,9 @@ const expandedRows = ref(new Set());
 // Inline edit state per employee
 const editingOverrides = ref({});
 const savingRows = ref(new Set());
+
+// Advance map for EOM deduction cross-reference
+const advanceMapForEOM = ref(new Map());
 
 // ── Period form ──────────────────────────────────────────────────
 const periodForm = reactive({ workingDaysTotal: null, notes: '' });
@@ -368,7 +902,7 @@ const totalEmployerNDS = computed(() => salaryData.value.reduce((s, e) => s + (e
 const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS      || 0), 0));
 const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
 const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
-const totalLaborCost    = computed(() => salaryData.value.reduce((s, e) => s + (e.laborCost         || 0), 0));
+const totalAdditions   = computed(() => salaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
 const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -382,6 +916,9 @@ function formatDate(iso) {
   const d = new Date(iso);
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
+
+// Short alias used in confirmed banner
+const fmtDate = formatDate;
 
 // ── Load period form from salaryPeriods collection ───────────────
 async function loadPeriodForm() {
@@ -398,6 +935,24 @@ async function loadPeriodForm() {
   } catch (e) { /* ignore */ }
 }
 
+// ── Fetch saved advance report ───────────────────────────────────
+async function fetchAdvanceData() {
+  if (!selectedMonth.value) return;
+  try {
+    const snap = await getDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`));
+    if (snap.exists()) {
+      const d = snap.data();
+      advanceData.value = d.employees || [];
+      advanceCalculatedAt.value = d.calculatedAt || null;
+    } else {
+      advanceData.value = [];
+      advanceCalculatedAt.value = null;
+    }
+  } catch (e) {
+    console.error('fetchAdvanceData error:', e);
+  }
+}
+
 // ── Fetch saved salary report from collection ────────────────────
 async function fetchSavedData() {
   if (!selectedMonth.value) return;
@@ -405,8 +960,19 @@ async function fetchSavedData() {
   expandedRows.value = new Set();
   editingOverrides.value = {};
   try {
-    const snap = await getDoc(doc(db, 'salaries', `${selectedMonth.value}_${selectedRange}`));
-    savedReport.value = snap.exists() ? snap.data() : null;
+    const [salarySnap, advanceSnap] = await Promise.all([
+      getDoc(doc(db, 'salaries', `${selectedMonth.value}_${selectedRange}`)),
+      getDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`)),
+    ]);
+    savedReport.value = salarySnap.exists() ? salarySnap.data() : null;
+    // Build advance map so expanded detail can show advance-deduction hint
+    const aMap = new Map();
+    if (advanceSnap.exists()) {
+      (advanceSnap.data().employees || []).forEach(e => {
+        if (e.advancePay > 0) aMap.set(String(e.employeeId), e.advancePay);
+      });
+    }
+    advanceMapForEOM.value = aMap;
   } catch (e) {
     console.error('fetchSavedData error:', e);
     savedReport.value = null;
@@ -417,12 +983,15 @@ async function fetchSavedData() {
 
 // ── Calculate & save to collection ───────────────────────────────
 async function calculateAndSave() {
+  if (isSalaryLocked.value) return;
   calculating.value = true;
   try {
+    const before = salarySnapshot(salaryData.value);
     const result = await calculateSalary(selectedMonth.value, selectedRange);
     savedReport.value = result;
     editingOverrides.value = {};
     expandedRows.value = new Set();
+    if (salarySnapshot(result?.employees) !== before) await resetApprovals();
   } catch (e) {
     console.error('calculateAndSave error:', e);
     alert('Тооцооллын алдаа: ' + e.message);
@@ -433,21 +1002,24 @@ async function calculateAndSave() {
 
 // ── Save period working days → triggers backend recalc ────────────
 async function savePeriodAndRecalc() {
+  if (isSalaryLocked.value) return;
   savingPeriod.value = true;
   periodSaveMsg.value = '';
   try {
+    const before = salarySnapshot(salaryData.value);
     const workingDaysTotal = periodForm.workingDaysTotal || null;
     await manageSalaryPeriod('upsert', {
       yearMonth:        selectedMonth.value,
       workingDaysTotal,
       notes: periodForm.notes,
     });
-    // Re-run full calculation so laborCost uses the new workingDaysTotal
+    // Re-run full calculation so calculatedSalary uses the new workingDaysTotal
     const result = await calculateSalary(selectedMonth.value, selectedRange);
     savedReport.value = result;
     editingOverrides.value = {};
     expandedRows.value = new Set();
     periodSaveMsg.value = '✅ Хадгалагдлаа — цалин дахин тооцоологдлоо';
+    if (salarySnapshot(result?.employees) !== before) await resetApprovals();
     setTimeout(() => { periodSaveMsg.value = ''; }, 4000);
   } catch (e) {
     periodSaveMsg.value = '❌ ' + e.message;
@@ -457,13 +1029,27 @@ async function savePeriodAndRecalc() {
 }
 
 // ── Save manual field overrides for a single employee row ─────────
+// Called by SalaryAdjustmentsPanel when an entry is added/deleted
+async function onAdjustmentsUpdated(empId, fields) {
+  editingOverrides.value = {
+    ...editingOverrides.value,
+    [empId]: {
+      ...(editingOverrides.value[empId] || {}),
+      ...fields,
+    },
+  };
+  await saveRowOverrides(empId);
+}
+
 async function saveRowOverrides(empId) {
+  if (isSalaryLocked.value) return;
   const overrides = editingOverrides.value[empId];
   if (!overrides) return;
   const s = new Set(savingRows.value);
   s.add(empId);
   savingRows.value = s;
   try {
+    const oldEmp = savedReport.value?.employees?.find(e => String(e.employeeId) === String(empId));
     const result = await updateSalaryRow(selectedMonth.value, selectedRange, empId, overrides);
     if (savedReport.value && result.employee) {
       savedReport.value = {
@@ -483,6 +1069,10 @@ async function saveRowOverrides(empId) {
           otherDeductions: result.employee.otherDeductions || 0,
         },
       };
+      // Only reset approvals if any financial figure actually changed
+      if (salarySnapshot([result.employee]) !== salarySnapshot(oldEmp ? [oldEmp] : [])) {
+        await resetApprovals();
+      }
     }
   } catch (e) {
     console.error('saveRowOverrides error:', e);
@@ -496,7 +1086,15 @@ async function saveRowOverrides(empId) {
 
 // ── Month / range change ─────────────────────────────────────────
 async function onMonthRangeChange() {
-  await Promise.all([fetchSavedData(), loadPeriodForm()]);
+  advanceData.value = [];
+  advanceCalculatedAt.value = null;
+  confirmedInfo.value = null;
+  confirmedAdvanceInfo.value = null;
+  if (reportType.value === 'full') {
+    await Promise.all([fetchSavedData(), loadPeriodForm(), fetchConfirmedInfo()]);
+  } else {
+    await Promise.all([fetchAdvanceData(), fetchConfirmedAdvanceInfo()]);
+  }
 }
 
 onMounted(() => onMonthRangeChange());
@@ -548,7 +1146,15 @@ function exportToExcel() {
 </script>
 
 <style scoped>
-.btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.report-type-select { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; font-weight: 600; }
+.advance-pay-col { min-width: 200px; }
+.advance-amount-input { width: 110px; text-align: right; padding: 3px 6px; border: 1px solid #f59e0b; border-radius: 5px; font-size: 13px; font-weight: 600; color: #92400e; background: #fffbeb; }
+.advance-amount-input:focus { outline: none; border-color: #d97706; box-shadow: 0 0 0 2px rgba(245,158,11,0.2); }
+.row-no-advance { opacity: 0.6; }
+.advance-pay-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.force-check { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.78rem; color: #555; user-select: none; }
+.force-check input[type="checkbox"] { cursor: pointer; accent-color: #e67e22; width: 14px; height: 14px; }
+.force-check span { white-space: nowrap; }
 .btn-back:hover { background: #4b5563; }
 .salary-container { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .salary-container h3 { margin: 0 0 20px; color: #1e293b; }
@@ -584,6 +1190,7 @@ function exportToExcel() {
 .salary-table tbody .salary-row:nth-child(4n+1):hover { background: #f0f9ff; }
 .salary-table td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
 .emp-name { font-weight: 600; color: #111827; }
+.emp-id { font-weight: 400; font-size: 0.75rem; color: #9ca3af; margin-left: 5px; }
 .emp-meta { font-size: 11px; color: #9ca3af; margin-top: 1px; }
 .tc-r { text-align: right; }
 .tc-sub { font-size: 11px; color: #9ca3af; }
@@ -591,6 +1198,7 @@ function exportToExcel() {
 .tc-deduct { color: #dc2626; }
 .tc-add { color: #16a34a; font-weight: 600; }
 .tc-labor { color: #7c3aed; font-weight: 600; }
+.tc-info  { color: #0369a1; font-weight: 600; }
 .tc-bounty { color: #16a34a; font-weight: 600; }
 .tc-total { color: #1e293b; font-weight: 700; font-size: 14px; }
 .tc-expand { text-align: center; }
@@ -622,6 +1230,7 @@ function exportToExcel() {
 .btn-save-period { padding: 5px 12px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .btn-save-period:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-save-period:hover:not(:disabled) { background: #15803d; }
+.salary-locked-badge { display: inline-flex; align-items: center; gap: 4px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; color: #92400e; font-weight: 600; white-space: nowrap; }
 .period-save-msg { font-size: 12px; color: #166534; font-weight: 500; }
 .action-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .btn-calc { padding: 8px 20px; background: #7c3aed; color: white; border: none; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: 700; }
@@ -633,6 +1242,16 @@ function exportToExcel() {
 .btn-recalc { padding: 5px 12px; background: #f59e0b; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
 .btn-recalc:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-recalc:hover:not(:disabled) { background: #d97706; }
+.btn-confirm { padding: 6px 14px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 700; }
+.btn-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-confirm:hover:not(:disabled) { background: #1d4ed8; }
+.confirmed-banner { display: flex; align-items: center; gap: 8px; border-radius: 6px; padding: 8px 14px; font-size: 0.83rem; margin-bottom: 10px; flex-wrap: wrap; }
+.confirmed-full    { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+.confirmed-partial { background: #fff8e1; border: 1px solid #ffe082; color: #7c5d00; }
+.conf-stamp { display: inline-flex; align-items: center; gap: 4px; }
+.conf-done  { color: #166534; font-weight: 600; }
+.conf-wait  { color: #92400e; font-style: italic; }
+.conf-sep   { color: #aaa; margin: 0 2px; }
 .calc-ts { font-size: 11px; color: #9ca3af; }
 
 /* ── New formula detail classes ──────────────────────── */

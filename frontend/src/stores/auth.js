@@ -128,6 +128,33 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Sync role from the employee record and update the users doc
+  async function refreshUserRole() {
+    if (!user.value) return { success: false, message: 'Not authenticated' };
+    try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      // Find the employee record linked to this user
+      const empId = userData.value?.employeeId;
+      if (!empId) return { success: false, message: 'No employee linked' };
+      const empSnap = await getDocs(
+        query(collection(db, 'employees'), where('Id', '==', Number(empId)))
+      );
+      if (empSnap.empty) return { success: false, message: 'Employee record not found' };
+      const emp = empSnap.docs[0].data();
+      const validRoles = ['Employee', 'Supervisor', 'Accountant', 'nonEmployee', 'Financial'];
+      const empRole = validRoles.includes(emp.Role) ? emp.Role : 'Employee';
+      const isSupervisor = empRole === 'Supervisor';
+      const isAccountant = empRole === 'Accountant';
+      const updates = { role: empRole, isSupervisor, isAccountant, updatedAt: new Date().toISOString() };
+      await setDoc(doc(db, 'users', user.value.uid), { ...userData.value, ...updates });
+      userData.value = { ...userData.value, ...updates };
+      return { success: true, role: empRole };
+    } catch (error) {
+      console.error('refreshUserRole error:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
   // Check if user is supervisor from employees collection
   async function checkEmployeeSupervisorStatus(email) {
     try {
@@ -194,6 +221,8 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
 
+    const isAccountant = employeeData.Role === 'Accountant';
+
     const userInfo = {
       uid: user.value.uid,
       email: user.value.email || msalAccount.value?.username,
@@ -203,8 +232,9 @@ export const useAuthStore = defineStore('auth', () => {
       employeeFirstName: employeeData.FirstName,
       employeeLastName: employeeData.EmployeeLastName || employeeData.LastName,
       position: employeeData.Position,
-      role: isSupervisor ? 'Supervisor' : 'Employee',
+      role: isSupervisor ? 'Supervisor' : (isAccountant ? 'Accountant' : 'Employee'),
       isSupervisor,
+      isAccountant,
       registeredAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -265,6 +295,7 @@ export const useAuthStore = defineStore('auth', () => {
     registerUser,
     createAnonymousUser,
     checkEmployeeSupervisorStatus,
+    refreshUserRole,
     signOut,
   };
 });

@@ -72,9 +72,11 @@ function recalcEmployeeRow(row, workingDays) {
   const baseSalary = row.baseSalary || 0;
   const workedDays = row.workedDays || 0;
 
-  // Бодогдсон цалин = Үндсэн цалин ÷ (А/хоног×8) × (Ажилласан хоног×8)
-  //                 = Үндсэн цалин × (Ажилласан хоног / А/хоног)
-  const calculatedSalary = Math.round(baseSalary * workedDays / wd);
+  // Бодогдсон цалин = Үндсэн цалин ÷ (А/хоног × 8) × эффектив цаг
+  const effectiveHours = row.effectiveHours || 0;
+  const calculatedSalary = (wd > 0 && baseSalary > 0)
+    ? Math.round(baseSalary / (wd * 8) * effectiveHours)
+    : 0;
 
   const additionalPay  = row.additionalPay  || 0;  // manual
   const annualLeavePay = row.annualLeavePay || 0;  // manual
@@ -83,9 +85,11 @@ function recalcEmployeeRow(row, workingDays) {
   const totalGross = calculatedSalary + additionalPay + annualLeavePay;
 
   // НДШ ажилтан 11.5% — deducted from employee netPay
-  const employeeNDS = Math.round(totalGross * 0.115);
-  // Байгааллагаас НДШ 12.5% — reference only for managers (NOT deducted from netPay)
-  const employerNDS = Math.round(totalGross * 0.125);
+  // НДШ байгааллага 12.5% — reference only for managers (NOT deducted from netPay)
+  // If employee's isNDS flag is false, both NDS values are 0.
+  const applyNDS = row.isNDS !== false; // default true
+  const employeeNDS = applyNDS ? Math.round(totalGross * 0.115) : 0;
+  const employerNDS = applyNDS ? Math.round(totalGross * 0.125) : 0;
 
   // ТНО = Нийт бодогдсон − НДШ ажилтан
   const tno = totalGross - employeeNDS;
@@ -201,6 +205,22 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     // Чөлөөтэй — not counted in salary or labour cost
   });
 
+  // autoTA employees: treat as worked full period regardless of TA records.
+  // Override (or set) their empTA entry so the standard buildRow path produces full-pay output.
+  for (const [empId, emp] of empMap.entries()) {
+    if (emp.autoTA !== true) continue;
+    const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
+    if (!baseSalary) continue;
+    const state = (emp?.State || '').trim();
+    if (state && state !== 'Ажиллаж байгаа') continue;
+    // Full period: all working day slots, normalHours = workingDays * 8, no absences
+    empTA.set(empId, {
+      workedDays:  workingDays,
+      normalHours: workingDays * 8,
+      absentHours: 0,
+    });
+  }
+
   const result = [];
 
   function buildRow(empId, ta, emp) {
@@ -209,20 +229,23 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const name     = (first + ' ' + last).trim() || `ID:${empId}`;
     const position = emp?.Position || '';
     const type     = emp?.Type || '';
-    const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
+    const isNDS    = emp?.isNDS !== false;
+    // isNDS=false employees are bounty-only — force baseSalary to 0 so labour cost is 0.
+    // They still appear in the list so their salary adjustments (bounty) can be managed.
+    const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
     const hhoatDiscount = parseFloat(emp?.hhoatDiscount) || 0;
-    const { effectiveHours, laborCost } = computeLaborCost(
+    const { effectiveHours } = computeLaborCost(
       baseSalary, ta.normalHours, ta.absentHours, workingDaysMonth
     );
 
     return recalcEmployeeRow({
       employeeId: empId,
       name, position, type, baseSalary,
+      isNDS,  // propagate to row so recalc after overrides stays correct
       workedDays:     ta.workedDays,
       normalHours:    Math.round(ta.normalHours),
       absentHours:    Math.round(ta.absentHours),
       effectiveHours: Math.round(effectiveHours),
-      laborCost,
       additionalPay:   0,
       annualLeavePay:  0,
       discount:        hhoatDiscount,
@@ -243,7 +266,10 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   for (const [empId, emp] of empMap.entries()) {
     if (empTA.has(empId)) continue; // already processed above
     const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-    if (!baseSalary) continue; // skip employees with no salary record (trainees etc.)
+    const isNDSFalse = emp?.isNDS === false;
+    // Skip trainees/unconfigured employees with no salary — but always include isNDS=false
+    // (bounty-only) employees so they appear in the salary list with their adjustments.
+    if (!baseSalary && !isNDSFalse) continue;
     const state = (emp?.State || '').trim();
     if (state && state !== 'Ажиллаж байгаа') continue; // skip inactive/left employees with no attendance
     result.push(buildRow(empId, emptyTA, emp));

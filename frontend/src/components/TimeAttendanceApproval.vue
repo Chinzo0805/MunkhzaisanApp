@@ -53,6 +53,10 @@
 
     <div v-if="activeTab === 'pending' || activeTab === 'approved' || activeTab === 'notSynced'" class="filters-section">
       <div class="filter-group">
+        <label>Сар:</label>
+        <input type="month" v-model="filters.month" class="filter-input" />
+      </div>
+      <div class="filter-group">
         <label>Огноо:</label>
         <input type="date" v-model="filters.date" class="filter-input" />
       </div>
@@ -295,8 +299,12 @@ const selectedRequests = ref([]);
 const allSelected = ref(false);
 const editMode = ref(false);
 
+const today = new Date();
+const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
 // Filters and sorting
 const filters = ref({
+  month: '',
   date: '',
   employee: '',
   project: '',
@@ -410,6 +418,14 @@ const filteredRequests = computed(() => {
     return [];
   }
   
+  // Apply month filter (prefix match on YYYY-MM)
+  if (filters.value.month) {
+    results = results.filter(r => {
+      const recordDate = r.Day || r.Date || '';
+      return recordDate.startsWith(filters.value.month);
+    });
+  }
+
   // Apply date filter (exact match)
   if (filters.value.date) {
     results = results.filter(r => {
@@ -495,8 +511,10 @@ onMounted(async () => {
 watch(activeTab, (newTab) => {
   if (newTab === 'approved') {
     filters.value.status = 'Ирсэн';
+    if (!filters.value.month) filters.value.month = thisMonth;
   } else {
     filters.value.status = '';
+    filters.value.month = '';
   }
 });
 
@@ -524,6 +542,7 @@ function toggleSelectAll() {
 }
 
 function clearFilters() {
+  filters.value.month = '';
   filters.value.date = '';
   filters.value.employee = '';
   filters.value.project = '';

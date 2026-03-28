@@ -40,7 +40,7 @@ exports.approveTimeAttendanceRequest = functions.region('asia-east2').https.onRe
     if (action === 'approve') {
       // Generate unique ID for the approved record if not present
       const recordId = requestData.ID || `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      
+
       // Copy to timeAttendance collection with syncedToExcel flag
       await db.collection('timeAttendance').add({
         ...requestData,

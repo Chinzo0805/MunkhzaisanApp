@@ -176,6 +176,7 @@
                 <option value="">Select Role</option>
                 <option value="Employee">Employee</option>
                 <option value="Supervisor">Supervisor</option>
+                <option value="Accountant">Accountant</option>
                 <option value="nonEmployee">nonEmployee</option>
                 <option value="Financial">Financial</option>
               </select>
@@ -192,6 +193,25 @@
               <label>ХХОАТ хөнгөлөлт ₮</label>
               <input v-model.number="form.hhoatDiscount" type="number" min="0" step="1000" placeholder="0" />
               <small style="color:#6b7280;font-size:11px;">Сарын ХХОАТ хөнгөлөлт</small>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>НДШ тооцох</label>
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="form.isNDS" />
+                <span>НДШ тооцох (Нийгмийн даатгал)</span>
+              </label>
+              <small style="color:#6b7280;font-size:11px;">Тэмдэглэгдсэн бол НДШ 11.5% / 12.5% тооцогдоно</small>
+            </div>
+            <div class="form-group">
+              <label>Автомат TA</label>
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="form.autoTA" />
+                <span>Автомат (Ірсэн гэж автоматаар бүртгэнэ)</span>
+              </label>
+              <small style="color:#6b7280;font-size:11px;">Батлагдах үед Статус нь автоматаар «Ірсэн» болно</small>
             </div>
           </div>
           
@@ -243,6 +263,8 @@ const form = ref({
   Email: '',
   Salary: 1500000,
   hhoatDiscount: 0,
+  isNDS: true,
+  autoTA: false,
 });
 
 const emit = defineEmits(['saved']);
@@ -318,7 +340,7 @@ function editItem(employee) {
   editingItem.value = employee;
   
   // Validate Role - if it's not one of the 4 valid roles, default to Employee
-  const validRoles = ['Employee', 'Supervisor', 'nonEmployee', 'Financial'];
+  const validRoles = ['Employee', 'Supervisor', 'Accountant', 'nonEmployee', 'Financial'];
   let validRole = employee.Role || 'Employee';
   if (!validRoles.includes(validRole)) {
     validRole = 'Employee';
@@ -345,6 +367,8 @@ function editItem(employee) {
     Email: employee.Email || '',
     Salary: parseFloat(employee.Salary) || 1500000,
     hhoatDiscount: parseFloat(employee.hhoatDiscount) || 0,
+    isNDS: employee.isNDS !== false,  // default true if not set
+    autoTA: !!employee.autoTA,
   };
 }
 
@@ -372,8 +396,8 @@ function closeModal() {
     Role: 'Employee',
     Email: '',
     Salary: 1500000,
-    hhoatDiscount: 0,
-  };
+    hhoatDiscount: 0,    isNDS: true,
+    autoTA: false,  };
 }
 
 async function handleSave() {
@@ -398,6 +422,8 @@ async function handleSave() {
 </script>
 
 <style scoped>
+.checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; font-weight: normal; }
+.checkbox-label input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: #10b981; }
 .management-section {
   margin-top: 30px;
   padding: 20px;
