@@ -98,7 +98,16 @@
     <div v-else-if="filteredProjects.length > 0" class="table-container">
       <div class="table-header">
         <span>Төслүүдийн жагсаалт ({{ filteredProjects.length }})</span>
-        <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <template v-if="!tableEditMode">
+            <button @click="enterEditMode" class="btn-edit">✏️ Засах</button>
+          </template>
+          <template v-else>
+            <button @click="saveAllEdits" class="btn-save" :disabled="saving">💾 {{ saving ? 'Хадгалж байна...' : 'Хадгалах' }}</button>
+            <button @click="cancelTableEdit" class="btn-cancel">✖ Цуцлах</button>
+          </template>
+          <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
+        </div>
       </div>
       
       <table class="summary-table">
@@ -221,11 +230,15 @@
             
             <td>
               <select
-                v-if="editingId === project.id"
-                v-model="editForm.ResponsibleEmp"
+                v-if="tableEditMode && rowForms[project.id]"
+                v-model="rowForms[project.id].ResponsibleEmp"
                 class="edit-input"
               >
                 <option value="">-- Сонгох --</option>
+                <option
+                  v-if="rowForms[project.id].ResponsibleEmp && !employeesStore.employees.some(e => (e.FirstName + ' ' + (e.EmployeeLastName || '')).trim() === rowForms[project.id].ResponsibleEmp)"
+                  :value="rowForms[project.id].ResponsibleEmp"
+                >{{ rowForms[project.id].ResponsibleEmp }}</option>
                 <option
                   v-for="emp in employeesStore.employees"
                   :key="emp.id"
@@ -237,8 +250,8 @@
 
             <td>
               <input 
-                v-if="editingId === project.id"
-                v-model="editForm.referenceIdfromCustomer"
+                v-if="tableEditMode && rowForms[project.id]"
+                v-model="rowForms[project.id].referenceIdfromCustomer"
                 type="text"
                 class="edit-input"
                 placeholder="Ref ID..."
@@ -252,32 +265,32 @@
                 <span>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id">
-                  <input type="checkbox" v-model="editForm.isInvoiceSent" @change="onInvoiceSentChange" class="inline-check" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="checkbox" v-model="rowForms[project.id].isInvoiceSent" @change="onInvoiceSentChange(project.id)" class="inline-check" />
                 </template>
                 <template v-else>
                   <span>{{ project.isInvoiceSent ? '✅' : '☐' }}</span>
                 </template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id">
-                  <input type="date" v-model="editForm.InvoiceDate" class="inline-date-input" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="date" v-model="rowForms[project.id].InvoiceDate" class="inline-date-input" />
                 </template>
                 <template v-else>
                   <span>{{ project.InvoiceDate || '-' }}</span>
                 </template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id">
-                  <input type="date" v-model="editForm.IncomeDate" class="inline-date-input" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="date" v-model="rowForms[project.id].IncomeDate" class="inline-date-input" />
                 </template>
                 <template v-else>
                   <span>{{ project.IncomeDate || '-' }}</span>
                 </template>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id">
-                  <input type="checkbox" v-model="editForm.isEbarimtSent" class="inline-check" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="checkbox" v-model="rowForms[project.id].isEbarimtSent" class="inline-check" />
                 </template>
                 <template v-else>
                   <span>{{ project.isEbarimtSent ? '✅' : '☐' }}</span>
@@ -338,21 +351,21 @@
                 </span>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id">
-                  <input type="checkbox" v-model="editForm.isInvoiceSent" @change="onInvoiceSentChange" class="inline-check" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="checkbox" v-model="rowForms[project.id].isInvoiceSent" @change="onInvoiceSentChange(project.id)" class="inline-check" />
                 </template>
                 <template v-else><span>{{ project.isInvoiceSent ? '✅' : '☐' }}</span></template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id"><input type="date" v-model="editForm.InvoiceDate" class="inline-date-input" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="date" v-model="rowForms[project.id].InvoiceDate" class="inline-date-input" /></template>
                 <template v-else><span>{{ project.InvoiceDate || '-' }}</span></template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id"><input type="date" v-model="editForm.IncomeDate" class="inline-date-input" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="date" v-model="rowForms[project.id].IncomeDate" class="inline-date-input" /></template>
                 <template v-else><span>{{ project.IncomeDate || '-' }}</span></template>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id"><input type="checkbox" v-model="editForm.isEbarimtSent" class="inline-check" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="checkbox" v-model="rowForms[project.id].isEbarimtSent" class="inline-check" /></template>
                 <template v-else><span>{{ project.isEbarimtSent ? '✅' : '☐' }}</span></template>
               </td>
             </template>
@@ -385,35 +398,28 @@
                 <span>{{ project.additionalValue ? project.additionalValue.toLocaleString() : '-' }}</span>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id">
-                  <input type="checkbox" v-model="editForm.isInvoiceSent" @change="onInvoiceSentChange" class="inline-check" />
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="checkbox" v-model="rowForms[project.id].isInvoiceSent" @change="onInvoiceSentChange(project.id)" class="inline-check" />
                 </template>
                 <template v-else><span>{{ project.isInvoiceSent ? '✅' : '☐' }}</span></template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id"><input type="date" v-model="editForm.InvoiceDate" class="inline-date-input" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="date" v-model="rowForms[project.id].InvoiceDate" class="inline-date-input" /></template>
                 <template v-else><span>{{ project.InvoiceDate || '-' }}</span></template>
               </td>
               <td class="date-cell">
-                <template v-if="editingId === project.id"><input type="date" v-model="editForm.IncomeDate" class="inline-date-input" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="date" v-model="rowForms[project.id].IncomeDate" class="inline-date-input" /></template>
                 <template v-else><span>{{ project.IncomeDate || '-' }}</span></template>
               </td>
               <td class="invoice-cell">
-                <template v-if="editingId === project.id"><input type="checkbox" v-model="editForm.isEbarimtSent" class="inline-check" /></template>
+                <template v-if="tableEditMode && rowForms[project.id]"><input type="checkbox" v-model="rowForms[project.id].isEbarimtSent" class="inline-check" /></template>
                 <template v-else><span>{{ project.isEbarimtSent ? '✅' : '☐' }}</span></template>
               </td>
             </template>
             
             <td class="actions-cell">
-              <template v-if="editingId === project.id">
-                <button @click="saveEdit(project)" class="btn-save" :disabled="saving">💾</button>
-                <button @click="cancelEdit" class="btn-cancel">✖</button>
-              </template>
-              <template v-else>
-                <button @click="viewProject(project)" class="btn-view" title="Дэлгэрэнгүй үзэх">👁️</button>
-                <button @click="startEdit(project)" class="btn-edit" title="Засах">✏️</button>
-                <button @click="showTAModal = true; selectedProjectId = project.id" class="btn-ta" title="Цаг бүртгэл харах">🕒</button>
-              </template>
+              <button @click="viewProject(project)" class="btn-view" title="Дэлгэрэнгүй үзэх">👁️</button>
+              <button @click="showTAModal = true; selectedProjectId = project.id" class="btn-ta" title="Цаг бүртгэл харах">🕒</button>
             </td>
           </tr>
         </tbody>
@@ -534,16 +540,9 @@ const showTAModal = ref(false);
 const selectedProjectId = ref(null);
 
 // Editing state
-const editingId = ref(null);
+const tableEditMode = ref(false);
+const rowForms = ref({});
 const saving = ref(false);
-const editForm = ref({
-  ResponsibleEmp: '',
-  referenceIdfromCustomer: '',
-  isInvoiceSent: false,
-  InvoiceDate: '',
-  IncomeDate: '',
-  isEbarimtSent: false,
-});
 
 // Sorting
 const sortColumn = ref('id');
@@ -748,9 +747,10 @@ function getStatusClass(status) {
   return statusMap[status] || 'status-working';
 }
 
-function onInvoiceSentChange() {
-  if (editForm.value.isInvoiceSent && !editForm.value.InvoiceDate) {
-    editForm.value.InvoiceDate = new Date().toISOString().slice(0, 10);
+function onInvoiceSentChange(projectId) {
+  const form = rowForms.value[projectId];
+  if (form && form.isInvoiceSent && !form.InvoiceDate) {
+    form.InvoiceDate = new Date().toISOString().slice(0, 10);
   }
 }
 
@@ -766,16 +766,19 @@ async function saveInlineField(project, field, value) {
   }
 }
 
-function startEdit(project) {
-  editingId.value = project.id;
-  editForm.value = {
-    ResponsibleEmp: project.ResponsibleEmp || '',
-    referenceIdfromCustomer: project.referenceIdfromCustomer || '',
-    isInvoiceSent: project.isInvoiceSent || false,
-    InvoiceDate: project.InvoiceDate || '',
-    IncomeDate: project.IncomeDate || '',
-    isEbarimtSent: project.isEbarimtSent || false,
-  };
+function enterEditMode() {
+  rowForms.value = {};
+  sortedProjects.value.forEach(p => {
+    rowForms.value[p.id] = {
+      ResponsibleEmp: p.ResponsibleEmp || '',
+      referenceIdfromCustomer: p.referenceIdfromCustomer || '',
+      isInvoiceSent: p.isInvoiceSent || false,
+      InvoiceDate: p.InvoiceDate || '',
+      IncomeDate: p.IncomeDate || '',
+      isEbarimtSent: p.isEbarimtSent || false,
+    };
+  });
+  tableEditMode.value = true;
 }
 
 function viewProject(project) {
@@ -784,49 +787,35 @@ function viewProject(project) {
   }
 }
 
-function cancelEdit() {
-  editingId.value = null;
-  editForm.value = {
-    ResponsibleEmp: '',
-    referenceIdfromCustomer: '',
-    isInvoiceSent: false,
-    InvoiceDate: '',
-    IncomeDate: '',
-    isEbarimtSent: false,
-  };
+function cancelTableEdit() {
+  tableEditMode.value = false;
+  rowForms.value = {};
 }
 
-async function saveEdit(project) {
+async function saveAllEdits() {
   saving.value = true;
   try {
-    const projectRef = doc(db, 'projects', project.docId);
-    await updateDoc(projectRef, {
-      ResponsibleEmp: editForm.value.ResponsibleEmp,
-      referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
-      isInvoiceSent: editForm.value.isInvoiceSent,
-      InvoiceDate: editForm.value.InvoiceDate,
-      IncomeDate: editForm.value.IncomeDate,
-      isEbarimtSent: editForm.value.isEbarimtSent,
-      updatedAt: new Date().toISOString()
-    });
-    
-    // Directly patch the store array so the UI updates immediately
-    const idx = projectsStore.projects.findIndex(p => p.id === project.id);
-    if (idx !== -1) {
-      projectsStore.projects[idx] = {
-        ...projectsStore.projects[idx],
-        ResponsibleEmp: editForm.value.ResponsibleEmp,
-        referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
-        isInvoiceSent: editForm.value.isInvoiceSent,
-        InvoiceDate: editForm.value.InvoiceDate,
-        IncomeDate: editForm.value.IncomeDate,
-        isEbarimtSent: editForm.value.isEbarimtSent,
-      };
-    }
-    
-    cancelEdit();
+    const updates = Object.entries(rowForms.value);
+    await Promise.all(updates.map(async ([projectId, form]) => {
+      const project = projectsStore.projects.find(p => String(p.id) === String(projectId));
+      if (!project?.docId) return;
+      await updateDoc(doc(db, 'projects', project.docId), {
+        ResponsibleEmp: form.ResponsibleEmp,
+        referenceIdfromCustomer: form.referenceIdfromCustomer,
+        isInvoiceSent: form.isInvoiceSent,
+        InvoiceDate: form.InvoiceDate,
+        IncomeDate: form.IncomeDate,
+        isEbarimtSent: form.isEbarimtSent,
+        updatedAt: new Date().toISOString(),
+      });
+      const idx = projectsStore.projects.findIndex(p => String(p.id) === String(projectId));
+      if (idx !== -1) {
+        projectsStore.projects[idx] = { ...projectsStore.projects[idx], ...form };
+      }
+    }));
+    cancelTableEdit();
   } catch (error) {
-    console.error('Error updating project:', error);
+    console.error('Error saving:', error);
     alert('Алдаа гарлаа: ' + error.message);
   } finally {
     saving.value = false;
