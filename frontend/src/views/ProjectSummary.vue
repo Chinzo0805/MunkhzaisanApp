@@ -134,10 +134,10 @@
               <th @click="sortBy('HourPerformance')" class="sortable">
                 Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
-              <th class="th-invoice-col">Нэхэмжлэх</th>
-              <th class="th-date-col">Нэхэмжлэх огноо</th>
-              <th class="th-date-col">Орлогын огноо</th>
-              <th class="th-invoice-col">E-баримт</th>
+              <th @click="sortBy('isInvoiceSent')" class="sortable th-invoice-col">Нэхэмжлэх {{ sortColumn === 'isInvoiceSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('InvoiceDate')" class="sortable th-date-col">Нэхэмжлэх огноо {{ sortColumn === 'InvoiceDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('IncomeDate')" class="sortable th-date-col">Орлогын огноо {{ sortColumn === 'IncomeDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('isEbarimtSent')" class="sortable th-invoice-col">E-баримт {{ sortColumn === 'isEbarimtSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -180,10 +180,10 @@
               <th @click="sortBy('TotalProfit')" class="sortable financial-total">
                 Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
-              <th class="th-invoice-col">Нэхэмжлэх</th>
-              <th class="th-date-col">Нэхэмжлэх огноо</th>
-              <th class="th-date-col">Орлогын огноо</th>
-              <th class="th-invoice-col">E-баримт</th>
+              <th @click="sortBy('isInvoiceSent')" class="sortable th-invoice-col">Нэхэмжлэх {{ sortColumn === 'isInvoiceSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('InvoiceDate')" class="sortable th-date-col">Нэхэмжлэх огноо {{ sortColumn === 'InvoiceDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('IncomeDate')" class="sortable th-date-col">Орлогын огноо {{ sortColumn === 'IncomeDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('isEbarimtSent')" class="sortable th-invoice-col">E-баримт {{ sortColumn === 'isEbarimtSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <template v-else-if="viewMode === 'summary'">
@@ -211,10 +211,10 @@
               <th @click="sortBy('additionalValue')" class="sortable summary-detail">
                 Нэмэлт {{ sortColumn === 'additionalValue' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
-              <th class="th-invoice-col">Нэхэмжлэх</th>
-              <th class="th-date-col">Нэхэмжлэх огноо</th>
-              <th class="th-date-col">Орлогын огноо</th>
-              <th class="th-invoice-col">E-баримт</th>
+              <th @click="sortBy('isInvoiceSent')" class="sortable th-invoice-col">Нэхэмжлэх {{ sortColumn === 'isInvoiceSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('InvoiceDate')" class="sortable th-date-col">Нэхэмжлэх огноо {{ sortColumn === 'InvoiceDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('IncomeDate')" class="sortable th-date-col">Орлогын огноо {{ sortColumn === 'IncomeDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('isEbarimtSent')" class="sortable th-invoice-col">E-баримт {{ sortColumn === 'isEbarimtSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <th class="actions-col">Үйлдэл</th>
@@ -580,8 +580,18 @@ const sortedProjects = computed(() => {
   const data = [...filteredProjects.value];
   
   data.sort((a, b) => {
-    const aVal = a[sortColumn.value] || '';
-    const bVal = b[sortColumn.value] || '';
+    let aVal = a[sortColumn.value];
+    let bVal = b[sortColumn.value];
+
+    // Handle booleans: true > false
+    if (typeof aVal === 'boolean' || typeof bVal === 'boolean') {
+      aVal = aVal ? 1 : 0;
+      bVal = bVal ? 1 : 0;
+      return sortAsc.value ? aVal - bVal : bVal - aVal;
+    }
+
+    aVal = aVal || '';
+    bVal = bVal || '';
     
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortAsc.value ? aVal - bVal : bVal - aVal;
