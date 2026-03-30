@@ -1,6 +1,6 @@
 # Firestore Collections Schema Reference
 
-**Last Updated:** February 5, 2026
+**Last Updated:** April 1, 2026
 
 This document describes the exact field structure for all Firestore collections in the MunkhZaisan system.
 
@@ -378,6 +378,229 @@ This document describes the exact field structure for all Firestore collections 
 ---
 
 ## 9. WarehouseRequests Collection
+
+**Collection Name:** `warehouseRequests`
+
+### Fields
+
+| Field Name | Type | Description | Required | Example |
+|------------|------|-------------|----------|---------|
+| `WarehouseID` | String | Warehouse item Firestore doc ID | Yes | `"abc123xyz"` |
+| `WarehouseName` | String | Item name at time of request | Yes | `"Цахилгаан кабель"` |
+| `quantity` | Number | Requested quantity | Yes | `50` |
+| `requestedEmpID` | String | Requesting employee ID | Yes | `"1001"` |
+| `requestedEmpName` | String | Requesting employee name | Yes | `"Бат"` |
+| `projectID` | String | Target project ID | No | `"1234"` |
+| `ProjectName` | String | Target project name | No | `"МУИСийн барилга"` |
+| `purpose` | String | Purpose / notes | No | `"Цахилгааны ажил"` |
+| `status` | String | Request status | Yes | `"pending"` |
+| `requestedAt` | Timestamp | When requested | Auto | Firestore Timestamp |
+| `createdAt` | Timestamp | Creation timestamp | Auto | Firestore Timestamp |
+| `approvedAt` | Timestamp | When approved/rejected | No | Firestore Timestamp |
+| `approvedBy` | String | Who approved/rejected | No | `"supervisor@example.com"` |
+| `rejectedReason` | String | Rejection reason | No | `"Нөөц дутмаг"` |
+
+**Valid Status Values:**
+- `"pending"` - Waiting for supervisor approval
+- `"approved"` - Approved (warehouse quantity decremented, transaction created)
+- `"rejected"` - Rejected
+
+---
+
+## 10. SalaryPeriods Collection
+
+**Collection Name:** `salaryPeriods`
+
+**Document ID format:** `YYYY-MM` (e.g. `2026-03`)
+
+### Fields
+
+| Field Name | Type | Description | Required | Example |
+|------------|------|-------------|----------|---------|
+| `yearMonth` | String | Year and month | Yes | `"2026-03"` |
+| `workingDaysFirst` | Number | Working days in range 1–15 | Yes | `11` |
+| `workingDaysSecond` | Number | Working days in range 16–31 | Yes | `10` |
+| `workingDaysTotal` | Number | Total working days in month | Yes | `21` |
+| `createdAt` | Timestamp | Creation timestamp | Auto | Firestore Timestamp |
+| `updatedAt` | Timestamp | Update timestamp | Auto | Firestore Timestamp |
+
+---
+
+## 11. Salaries Collection
+
+**Collection Name:** `salaries`
+
+**Document ID format:** `YYYY-MM_range` (e.g. `2026-03_advance`, `2026-03_full`)
+
+### Fields
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| `yearMonth` | String | `"2026-03"` |
+| `range` | String | `"advance"` \| `"1-15"` \| `"16-31"` \| `"full"` |
+| `calculatedAt` | String (ISO) | When last calculated |
+| `employees` | Array | Per-employee salary snapshot |
+
+**Each `employees[]` item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `employeeId` | String | Employee ID |
+| `name` | String | Full name |
+| `baseSalary` | Number | Base monthly salary ₮ |
+| `workedDays` | Number | Days with status ирсэн/ажилласан/томилолт |
+| `normalHours` | Number | Σ WorkingHour for attended records |
+| `absentHours` | Number | Σ WorkingHour for тасалсан records |
+| `effectiveHours` | Number | `normalHours − absentHours × 2` (min 0) |
+| `calculatedSalary` | Number | `baseSalary ÷ (workingDays × 8) × effectiveHours` |
+| `additionalPay` | Number | Manual нэмэгдэл (from adjustments) |
+| `annualLeavePay` | Number | Ээлжийн амралт |
+| `advance` | Number | Urьдчилгаа deduction |
+| `otherDeductions` | Number | Бусад суутгал |
+| `totalGross` | Number | `calculatedSalary + additionalPay + annualLeavePay` |
+| `employeeNDS` | Number | НДШ ажилтан 11.5% |
+| `employerNDS` | Number | НДШ байгаалл 12.5% (reference) |
+| `hhoatNet` | Number | ХХОАТ after discount |
+| `netPay` | Number | Take-home pay |
+| `totalPay` | Number | `max(0, netPay)` |
+
+---
+
+## 12. ConfirmedSalaries Collection
+
+**Collection Name:** `confirmedSalaries`
+
+**Document ID format:** Same as `salaries` — `YYYY-MM_range`
+
+### Fields
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| `yearMonth` | String | `"2026-03"` |
+| `range` | String | `"advance"` \| `"full"` etc. |
+| `supervisorApproval` | Object \| null | `{ uid, name, role, approvedAt }` |
+| `accountantApproval` | Object \| null | `{ uid, name, role, approvedAt }` |
+| `fullyConfirmed` | Boolean | `true` when both stamps present |
+| `confirmedAt` | String (ISO) \| null | When `fullyConfirmed` became true |
+| `employees` | Array | Snapshot of employee totals at confirmation time |
+
+> **Immutable once `fullyConfirmed = true`** — Firestore rules block writes.
+
+---
+
+## 13. SalaryAdjustments Collection
+
+**Collection Name:** `salaryAdjustments`
+
+**Document ID format:** `YYYY-MM_{employeeId}` (e.g. `2026-03_1001`)
+
+### Fields
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| `yearMonth` | String | `"2026-03"` |
+| `employeeId` | String | Employee ID |
+| `additions` | Array | List of ADD items |
+| `deductions` | Array | List of DED items |
+| `updatedAt` | Timestamp | Last update |
+
+**Each `additions[]` / `deductions[]` item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | String | Category (e.g. `"Нэмэгдэл цалин"`, `"Урьдчилгаа"`) |
+| `amount` | Number | Amount ₮ |
+| `note` | String | Optional note |
+
+> Readonly when salary `fullyConfirmed = true` (checked by UI, enforced by Firestore rules).
+
+---
+
+## 14. BountyCalculations Collection
+
+**Collection Name:** `bountyCalculations`
+
+**Document ID format:** `YYYY-MM_DD` (e.g. `2026-03_10`, `2026-03_25`)
+
+### Fields
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| `yearMonth` | String | `"2026-03"` |
+| `range` | String | `"10"` \| `"25"` (pay date) |
+| `calculatedAt` | String (ISO) | When last recalculated |
+| `grandTotal` | Number | Total bounty across all projects ₮ |
+| `projects` | Array | Project-level snapshots |
+| `employees` | Array | Cross-project employee totals |
+
+**Each `projects[]` item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `docId` | String | Firestore doc ID of the project |
+| `id` | Number | Project numeric ID |
+| `referenceIdfromCustomer` | String | Customer reference |
+| `customer` | String | Customer name |
+| `siteLocation` | String | Site location |
+| `projectType` | String | `"paid"` \| `"overtime"` \| `"unpaid"` |
+| `bountyPayDate` | String | `"2026-03-10"` |
+| `_totalBounty` | Number | Total bounty for this project |
+| `_sumEngineerBounty` | Number | Engineer portion |
+| `_sumNonEngineerBounty` | Number | Non-engineer portion |
+| `_sumOvertimeBounty` | Number | Overtime portion |
+| `_employees` | Array | Per-employee breakdown (see below) |
+
+**Each `_employees[]` item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `employeeId` | String | Employee ID |
+| `name` | String | Full name |
+| `engineerHours` | Number | Engineer working hours on project |
+| `engineerBounty` | Number | Engineer bounty ₮ |
+| `nonEngineerHours` | Number | Non-engineer working hours |
+| `nonEngineerBounty` | Number | Non-engineer bounty ₮ |
+| `overtimeHours` | Number | Overtime hours |
+| `overtimeBounty` | Number | Overtime bounty ₮ |
+| `totalBounty` | Number | Sum of all bounty types |
+
+**Each `employees[]` (cross-project summary) item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `employeeId` | String | Employee ID |
+| `name` | String | Full name |
+| `byProject` | Object | `{ [docId]: totalBounty }` map |
+| `total` | Number | Grand total across all projects |
+
+---
+
+## 15. ConfirmedBounties Collection
+
+**Collection Name:** `confirmedBounties`
+
+**Document ID format:** Same as `bountyCalculations` — `YYYY-MM_DD`
+
+### Fields
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| `yearMonth` | String | `"2026-03"` |
+| `range` | String | `"10"` \| `"25"` |
+| `supervisorApproval` | Object \| null | `{ uid, name, role, approvedAt }` |
+| `accountantApproval` | Object \| null | `{ uid, name, role, approvedAt }` |
+| `fullyConfirmed` | Boolean | `true` when both stamps present |
+| `confirmedAt` | String (ISO) \| null | When `fullyConfirmed` became true |
+| `employees` | Array | Snapshot of employee totals at confirmation time |
+
+> **Immutable once `fullyConfirmed = true`** — Firestore rules block writes after full confirmation.
+
+### Approval Workflow
+
+1. Supervisor clicks **✅ Батлах** → `supervisorApproval` stamp created in `confirmedBounties`
+2. Accountant clicks **✅ Батлах** → `accountantApproval` stamp added, `fullyConfirmed = true`
+3. If Supervisor/Accountant clicks **🔢 Дахин тооцоолох** before full confirmation → `recalculate()` auto-saves new snapshot to `bountyCalculations` and resets any pending stamps via `resetApprovals()`
+4. Once `fullyConfirmed = true` → recalculate button is disabled, document is locked
 
 **Collection Name:** `warehouseRequests`
 

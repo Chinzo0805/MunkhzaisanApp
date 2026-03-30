@@ -9,21 +9,40 @@
     <div class="filters-section">
       <div class="filter-group">
         <label>Он сар:</label>
-        <input type="month" v-model="selectedMonth" @change="loadReport" />
+        <input type="month" v-model="selectedMonth" @change="fetchSavedData" />
       </div>
       <div class="filter-group">
         <label>Олгох өдөр:</label>
-        <select v-model="selectedRange" @change="loadReport">
+        <select v-model="selectedRange" @change="fetchSavedData">
           <option value="10">10-ны</option>
           <option value="25">25-ны</option>
         </select>
       </div>
-      <button @click="loadReport" class="btn-refresh" :disabled="loading">
-        {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
+      <button @click="recalculate" class="btn-refresh" :disabled="loading || isBountyLocked">
+        {{ loading ? 'Уншиж байна...' : '🔢 Дахин тооцоолох' }}
       </button>
       <button @click="exportToExcel" class="btn-export" :disabled="loading || projects.length === 0">
         📥 Excel татах
       </button>
+      <button v-if="canApproveBounty && !isBountyLocked && !alreadyApproved && projects.length > 0" @click="confirmBounty" :disabled="confirming || loading" class="btn-confirm">
+        {{ confirming ? 'Түтнүүлж...' : '✅ Батлах' }}
+      </button>
+    </div>
+
+    <!-- Approval banners -->
+    <div v-if="confirmedBountyInfo?.fullyConfirmed" class="confirmed-banner confirmed-full">
+      ✅ <strong>Урамшуулал бүрэн батлагдсан</strong>
+      <span class="conf-stamp">👤 Менежер · {{ fmtApprovalDate(confirmedBountyInfo.supervisorApproval?.approvedAt) }}</span>
+      <span class="conf-sep">&amp;</span>
+      <span class="conf-stamp">🧾 Нягтлан · {{ fmtApprovalDate(confirmedBountyInfo.accountantApproval?.approvedAt) }}</span>
+    </div>
+    <div v-else-if="confirmedBountyInfo" class="confirmed-banner confirmed-partial">
+      ⏳ <strong>Урамшуулал батлалт хүлээж байна</strong>
+      <span v-if="confirmedBountyInfo.supervisorApproval" class="conf-stamp conf-done">✓ Менежер · {{ fmtApprovalDate(confirmedBountyInfo.supervisorApproval.approvedAt) }}</span>
+      <span v-else class="conf-stamp conf-wait">⏳ Менежер: Хүлээгүй</span>
+      <span class="conf-sep">·</span>
+      <span v-if="confirmedBountyInfo.accountantApproval" class="conf-stamp conf-done">✓ Нягтлан · {{ fmtApprovalDate(confirmedBountyInfo.accountantApproval.approvedAt) }}</span>
+      <span v-else class="conf-stamp conf-wait">⏳ Нягтлан: Хүлээгүй</span>
     </div>
 
     <div v-if="loading" class="loading">Тайлан бэлтгэж байна...</div>
@@ -155,8 +174,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { useAuthStore } from '../stores/auth';
 import * as XLSX from 'xlsx';
 
 const selectedMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -188,7 +208,27 @@ function getDateRange() {
   return { from: dateStr, to: dateStr };
 }
 
-async function loadReport() {
+async function fetchSavedData() {
+  loading.value = true;
+  searched.value = true;
+  projects.value = [];
+  errorMsg.value = '';
+  try {
+    await fetchConfirmedBountyInfo();
+    const calcSnap = await getDoc(doc(db, 'bountyCalculations', bountyDocId.value));
+    if (calcSnap.exists()) {
+      projects.value = calcSnap.data().projects || [];
+    }
+  } catch (err) {
+    console.error('Error loading saved bounty:', err);
+    errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function recalculate() {
+  if (isBountyLocked.value) return;
   loading.value = true;
   searched.value = true;
   projects.value = [];
@@ -220,7 +260,7 @@ async function loadReport() {
         const role = (r.Role || '').trim();
         const wh = parseFloat(r.WorkingHour) || 0;
         const oh = parseFloat(r.overtimeHour) || 0;
-        if (!empMap.has(key)) empMap.set(key, { name, engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
+        if (!empMap.has(key)) empMap.set(key, { employeeId: empId, name, engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
         const e = empMap.get(key);
         if (role === 'Инженер') e.engineerHours += wh; else e.nonEngineerHours += wh;
         e.overtimeHours += oh;
@@ -239,7 +279,7 @@ async function loadReport() {
         const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
         sumEH += e.engineerHours; sumNEH += e.nonEngineerHours; sumOH += e.overtimeHours;
         sumEB += engineerBounty; sumNEB += nonEngineerBounty; sumOB += overtimeBounty;
-        return { name: e.name, engineerHours: e.engineerHours, engineerBounty, nonEngineerHours: e.nonEngineerHours, nonEngineerBounty, overtimeHours: e.overtimeHours, overtimeBounty, totalBounty };
+        return { employeeId: e.employeeId, name: e.name, engineerHours: e.engineerHours, engineerBounty, nonEngineerHours: e.nonEngineerHours, nonEngineerBounty, overtimeHours: e.overtimeHours, overtimeBounty, totalBounty };
       }).sort((a, b) => b.totalBounty - a.totalBounty);
 
       proj._employees = employees;
@@ -248,6 +288,31 @@ async function loadReport() {
       proj._totalBounty = sumEB + sumNEB + sumOB;
     }
     projects.value = projList.sort((a, b) => (a.bountyPayDate || '').localeCompare(b.bountyPayDate || ''));
+    await fetchConfirmedBountyInfo();
+    // Save recalculated data to bountyCalculations and reset pending approvals
+    try {
+      const projData = projects.value.map(p => ({
+        docId: p.docId, id: p.id,
+        referenceIdfromCustomer: p.referenceIdfromCustomer || '',
+        customer: p.customer || '', siteLocation: p.siteLocation || '',
+        projectType: p.projectType || '', bountyPayDate: p.bountyPayDate || '',
+        _totalBounty: p._totalBounty || 0,
+        _sumEngineerBounty: p._sumEngineerBounty || 0,
+        _sumNonEngineerBounty: p._sumNonEngineerBounty || 0,
+        _sumOvertimeBounty: p._sumOvertimeBounty || 0,
+        _employees: p._employees || [],
+      }));
+      await setDoc(doc(db, 'bountyCalculations', bountyDocId.value), {
+        yearMonth: selectedMonth.value, range: selectedRange.value,
+        calculatedAt: new Date().toISOString(),
+        projects: projData,
+        employees: buildEmployeesSummary(projects.value),
+        grandTotal: grandTotal.value,
+      });
+      await resetApprovals();
+    } catch (saveErr) {
+      console.error('Save bounty error:', saveErr);
+    }
   } catch (err) {
     console.error('Error loading bounty report:', err);
     errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
@@ -285,7 +350,109 @@ function exportToExcel() {
   XLSX.writeFile(wb, `BountyReport_${from}_${to}.xlsx`);
 }
 
-onMounted(() => loadReport());
+// ── Auth & approval ──────────────────────────────────────────────────────
+const authStore = useAuthStore();
+const confirmedBountyInfo = ref(null);
+const confirming = ref(false);
+
+const iAmSupervisor    = computed(() => !!authStore.userData?.isSupervisor);
+const iAmAccountant    = computed(() => !!authStore.userData?.isAccountant);
+const canApproveBounty = computed(() => iAmSupervisor.value || iAmAccountant.value);
+const myApprovalKey    = computed(() => iAmSupervisor.value ? 'supervisorApproval' : 'accountantApproval');
+const bountyDocId      = computed(() => `${selectedMonth.value}_${selectedRange.value}`);
+const isBountyLocked   = computed(() => confirmedBountyInfo.value?.fullyConfirmed === true);
+const alreadyApproved  = computed(() => {
+  if (!confirmedBountyInfo.value || !canApproveBounty.value) return false;
+  return !!confirmedBountyInfo.value[myApprovalKey.value];
+});
+
+function fmtApprovalDate(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleDateString('mn-MN', { year: 'numeric', month: '2-digit', day: '2-digit' }); }
+  catch { return iso.slice(0, 10); }
+}
+
+function myApprovalStamp() {
+  return {
+    uid:        authStore.user?.uid,
+    name:       ((authStore.userData?.employeeFirstName || '') + ' ' + (authStore.userData?.employeeLastName || '')).trim(),
+    role:       authStore.userData?.role,
+    approvedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchConfirmedBountyInfo() {
+  try {
+    const snap = await getDoc(doc(db, 'confirmedBounties', bountyDocId.value));
+    confirmedBountyInfo.value = snap.exists() ? snap.data() : null;
+  } catch {
+    confirmedBountyInfo.value = null;
+  }
+}
+
+function buildEmployeesSummary(projList) {
+  const empMap = new Map();
+  for (const proj of projList) {
+    for (const emp of (proj._employees || [])) {
+      const key = emp.employeeId || emp.name;
+      if (!empMap.has(key)) empMap.set(key, { employeeId: emp.employeeId || '', name: emp.name, byProject: {}, total: 0 });
+      const row = empMap.get(key);
+      row.byProject[proj.docId] = (row.byProject[proj.docId] || 0) + emp.totalBounty;
+      row.total += emp.totalBounty;
+    }
+  }
+  return Array.from(empMap.values()).sort((a, b) => b.total - a.total);
+}
+
+async function resetApprovals() {
+  if (!confirmedBountyInfo.value) return;
+  if (confirmedBountyInfo.value.fullyConfirmed) return;
+  if (!confirmedBountyInfo.value.supervisorApproval && !confirmedBountyInfo.value.accountantApproval) return;
+  try {
+    await updateDoc(doc(db, 'confirmedBounties', bountyDocId.value), {
+      supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null,
+    });
+    confirmedBountyInfo.value = { ...confirmedBountyInfo.value, supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null };
+  } catch (e) { console.error('resetApprovals error:', e); }
+}
+
+async function confirmBounty() {
+  if (!projects.value.length) return;
+  if (!confirm('Урамшуулалын батлалтыг үсэх үү? Таны батлалтаа өөрчлөх боломжгүй.')) return;
+  confirming.value = true;
+  try {
+    const docRef   = doc(db, 'confirmedBounties', bountyDocId.value);
+    const stamp    = myApprovalStamp();
+    const otherKey = iAmSupervisor.value ? 'accountantApproval' : 'supervisorApproval';
+    if (!confirmedBountyInfo.value) {
+      const newDoc = {
+        yearMonth:          selectedMonth.value,
+        range:              selectedRange.value,
+        supervisorApproval: iAmSupervisor.value ? stamp : null,
+        accountantApproval: iAmAccountant.value ? stamp : null,
+        fullyConfirmed:     false,
+        confirmedAt:        null,
+        employees:          buildEmployeesSummary(projects.value),
+      };
+      await setDoc(docRef, newDoc);
+      confirmedBountyInfo.value = newDoc;
+    } else {
+      const otherApproval  = confirmedBountyInfo.value[otherKey];
+      const fullyConfirmed = !!otherApproval;
+      const confirmedAt    = fullyConfirmed ? new Date().toISOString() : null;
+      const updates = { [myApprovalKey.value]: stamp, fullyConfirmed, confirmedAt };
+      await updateDoc(docRef, updates);
+      confirmedBountyInfo.value = { ...confirmedBountyInfo.value, ...updates };
+    }
+  } catch (err) {
+    console.error('confirmBounty error:', err);
+    alert('Батлахад алдаа гарлаа: ' + err.message);
+  } finally {
+    confirming.value = false;
+  }
+}
+
+onMounted(() => fetchSavedData());
 </script>
 
 <style scoped>
@@ -346,4 +513,14 @@ h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 .no-data { text-align: center; padding: 40px; color: #94a3b8; font-size: 15px; }
 .no-ta { padding: 12px 16px; color: #94a3b8; font-size: 13px; font-style: italic; }
 .error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 14px; }
+.btn-confirm { padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-confirm:hover { background: #059669; }
+.btn-confirm:disabled { opacity: .5; cursor: default; }
+.confirmed-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+.confirmed-full { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+.confirmed-partial { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }
+.conf-stamp { font-size: 12px; padding: 3px 8px; border-radius: 10px; background: rgba(255,255,255,.5); }
+.conf-done { color: #166534; }
+.conf-wait { color: #92400e; }
+.conf-sep { opacity: .5; }
 </style>

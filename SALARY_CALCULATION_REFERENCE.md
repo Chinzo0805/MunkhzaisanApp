@@ -1,5 +1,5 @@
 # Salary Calculation Reference
-Last updated: 2026-03-19
+Last updated: 2026-03-30
 
 ---
 
@@ -12,10 +12,12 @@ Last updated: 2026-03-19
 | `ID` (or `Id`) | Employee identifier key | Normalized: float `5.0` → `"5"` |
 | `FirstName` / `LastName` | Display name | Combined with space |
 | `Position` | Position label | Display only |
-| `Type` | Employee type | Display/filter label |
+| `Type` | Employee type | `Дадлагжигч` → calculatedSalary = 0 |
 | `State` | Active/inactive filter | Only `Ажиллаж байгаа` included when no TA records |
-| `Salary` (or `BasicSalary`) | `baseSalary` | Base monthly salary ₮ — enter in Employee Management |
-| `hhoatDiscount` | `discount` | ХХОАТ хөнгөлөлт ₮ — enter in Employee Management |
+| `Salary` (or `BasicSalary`) | `baseSalary` | Base monthly salary ₮ |
+| `hhoatDiscount` | `discount` | ХХОАТ хөнгөлөлт ₮ |
+| `isNDS` | Apply NDS? | Default `true`. If `false`: baseSalary forced to 0, NDS = 0. Employee still appears in list for bounty/adjustments |
+| `autoTA` | Auto time-attendance | If `true`: treated as fully worked period — no TA records needed. Works for both full and advance calculation |
 
 ### From `timeAttendance` collection (filtered by date range)
 
@@ -53,7 +55,12 @@ Last updated: 2026-03-19
 | `annualLeavePay` | Ээлжийн амралт | `0` |
 | `advance` | Урьдчилгаа | `0` |
 | `otherDeductions` | Бусад суутгал | `0` |
+### Salary Adjustments (stored in `salaryAdjustments/{yearMonth}_{employeeId}`)
 
+Categorized additions and deductions managed per-employee per-month via SalaryAdjustmentsPanel:
+- **Additions (ADD):** Нэмэгдэл цалин, Еэлжийн амралт, Урамшуулал, Бусад нэмэгдэл
+- **Deductions (DED):** Урьдчилгаа, Тэтгээлийн хуримжлалт, Бусад суутгал
+- Readonly when salary is fully confirmed (`isSalaryLocked = true`)
 ---
 
 ## ⚙️ Auto-calculated from Time Attendance
@@ -73,10 +80,10 @@ Last updated: 2026-03-19
 
 | Field | Label | Formula |
 |---|---|---|
-| `calculatedSalary` | Бодогдсон цалин | `baseSalary × workedDays ÷ workingDays` |
+| `calculatedSalary` | Бодогдсон цалин | `baseSalary ÷ (workingDays × 8) × effectiveHours` |
 | `totalGross` | Нийт бодогдсон | `calculatedSalary + additionalPay + annualLeavePay` |
-| `employeeNDS` | НДШ ажилтан (11.5%) | `totalGross × 11.5%` — **суутгагдана** (deducted from netPay) |
-| `employerNDS` | НДШ байгааллага (12.5%) | `totalGross × 12.5%` — **лавлагаа** (reference only, not deducted) |
+| `employeeNDS` | НДШ ажилтан (11.5%) | `totalGross × 11.5%` — **суутгагдана** (deducted). `0` if `isNDS=false` |
+| `employerNDS` | НДШ байгааллага (12.5%) | `totalGross × 12.5%` — **лавлагаа** (reference only). `0` if `isNDS=false` |
 | `tno` | ТНО | `totalGross − employeeNDS` |
 | `hhoat` | ХХОАТ | `tno × 10%` |
 | `hhoatNet` | ХХОАТ хөнгөлөлт хассан | `max(0, hhoat − discount)` |
@@ -109,8 +116,8 @@ Last updated: 2026-03-19
 | Ажилласан цаг | `normalHours` | TA sum |
 | Тасалсан өдөр | `absentHours ÷ 8` | Rounded to days |
 | Эффектив цаг | `effectiveHours` | `normalHours − absentHours × 2` |
-| Үндсэн цалин | `baseSalary` | `employees.Salary` |
-| Бодогдсон цалин | `calculatedSalary` | `baseSalary × workedDays ÷ workingDays` |
+| Үндсэн цалин | `baseSalary` | `employees.Salary` (0 if `isNDS=false`) |
+| Бодогдсон цалин | `calculatedSalary` | `baseSalary ÷ (workingDays × 8) × effectiveHours` |
 | Нийт бодогдсон | `totalGross` | `calculatedSalary + additionalPay + annualLeavePay` |
 | Нийт нэмэгдэл | `additionalPay + annualLeavePay` | Manual inputs |
 | Нийт суутгал | `employeeNDS + hhoatNet + advance + otherDeductions` | Calculated + manual |
@@ -129,6 +136,51 @@ Last updated: 2026-03-19
 | `autoWorkingDays()` | `functions/salaryCalculations.js` | Calendar-based working day count (fallback if not manually set) |
 | `calculateSalary` (CF) | `functions/calculateSalary.js` | Cloud Function entry point (actions: `calculate`, `updateRow`) |
 | `manageSalaryPeriod` (CF) | `functions/manageSalaryPeriod.js` | Cloud Function for period CRUD (`upsert`, `get`, `list`) |
+| `calculateAdvance()` | `SupervisorSalaryReport.vue` | Frontend-only: 1–15 advance pay calculation, saved to `salaries/{month}_advance` |
+
+---
+
+## 💵 Advance Pay (1–15 Урьдчилгаа)
+
+| Rule | Value |
+|---|---|
+| Fixed amount | `500,000₮` (ADVANCE_AMOUNT constant) |
+| Minimum effective hours required | `80 цаг` (ADVANCE_MIN_HOURS) |
+| `effectiveHours ≥ 80` | `advancePay = 500,000₮` |
+| `effectiveHours < 80` | `advancePay = 0` |
+| `forceAdvance = true` | Pay override regardless of hours; amount is editable |
+| `isNDS = false` | `advancePay = 0` always (bounty-only employees) |
+| `autoTA = true` | Working days 1–15 auto-calculated (Mon–Fri, non-holiday) × 8h = effectiveHours; always ≥ 80 → always gets advance |
+
+Stored in `salaries/{yearMonth}_advance` → confirmed in `confirmedSalaries/{yearMonth}_advance`.
+
+---
+
+## 🔐 Two-Step Approval System
+
+### Full salary: `confirmedSalaries/{yearMonth}_full`
+### Advance: `confirmedSalaries/{yearMonth}_advance`
+
+```
+{
+  supervisorApproval: { uid, name, role, approvedAt },  // set by Supervisor
+  accountantApproval: { uid, name, role, approvedAt },  // set by Accountant
+  fullyConfirmed: bool,   // true when BOTH stamps present
+  confirmedAt: ISO string // set when fullyConfirmed becomes true
+}
+```
+
+| Step | Who | Effect |
+|---|---|---|
+| 1 | Supervisor | Sets `supervisorApproval`, `fullyConfirmed = false` |
+| 2 | Accountant | Sets `accountantApproval`, `fullyConfirmed = true` |
+| Recalculate | Either | Approvals reset **only if salary numbers actually changed** (snapshot comparison) |
+| `isSalaryLocked` | Both confirmed | UI locks: recalc disabled, adjustments readonly, table cells locked |
+
+### Firestore rules
+- Create: always allowed for Supervisor/Accountant
+- Update: only when `fullyConfirmed == false`
+- Delete: **blocked**
 
 ---
 
@@ -154,4 +206,6 @@ Last updated: 2026-03-19
 | Employee has no TA records AND `State ≠ Ажиллаж байгаа` | **Excluded** from calculation |
 | Employee `Type = Дадлагжигч` | `calculatedSalary = 0`, but still shown in table |
 | `employees.Salary` field not set | `baseSalary = 0`, `laborCost = 0` — enter salary in Employee Management |
+| `isNDS = false` | `baseSalary` forced to 0 in calculation; employee still shows in list |
+| `autoTA = true` | TA records ignored; overridden with full period working days |
 | Excel sync overwrites `Salary` field | It does **not** — `Salary` is protected from Excel sync |
