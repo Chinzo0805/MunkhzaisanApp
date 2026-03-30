@@ -322,6 +322,29 @@
                 <label>Урамшуулал огноо</label>
                 <input v-model="form.bountyPayDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #fef3c7;' : 'background-color: #fef3c7;'" />
               </div>
+              <div class="form-group">
+                <label>Нэхэмжлэхийн огноо</label>
+                <input v-model="form.InvoiceDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+              <div class="form-group">
+                <label>Орлогын огноо</label>
+                <input v-model="form.IncomeDate" type="date" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" />
+              </div>
+            </div>
+
+            <div class="form-grid-2" style="margin-bottom:12px;">
+              <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" v-model="form.isInvoiceSent" :disabled="!isEditMode" style="width:16px;height:16px;" />
+                  Нэхэмжлэх илгээсэн
+                </label>
+              </div>
+              <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" v-model="form.isEbarimtSent" :disabled="!isEditMode" style="width:16px;height:16px;" />
+                  Е-баримт илгээсэн
+                </label>
+              </div>
             </div>
 
             <div class="form-group">
@@ -871,6 +894,8 @@ async function onDrop(status, event) {
       ExpenceMaterial: project.ExpenceMaterial, ExpenceHSE: project.ExpenceHSE,
       ProfitHR: project.ProfitHR, ProfitCar: project.ProfitCar, ProfitMaterial: project.ProfitMaterial,
       TotalProfit: project.TotalProfit,
+      InvoiceDate: project.InvoiceDate || '', isInvoiceSent: project.isInvoiceSent || false,
+      isEbarimtSent: project.isEbarimtSent || false, IncomeDate: project.IncomeDate || '',
     };
     await manageProject('update', updatedData, project.docId);
     // onSnapshot auto-updates the store
@@ -922,6 +947,10 @@ const form = ref({
   ProfitCar: 0,
   ProfitMaterial: 0,
   TotalProfit: 0,
+  InvoiceDate: '',
+  isInvoiceSent: false,
+  isEbarimtSent: false,
+  IncomeDate: '',
 });
 
 const emit = defineEmits(['saved']);
@@ -1185,6 +1214,10 @@ function editItem(project) {
     StartDate: excelSerialToDate(project.StartDate),
     EndDate: excelSerialToDate(project.EndDate),
     bountyPayDate: project.bountyPayDate || '',
+    InvoiceDate: project.InvoiceDate || '',
+    isInvoiceSent: project.isInvoiceSent || false,
+    isEbarimtSent: project.isEbarimtSent || false,
+    IncomeDate: project.IncomeDate || '',
     statusDates: project.statusDates || {},
     ResponsibleEmp: project.ResponsibleEmp || '',
     Detail: project.Detail || '',
@@ -1283,6 +1316,10 @@ function closeModal() {
     ProfitCar: 0,
     ProfitMaterial: 0,
     TotalProfit: 0,
+    InvoiceDate: '',
+    isInvoiceSent: false,
+    isEbarimtSent: false,
+    IncomeDate: '',
   };
 }
 
