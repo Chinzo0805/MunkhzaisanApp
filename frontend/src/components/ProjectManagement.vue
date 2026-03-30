@@ -34,6 +34,15 @@
           <option value="Урамшуулал олгох">Урамшуулал олгох</option>
           <option value="Дууссан">Дууссан</option>
         </select>
+        <div class="kanban-type-filters" style="display:flex;gap:4px;">
+          <button
+            v-for="ft in kanbanTypeOptions"
+            :key="ft.value"
+            class="ktype-btn"
+            :class="{ 'ktype-active': listTypeFilter === ft.value }"
+            @click="listTypeFilter = ft.value"
+          >{{ ft.label }}</button>
+        </div>
         <span class="list-count">{{ filteredProjects.length }} project</span>
       </div>
 
@@ -68,6 +77,13 @@
               </th>
               <th @click="toggleListSort('perf')" class="sortable th-perf">
                 Гүйцэтгэл {{ listSortField === 'perf' ? (listSortAsc ? '↑' : '↓') : '' }}
+              </th>
+              <th class="th-invoice">Нэхэмжлэх</th>
+              <th class="th-invoice-date">Нэхэмжлэх огноо</th>
+              <th class="th-income-date">Орлогын огноо</th>
+              <th class="th-ebarimt">E-баримт</th>
+              <th @click="toggleListSort('income')" class="sortable th-income">
+                Нийт орлого {{ listSortField === 'income' ? (listSortAsc ? '↑' : '↓') : '' }}
               </th>
               <th @click="toggleListSort('profit')" class="sortable th-profit">
                 Ашиг {{ listSortField === 'profit' ? (listSortAsc ? '↑' : '↓') : '' }}
@@ -110,6 +126,21 @@
                   {{ calculateTimePerformance(project.RealHour, project.PlannedHour) }}%
                 </span>
                 <span v-else>—</span>
+              </td>
+              <td class="td-invoice" @click.stop>
+                <input type="checkbox" :checked="project.isInvoiceSent" @change="saveInlineField(project, 'isInvoiceSent', $event.target.checked)" style="width:16px;height:16px;cursor:pointer;" />
+              </td>
+              <td class="td-invoice-date" @click.stop>
+                <input type="date" :value="project.InvoiceDate || ''" @change="saveInlineField(project, 'InvoiceDate', $event.target.value)" class="inline-date" />
+              </td>
+              <td class="td-income-date" @click.stop>
+                <input type="date" :value="project.IncomeDate || ''" @change="saveInlineField(project, 'IncomeDate', $event.target.value)" class="inline-date" />
+              </td>
+              <td class="td-ebarimt" @click.stop>
+                <input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" style="width:16px;height:16px;cursor:pointer;" />
+              </td>
+              <td class="td-income">
+                {{ project.IncomeHR ? formatNumber(project.IncomeHR) + '₮' : '—' }}
               </td>
               <td class="td-profit" :class="{ 'profit-pos': (project.TotalProfit||0) > 0, 'profit-neg': (project.TotalProfit||0) < 0 }">
                 {{ (project.TotalProfit || project.TotalProfit === 0) ? formatNumber(project.TotalProfit) + '₮' : '—' }}
@@ -717,6 +748,7 @@ const editingDocId = ref(null);
 const isEditMode = ref(false);
 const searchQuery = ref('');
 const filterStatus = ref('');
+const listTypeFilter = ref('all');
 const saving = ref(false);
 const formError = ref('');
 const activeTab = ref('basic');
@@ -977,6 +1009,11 @@ const filteredProjects = computed(() => {
   if (filterStatus.value) {
     items = items.filter(p => p.Status === filterStatus.value);
   }
+
+  // Filter by project type
+  if (listTypeFilter.value !== 'all') {
+    items = items.filter(p => (p.projectType || 'paid') === listTypeFilter.value);
+  }
   
   // Sort by listSortField
   items.sort((a, b) => {
@@ -1000,6 +1037,8 @@ const filteredProjects = computed(() => {
     } else if (listSortField.value === 'perf') {
       aVal = calculateTimePerformance(a.RealHour, a.PlannedHour);
       bVal = calculateTimePerformance(b.RealHour, b.PlannedHour);
+    } else if (listSortField.value === 'income') {
+      aVal = a.IncomeHR || 0; bVal = b.IncomeHR || 0;
     } else if (listSortField.value === 'profit') {
       aVal = a.TotalProfit || 0; bVal = b.TotalProfit || 0;
     } else {
@@ -1017,6 +1056,19 @@ const filteredProjects = computed(() => {
   
   return items;
 });
+
+async function saveInlineField(project, field, value) {
+  if (!project.docId) return;
+  const updateData = {
+    id: project.id,
+    [field]: value,
+  };
+  try {
+    await manageProject('update', updateData, project.docId);
+  } catch (e) {
+    console.error('Inline save failed:', e);
+  }
+}
 
 function excelSerialToDate(serial) {
   if (!serial || typeof serial !== 'number') return '';
@@ -2191,6 +2243,13 @@ defineExpose({
 .td-hours { text-align: right; font-size: 13px; font-weight: 500; white-space: nowrap; }
 .td-perf { text-align: right; font-weight: 600; white-space: nowrap; }
 .td-profit { text-align: right; font-weight: 700; white-space: nowrap; }
+.td-invoice { text-align: center; }
+.td-invoice-date { white-space: nowrap; }
+.td-income-date { white-space: nowrap; }
+.td-ebarimt { text-align: center; }
+.td-income { text-align: right; font-weight: 600; white-space: nowrap; color: #0369a1; }
+.inline-date { border: 1px solid #d1d5db; border-radius: 4px; padding: 2px 4px; font-size: 11px; width: 110px; background: #fff; cursor: pointer; }
+.inline-date:hover { border-color: #6366f1; }
 .profit-pos { color: #16a34a; }
 .profit-neg { color: #dc2626; }
 
@@ -2203,6 +2262,11 @@ defineExpose({
 .th-date { min-width: 90px; }
 .th-hours { min-width: 80px; text-align: right; }
 .th-perf { min-width: 90px; text-align: right; }
+.th-invoice { min-width: 72px; text-align: center; white-space: nowrap; }
+.th-invoice-date { min-width: 115px; white-space: nowrap; }
+.th-income-date { min-width: 115px; white-space: nowrap; }
+.th-ebarimt { min-width: 72px; text-align: center; white-space: nowrap; }
+.th-income { min-width: 110px; text-align: right; }
 .th-profit { min-width: 110px; text-align: right; }
 
 /* ── Tabbed Form ──────────────────────────────────────────── */
