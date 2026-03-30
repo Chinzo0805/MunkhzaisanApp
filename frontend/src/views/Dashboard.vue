@@ -72,8 +72,20 @@
         <!-- Accountant: Report buttons -->
         <div v-if="authStore.userData?.isAccountant" class="quick-actions" style="margin-top:12px;">
           <div class="section-label">📊 Тайлангууд</div>
-          <button @click="$router.push('/project-summary')" class="btn-action project">
+          <button @click="$router.push('/project-summary?kanban=1')" class="btn-action project">
             ⊞ Канбан
+          </button>
+          <button @click="$router.push('/project-summary')" class="btn-action project">
+            📋 Төслийн нэгтгэл
+          </button>
+          <button @click="$router.push('/supervisor-salary')" class="btn-action salary">
+            💰 Цалингийн тооцоо
+          </button>
+          <button @click="$router.push('/supervisor-bounty')" class="btn-action bounty">
+            🏆 Урамшуулал тайлан
+          </button>
+          <button @click="$router.push('/transaction-report')" class="btn-action finance">
+            💵 Гүйлгээний тайлан
           </button>
         </div>
       </div>

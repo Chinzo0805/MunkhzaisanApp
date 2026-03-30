@@ -409,8 +409,8 @@
       Сонгосон хугацаанд бүртгэл олдсонгүй
     </div>
 
-    <!-- Project Management Component (hidden by default, only shows modal) -->
-    <div style="display: none;">
+    <!-- Project Management Component (hidden by default, only shows modal; visible in kanban mode) -->
+    <div :style="kanbanMode ? {} : { display: 'none' }">
       <ProjectManagement ref="projectManagementRef" />
     </div>
   </div>
@@ -425,6 +425,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';
@@ -445,6 +446,8 @@ const selectedStatus = ref('');
 const searchQuery = ref('');
 const viewMode = ref('default'); // 'default', 'financial', 'summary'
 const projectManagementRef = ref(null);
+const route = useRoute();
+const kanbanMode = ref(route.query.kanban === '1');
 
 // Time Attendance Modal state
 const showTAModal = ref(false);
@@ -799,6 +802,10 @@ onMounted(async () => {
   projectsStore.subscribeToProjects();
   if (employeesStore.employees.length === 0) {
     await employeesStore.fetchEmployees();
+  }
+  if (kanbanMode.value) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    projectManagementRef.value?.openKanban();
   }
 });
 

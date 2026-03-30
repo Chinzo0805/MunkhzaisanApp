@@ -1320,7 +1320,8 @@ function openProjectById(projectId) {
 }
 
 defineExpose({
-  openProjectById
+  openProjectById,
+  openKanban: () => { showKanban.value = true; showList.value = false; }
 });
 </script>
 
