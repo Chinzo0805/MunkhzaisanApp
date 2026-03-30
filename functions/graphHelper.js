@@ -1,18 +1,17 @@
-const functions = require("firebase-functions");
 const fetch = require("node-fetch");
 
 /**
- * Helper to get Microsoft Graph access token using client credentials
+ * Helper to get Microsoft Graph access token using client credentials.
+ * Secrets are injected via Secret Manager (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID).
  * @returns {Promise<string>} The access token
  */
 async function getGraphToken() {
-  // Use environment variables for secure credential storage
-  const clientId = functions.config().azure?.client_id || process.env.AZURE_CLIENT_ID;
-  const clientSecret = functions.config().azure?.client_secret || process.env.AZURE_CLIENT_SECRET;
-  const tenantId = functions.config().azure?.tenant_id || process.env.AZURE_TENANT_ID;
-  
+  const clientId = process.env.AZURE_CLIENT_ID;
+  const clientSecret = process.env.AZURE_CLIENT_SECRET;
+  const tenantId = process.env.AZURE_TENANT_ID;
+
   if (!clientId || !clientSecret || !tenantId) {
-    throw new Error('Azure credentials not configured. Please set azure.client_id, azure.client_secret, and azure.tenant_id using Firebase Functions config.');
+    throw new Error('Azure credentials not configured. Ensure AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID are set in Secret Manager.');
   }
   
   console.log('Fetching token for client_id:', clientId, 'tenant_id:', tenantId);

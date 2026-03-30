@@ -87,6 +87,7 @@ exports.onAttendanceApproved = onDocumentUpdated(
   {
     document: "timeAttendance/{docId}",
     region: "asia-east2",
+    secrets: ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"],
   },
   async (event) => {
     const before = event.data.before.data();
