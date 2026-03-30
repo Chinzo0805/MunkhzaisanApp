@@ -32,11 +32,8 @@
           <button @click="$router.push('/warehouse-requests')" class="btn-action warehouse-request">
             📦 Агуулахын хүсэлт
           </button>
-          <button v-if="!authStore.userData?.isSupervisor" @click="$router.push('/salary-report')" class="btn-action salary">
+          <button v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
-          </button>
-          <button v-if="authStore.userData?.isAccountant" @click="$router.push('/supervisor-salary')" class="btn-action salary">
-            💰 Цалин батлах
           </button>
         </div>
 
@@ -76,16 +73,7 @@
         <div v-if="authStore.userData?.isAccountant" class="quick-actions" style="margin-top:12px;">
           <div class="section-label">📊 Тайлангууд</div>
           <button @click="$router.push('/project-summary')" class="btn-action project">
-            📋 Төслийн нэгтгэл
-          </button>
-          <button @click="$router.push('/supervisor-salary')" class="btn-action salary">
-            💰 Цалингийн тооцоо
-          </button>
-          <button @click="$router.push('/supervisor-bounty')" class="btn-action bounty">
-            🏆 Урамшуулал тайлан
-          </button>
-          <button @click="$router.push('/transaction-report')" class="btn-action finance">
-            💵 Гүйлгээний тайлан
+            ⊞ Канбан
           </button>
         </div>
       </div>
