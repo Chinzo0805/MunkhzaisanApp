@@ -119,22 +119,16 @@
             <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
               Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="sortBy('IncomeHR')" class="sortable" style="color:#0369a1;">Нийт орлого {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             
             <template v-if="viewMode === 'default'">
               <th @click="sortBy('HourPerformance')" class="sortable">
                 Гүйцэтгэл % {{ sortColumn === 'HourPerformance' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
-              <th @click="sortBy('BaseAmount')" class="sortable">
-                Инженер урамшуулал {{ sortColumn === 'BaseAmount' ? (sortAsc ? '↑' : '↓') : '' }}
-              </th>
-              <th @click="sortBy('EngineerHand')" class="sortable">
-                Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
-              </th>
               <th class="th-invoice-col">Нэхэмжлэх</th>
               <th class="th-date-col">Нэхэмжлэх огноо</th>
               <th class="th-date-col">Орлогын огноо</th>
               <th class="th-invoice-col">E-баримт</th>
-              <th @click="sortBy('IncomeHR')" class="sortable">Нийт орлого {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -251,24 +245,16 @@
               />
               <span v-else class="ref-id-cell">{{ project.referenceIdfromCustomer || '-' }}</span>
             </td>
+            <td class="number-cell" style="color:#0369a1;font-weight:600;">{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</td>
             
             <template v-if="viewMode === 'default'">
               <td class="number-cell">
                 <span>{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
               </td>
-              
-              <td class="number-cell">
-                <span>{{ project.BaseAmount ? project.BaseAmount.toLocaleString() : '-' }}</span>
-              </td>
-              
-              <td class="number-cell">
-                <span>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
-              </td>
               <td class="invoice-cell"><input type="checkbox" :checked="project.isInvoiceSent" @change="saveInlineField(project, 'isInvoiceSent', $event.target.checked)" class="inline-check" /></td>
               <td class="date-cell"><input type="date" :value="project.InvoiceDate || ''" @change="saveInlineField(project, 'InvoiceDate', $event.target.value)" class="inline-date-input" /></td>
               <td class="date-cell"><input type="date" :value="project.IncomeDate || ''" @change="saveInlineField(project, 'IncomeDate', $event.target.value)" class="inline-date-input" /></td>
               <td class="invoice-cell"><input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" class="inline-check" /></td>
-              <td class="number-cell" style="color:#0369a1;font-weight:600;">{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</td>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -378,6 +364,7 @@
         <tfoot v-if="viewMode === 'financial'">
           <tr class="totals-row">
             <td colspan="5" class="totals-label">Нийт дүн:</td>
+            <td class="number-cell" style="color:#0369a1;font-weight:700;">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalEmployeeLaborCost.toLocaleString() }}</td>
@@ -416,6 +403,7 @@
         <tfoot v-else-if="viewMode === 'summary'">
           <tr class="totals-row">
             <td colspan="5" class="totals-label">Нийт дүн:</td>
+            <td class="number-cell" style="color:#0369a1;font-weight:700;">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell summary-main">
               <span style="color: #10b981; font-weight: 700;">{{ sumTotalIncome.toLocaleString() }}</span>
             </td>
