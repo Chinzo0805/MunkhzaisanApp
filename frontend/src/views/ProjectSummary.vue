@@ -57,6 +57,26 @@
       </button>
     </div>
 
+    <!-- Project Type Filter -->
+    <div class="filter-buttons-section" style="margin-top:-8px;">
+      <button :class="['filter-btn', { active: listTypeFilter === 'all' }]" @click="listTypeFilter = 'all'">
+        <span class="filter-label">🔀 Бүгд</span>
+        <span class="filter-count">{{ allProjects.length }}</span>
+      </button>
+      <button :class="['filter-btn', 'filter-working', { active: listTypeFilter === 'paid' }]" @click="listTypeFilter = 'paid'">
+        <span class="filter-label">✅ Угсралтын</span>
+        <span class="filter-count">{{ allProjects.filter(p => (p.projectType||'paid')==='paid').length }}</span>
+      </button>
+      <button :class="['filter-btn', 'filter-handover', { active: listTypeFilter === 'overtime' }]" @click="listTypeFilter = 'overtime'">
+        <span class="filter-label">⏱️ Ашиглалт (илүү цаг)</span>
+        <span class="filter-count">{{ allProjects.filter(p => p.projectType==='overtime').length }}</span>
+      </button>
+      <button :class="['filter-btn', 'filter-planned', { active: listTypeFilter === 'unpaid' }]" @click="listTypeFilter = 'unpaid'">
+        <span class="filter-label">🚫 Суурь цалин</span>
+        <span class="filter-count">{{ allProjects.filter(p => p.projectType==='unpaid').length }}</span>
+      </button>
+    </div>
+
     <!-- Search and Refresh Section -->
     <div class="filters-section">
       <div class="filter-group">
@@ -123,6 +143,11 @@
               <th @click="sortBy('EngineerHand')" class="sortable">
                 Инженер гар {{ sortColumn === 'EngineerHand' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
+              <th class="th-invoice-col">Нэхэмжлэх</th>
+              <th class="th-date-col">Нэхэмжлэх огноо</th>
+              <th class="th-date-col">Орлогын огноо</th>
+              <th class="th-invoice-col">E-баримт</th>
+              <th @click="sortBy('IncomeHR')" class="sortable">Нийт орлого {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -165,6 +190,10 @@
               <th @click="sortBy('TotalProfit')" class="sortable financial-total">
                 Нийт ашиг {{ sortColumn === 'TotalProfit' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
+              <th class="th-invoice-col">Нэхэмжлэх</th>
+              <th class="th-date-col">Нэхэмжлэх огноо</th>
+              <th class="th-date-col">Орлогын огноо</th>
+              <th class="th-invoice-col">E-баримт</th>
             </template>
             
             <template v-else-if="viewMode === 'summary'">
@@ -192,6 +221,10 @@
               <th @click="sortBy('additionalValue')" class="sortable summary-detail">
                 Нэмэлт {{ sortColumn === 'additionalValue' ? (sortAsc ? '↑' : '↓') : '' }}
               </th>
+              <th class="th-invoice-col">Нэхэмжлэх</th>
+              <th class="th-date-col">Нэхэмжлэх огноо</th>
+              <th class="th-date-col">Орлогын огноо</th>
+              <th class="th-invoice-col">E-баримт</th>
             </template>
             
             <th class="actions-col">Үйлдэл</th>
@@ -244,6 +277,11 @@
               <td class="number-cell">
                 <span>{{ project.EngineerHand ? project.EngineerHand.toLocaleString() : '-' }}</span>
               </td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isInvoiceSent" @change="saveInlineField(project, 'isInvoiceSent', $event.target.checked)" class="inline-check" /></td>
+              <td class="date-cell"><input type="date" :value="project.InvoiceDate || ''" @change="saveInlineField(project, 'InvoiceDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="date-cell"><input type="date" :value="project.IncomeDate || ''" @change="saveInlineField(project, 'IncomeDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" class="inline-check" /></td>
+              <td class="number-cell" style="color:#0369a1;font-weight:600;">{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</td>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -298,6 +336,10 @@
                   {{ project.TotalProfit ? project.TotalProfit.toLocaleString() : '-' }}
                 </span>
               </td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isInvoiceSent" @change="saveInlineField(project, 'isInvoiceSent', $event.target.checked)" class="inline-check" /></td>
+              <td class="date-cell"><input type="date" :value="project.InvoiceDate || ''" @change="saveInlineField(project, 'InvoiceDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="date-cell"><input type="date" :value="project.IncomeDate || ''" @change="saveInlineField(project, 'IncomeDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" class="inline-check" /></td>
             </template>
             
             <template v-else-if="viewMode === 'summary'">
@@ -327,6 +369,10 @@
               <td class="number-cell summary-detail">
                 <span>{{ project.additionalValue ? project.additionalValue.toLocaleString() : '-' }}</span>
               </td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isInvoiceSent" @change="saveInlineField(project, 'isInvoiceSent', $event.target.checked)" class="inline-check" /></td>
+              <td class="date-cell"><input type="date" :value="project.InvoiceDate || ''" @change="saveInlineField(project, 'InvoiceDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="date-cell"><input type="date" :value="project.IncomeDate || ''" @change="saveInlineField(project, 'IncomeDate', $event.target.value)" class="inline-date-input" /></td>
+              <td class="invoice-cell"><input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" class="inline-check" /></td>
             </template>
             
             <td class="actions-cell">
@@ -376,6 +422,7 @@
                 {{ grandTotalProfit.toLocaleString() }}
               </span>
             </td>
+            <td></td><td></td><td></td><td></td>
             <td></td>
           </tr>
         </tfoot>
@@ -398,6 +445,7 @@
             <td class="number-cell summary-detail">{{ totalExpenceMaterial.toLocaleString() }}</td>
             <td class="number-cell summary-detail">{{ sumExpenceHSE.toLocaleString() }}</td>
             <td class="number-cell summary-detail">{{ totalAdditionalValue.toLocaleString() }}</td>
+            <td></td><td></td><td></td><td></td>
             <td></td>
           </tr>
         </tfoot>
@@ -443,6 +491,7 @@ const recalculating = ref(false);
 const allProjects = computed(() => projectsStore.projects);
 
 const selectedStatus = ref('');
+const listTypeFilter = ref('all');
 const searchQuery = ref('');
 const viewMode = ref('default'); // 'default', 'financial', 'summary'
 const projectManagementRef = ref(null);
@@ -474,6 +523,10 @@ const filteredProjects = computed(() => {
       const projectStatus = (p.Status || '').trim();
       return projectStatus === selectedStatus.value;
     });
+  }
+
+  if (listTypeFilter.value !== 'all') {
+    filtered = filtered.filter(p => (p.projectType || 'paid') === listTypeFilter.value);
   }
   
   if (searchQuery.value.trim()) {
@@ -658,6 +711,18 @@ function getStatusClass(status) {
     'Дууссан': 'status-finished'
   };
   return statusMap[status] || 'status-working';
+}
+
+async function saveInlineField(project, field, value) {
+  if (!project.docId) return;
+  try {
+    await updateDoc(doc(db, 'projects', project.docId), {
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('Inline save failed:', e);
+  }
 }
 
 function startEdit(project) {
@@ -1249,6 +1314,43 @@ onUnmounted(() => {
   text-align: right;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.th-invoice-col {
+  width: 60px;
+  min-width: 55px;
+  text-align: center;
+}
+
+.th-date-col {
+  width: 120px;
+  min-width: 110px;
+}
+
+.invoice-cell {
+  text-align: center;
+}
+
+.invoice-cell .inline-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.date-cell .inline-date-input {
+  width: 100%;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: #fff;
+  color: #374151;
+}
+
+.date-cell .inline-date-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
 }
 
 .number-cell.hours {
