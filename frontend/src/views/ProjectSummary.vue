@@ -57,26 +57,6 @@
       </button>
     </div>
 
-    <!-- Project Type Filter -->
-    <div class="filter-buttons-section" style="margin-top:-8px;">
-      <button :class="['filter-btn', { active: listTypeFilter === 'all' }]" @click="listTypeFilter = 'all'">
-        <span class="filter-label">🔀 Бүгд</span>
-        <span class="filter-count">{{ allProjects.length }}</span>
-      </button>
-      <button :class="['filter-btn', 'filter-working', { active: listTypeFilter === 'paid' }]" @click="listTypeFilter = 'paid'">
-        <span class="filter-label">✅ Угсралтын</span>
-        <span class="filter-count">{{ allProjects.filter(p => (p.projectType||'paid')==='paid').length }}</span>
-      </button>
-      <button :class="['filter-btn', 'filter-handover', { active: listTypeFilter === 'overtime' }]" @click="listTypeFilter = 'overtime'">
-        <span class="filter-label">⏱️ Ашиглалт (илүү цаг)</span>
-        <span class="filter-count">{{ allProjects.filter(p => p.projectType==='overtime').length }}</span>
-      </button>
-      <button :class="['filter-btn', 'filter-planned', { active: listTypeFilter === 'unpaid' }]" @click="listTypeFilter = 'unpaid'">
-        <span class="filter-label">🚫 Суурь цалин</span>
-        <span class="filter-count">{{ allProjects.filter(p => p.projectType==='unpaid').length }}</span>
-      </button>
-    </div>
-
     <!-- Search and Refresh Section -->
     <div class="filters-section">
       <div class="filter-group">
@@ -100,6 +80,13 @@
       <button @click="recalculateAll" class="btn-recalculate" :disabled="recalculating">
         {{ recalculating ? 'Тооцоолж байна...' : '🧮 Бүгдийг дахин тооцоолох' }}
       </button>
+
+      <div class="type-filter-inline">
+        <button :class="['tfi-btn', { 'tfi-active': listTypeFilter === 'all' }]" @click="listTypeFilter = 'all'">Бүгд</button>
+        <button :class="['tfi-btn', { 'tfi-active': listTypeFilter === 'paid' }]" @click="listTypeFilter = 'paid'">Угсралтын</button>
+        <button :class="['tfi-btn', { 'tfi-active': listTypeFilter === 'overtime' }]" @click="listTypeFilter = 'overtime'">Ашиглалт</button>
+        <button :class="['tfi-btn', { 'tfi-active': listTypeFilter === 'unpaid' }]" @click="listTypeFilter = 'unpaid'">Суурь цалин</button>
+      </div>
     </div>
 
     <!-- Loading State -->
@@ -1148,6 +1135,37 @@ onUnmounted(() => {
 .btn-recalculate:disabled {
   background: #9ca3af;
   cursor: not-allowed;
+}
+
+.type-filter-inline {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.tfi-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #f9fafb;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+  height: 28px;
+  line-height: 1;
+}
+
+.tfi-btn:hover {
+  background: #e5e7eb;
+}
+
+.tfi-btn.tfi-active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #2563eb;
 }
 
 .stats-section {
