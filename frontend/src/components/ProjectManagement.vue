@@ -1245,6 +1245,7 @@ function handleAddItem() {
   isEditMode.value = true; // Add mode is always edit mode
   activeTab.value = 'basic';
   form.value.id = maxId + 1;
+  form.value.StartDate = new Date().toISOString().slice(0, 10);
   showModal.value = true;
 }
 
