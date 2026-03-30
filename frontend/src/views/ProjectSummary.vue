@@ -810,15 +810,18 @@ async function saveEdit(project) {
       updatedAt: new Date().toISOString()
     });
     
-    // Update local data
-    const index = allProjects.value.findIndex(p => p.id === project.id);
-    if (index !== -1) {
-      allProjects.value[index].ResponsibleEmp = editForm.value.ResponsibleEmp;
-      allProjects.value[index].referenceIdfromCustomer = editForm.value.referenceIdfromCustomer;
-      allProjects.value[index].isInvoiceSent = editForm.value.isInvoiceSent;
-      allProjects.value[index].InvoiceDate = editForm.value.InvoiceDate;
-      allProjects.value[index].IncomeDate = editForm.value.IncomeDate;
-      allProjects.value[index].isEbarimtSent = editForm.value.isEbarimtSent;
+    // Directly patch the store array so the UI updates immediately
+    const idx = projectsStore.projects.findIndex(p => p.id === project.id);
+    if (idx !== -1) {
+      projectsStore.projects[idx] = {
+        ...projectsStore.projects[idx],
+        ResponsibleEmp: editForm.value.ResponsibleEmp,
+        referenceIdfromCustomer: editForm.value.referenceIdfromCustomer,
+        isInvoiceSent: editForm.value.isInvoiceSent,
+        InvoiceDate: editForm.value.InvoiceDate,
+        IncomeDate: editForm.value.IncomeDate,
+        isEbarimtSent: editForm.value.isEbarimtSent,
+      };
     }
     
     cancelEdit();
