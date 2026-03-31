@@ -58,12 +58,34 @@ function computeLaborCost(baseSalary, normalHours, absentHours, workingDaysMonth
 }
 
 /**
+ * ХХОАТ хөнгөлөлт (HHOAT discount) — tiered by ТНО (taxable income).
+ * Government table — hardcoded as it is a stable regulation.
+ *
+ * TNO < 500,000          → 20,000
+ * 500,001 – 1,000,000   → 18,000
+ * 1,000,001 – 1,500,000 → 16,000
+ * 1,500,001 – 2,000,000 → 14,000
+ * 2,000,001 – 2,500,000 → 12,000
+ * 2,500,001 – 3,000,000 → 10,000
+ * > 3,000,000            →  0
+ */
+function getHhoatDiscount(tno) {
+  if (tno <  500000) return 20000;
+  if (tno < 1000000) return 18000;
+  if (tno < 1500000) return 16000;
+  if (tno < 2000000) return 14000;
+  if (tno < 2500000) return 12000;
+  if (tno < 3000000) return 10000;
+  return 0;
+}
+
+/**
  * Recalculate all derived salary fields for one employee row.
  * Accepts the row with raw + stored manual fields, returns the row
  * with every computed field updated.
  *
  * Required in row: baseSalary, workedDays,
- *   additionalPay, annualLeavePay, discount, advance, otherDeductions, type
+ *   additionalPay, annualLeavePay, advance, otherDeductions, type
  * @param {object} row
  * @param {number} workingDays  — period's А/хоног
  */
@@ -96,15 +118,18 @@ function recalcEmployeeRow(row, workingDays) {
   // ХХОАТ = ТНО × 10%
   const hhoat = Math.round(tno * 0.10);
 
-  const discount        = row.discount        || 0;  // manual
-  const advance         = row.advance         || 0;  // manual
-  const otherDeductions = row.otherDeductions || 0;  // manual
+  const advance           = row.advance           || 0;  // manual
+  const otherDeductions   = row.otherDeductions   || 0;  // manual
+  const recurringDeductions = row.recurringDeductions || 0;  // auto from employeeDeductions
+
+  // ХХОАТ хөнгөлөлт — auto-derived from ТНО (tiered government table)
+  const discount = getHhoatDiscount(tno);
 
   // ХХОАТ хөнгөлөлт хассан дүн
   const hhoatNet = Math.max(0, hhoat - discount);
 
-  // Гарт олгох дүн = Нийт бодогдсон − НДШ ажилтан − ХХОАТ(хөнг.) − Урьдчилгаа − Бусад суутгал
-  const netPay = totalGross - employeeNDS - hhoatNet - advance - otherDeductions;
+  // Гарт олгох дүн = Нийт бодогдсон − НДШ ажилтан − ХХОАТ(хөнг.) − Урьдчилгаа − Бусад суутгал − Тогтмол суутгал
+  const netPay = totalGross - employeeNDS - hhoatNet - advance - otherDeductions - recurringDeductions;
 
   return {
     ...row,
@@ -118,6 +143,7 @@ function recalcEmployeeRow(row, workingDays) {
     tno,
     hhoat,
     hhoatNet,
+    recurringDeductions,
     netPay,
     totalPay: Math.max(0, netPay),
   };
@@ -158,13 +184,14 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   }
   if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
-  // Fetch employees and time attendance (no projects needed — bounty not calculated here)
-  const [taSnap, empSnap] = await Promise.all([
+  // Fetch employees, time attendance, AND recurring deductions
+  const [taSnap, empSnap, dedSnap] = await Promise.all([
     db.collection('timeAttendance')
       .where('Day', '>=', startDate)
       .where('Day', '<=', endDate)
       .get(),
     db.collection('employees').get(),
+    db.collection('employeeDeductions').where('status', '==', 'active').get(),
   ]);
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
@@ -179,6 +206,17 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const e = d.data();
     const key = normalizeId(e.ID ?? e.Id);
     if (key) empMap.set(key, e);
+  });
+
+  // Group recurring deductions by employeeId (only those that have started)
+  const deductionsByEmp = new Map();
+  dedSnap.docs.forEach(d => {
+    const data = d.data();
+    if ((data.startMonth || '') > yearMonth) return; // not started yet
+    const empId = normalizeId(data.employeeId);
+    if (!empId) return;
+    if (!deductionsByEmp.has(empId)) deductionsByEmp.set(empId, []);
+    deductionsByEmp.get(empId).push({ id: d.id, ...data });
   });
 
   // Group time attendance by employee
@@ -233,10 +271,19 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     // isNDS=false employees are bounty-only — force baseSalary to 0 so labour cost is 0.
     // They still appear in the list so their salary adjustments (bounty) can be managed.
     const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
-    const hhoatDiscount = parseFloat(emp?.hhoatDiscount) || 0;
     const { effectiveHours } = computeLaborCost(
       baseSalary, ta.normalHours, ta.absentHours, workingDaysMonth
     );
+
+    // Recurring deductions from employeeDeductions collection
+    const empDeds = deductionsByEmp.get(empId) || [];
+    const recurringDeductions = empDeds.reduce((s, d) => s + (d.monthlyAmount || 0), 0);
+    const recurringDeductionsDetail = empDeds.map(d => ({
+      id:            d.id,
+      description:   d.description,
+      type:          d.type,
+      monthlyAmount: d.monthlyAmount,
+    }));
 
     return recalcEmployeeRow({
       employeeId: empId,
@@ -246,11 +293,12 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       normalHours:    Math.round(ta.normalHours),
       absentHours:    Math.round(ta.absentHours),
       effectiveHours: Math.round(effectiveHours),
-      additionalPay:   0,
-      annualLeavePay:  0,
-      discount:        hhoatDiscount,
-      advance:         0,
-      otherDeductions: 0,
+      additionalPay:        0,
+      annualLeavePay:       0,
+      advance:              0,
+      otherDeductions:      0,
+      recurringDeductions,
+      recurringDeductionsDetail,
     }, workingDays);
   }
 

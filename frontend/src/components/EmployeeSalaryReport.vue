@@ -43,13 +43,6 @@
               </span>
               <span v-else class="stamp-pending">⏳ Хүлээгдэж байна</span>
             </div>
-            <div class="stamp-row">
-              <span class="stamp-label">🧾 Нягтлан</span>
-              <span v-if="bountyConfirmed?.accountantApproval" class="stamp-ok">
-                ✅ <span class="stamp-date">{{ fmtDate(bountyConfirmed.accountantApproval.approvedAt) }}</span>
-              </span>
-              <span v-else class="stamp-pending">⏳ Хүлээгдэж байна</span>
-            </div>
           </div>
 
           <div v-if="bountyProjects.length === 0" class="no-data-sm">

@@ -67,6 +67,9 @@
           <button @click="$router.push('/transaction-report')" class="btn-action finance">
             💵 Гүйлгээний тайлан
           </button>
+          <button @click="$router.push('/employee-table')" class="btn-action employee-table">
+            👥 Ажилтны жагсаалт
+          </button>
         </div>
 
         <!-- Accountant: Report buttons -->
@@ -86,6 +89,9 @@
           </button>
           <button @click="$router.push('/transaction-report')" class="btn-action finance">
             💵 Гүйлгээний тайлан
+          </button>
+          <button @click="$router.push('/employee-table')" class="btn-action employee-table">
+            👥 Ажилтны жагсаалт
           </button>
         </div>
       </div>
@@ -648,6 +654,14 @@ function handleSaved(event) {
 
 .btn-action.bounty:hover {
   box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+}
+
+.btn-action.employee-table {
+  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+}
+.btn-action.employee-table:hover {
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.4);
 }
 
 .section-label {

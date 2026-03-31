@@ -209,11 +209,6 @@ exports.syncFromExcelToFirestore = functions.region('asia-east2').https.onReques
         Object.assign(employeeData, savedCustomFields.get(numericId));
       }
 
-      // Map HHOAT_deduction column → hhoatDiscount field used by salary calculations
-      if (employeeData.HHOAT_deduction !== undefined && employeeData.HHOAT_deduction !== '') {
-        employeeData.hhoatDiscount = parseFloat(employeeData.HHOAT_deduction) || 0;
-      }
-      
       // Ensure Role is one of the valid types
       const validRoles = ['Employee', 'Supervisor', 'nonEmployee', 'Financial'];
       if (!employeeData.Role || !validRoles.includes(employeeData.Role)) {

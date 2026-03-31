@@ -18,6 +18,7 @@ import SupervisorSalaryReport from '../views/SupervisorSalaryReport.vue';
 import SupervisorBountyReport from '../views/SupervisorBountyReport.vue';
 import PublicBountyReport from '../views/PublicBountyReport.vue';
 import TransactionReport from '../views/TransactionReport.vue';
+import EmployeeTableView from '../views/EmployeeTableView.vue';
 
 
 const routes = [
@@ -131,6 +132,12 @@ const routes = [
     name: 'PublicBountyReport',
     component: PublicBountyReport,
     meta: { public: true },
+  },
+  {
+    path: '/employee-table',
+    name: 'EmployeeTable',
+    component: EmployeeTableView,
+    meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];
 

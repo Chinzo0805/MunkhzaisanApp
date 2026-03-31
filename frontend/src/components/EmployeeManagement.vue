@@ -9,8 +9,8 @@
         {{ showList ? 'Hide' : 'Edit' }} Employees
       </button>
     </div>
-    
-    <!-- Employee List -->
+
+    <!-- Employee List (card grid) -->
     <div v-if="showList" class="item-list">
       <h5>Select Employee to Edit:</h5>
       
@@ -189,11 +189,6 @@
               <input v-model.number="form.Salary" type="number" min="0" step="1000" placeholder="1500000" />
               <small style="color:#6b7280;font-size:11px;">Default: 1,500,000₮</small>
             </div>
-            <div class="form-group">
-              <label>ХХОАТ хөнгөлөлт ₮</label>
-              <input v-model.number="form.hhoatDiscount" type="number" min="0" step="1000" placeholder="0" />
-              <small style="color:#6b7280;font-size:11px;">Сарын ХХОАТ хөнгөлөлт</small>
-            </div>
           </div>
 
           <div class="form-row">
@@ -222,6 +217,14 @@
             <button type="button" @click="closeModal" class="cancel-btn">Cancel</button>
           </div>
         </form>
+
+        <!-- Recurring deductions — only shown when editing an existing employee -->
+        <div v-if="editingItem" style="margin-top:16px;">
+          <EmployeeDeductionsPanel
+            :employeeId="String(editingItem.Id || editingItem.id || '')"
+            :employeeName="(editingItem.FirstName || '') + ' ' + (editingItem.LastName || '')"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -231,10 +234,11 @@
 import { ref, computed, watch } from 'vue';
 import { useEmployeesStore } from '../stores/employees';
 import { manageEmployee } from '../services/api';
+import EmployeeDeductionsPanel from './EmployeeDeductionsPanel.vue';
 
 const employeesStore = useEmployeesStore();
 
-const showList = ref(false);
+const showList  = ref(false);
 const showModal = ref(false);
 const editingItem = ref(null);
 const searchQuery = ref('');
@@ -262,7 +266,6 @@ const form = ref({
   Role: 'Employee',
   Email: '',
   Salary: 1500000,
-  hhoatDiscount: 0,
   isNDS: true,
   autoTA: false,
 });
@@ -366,7 +369,6 @@ function editItem(employee) {
     Role: validRole,
     Email: employee.Email || '',
     Salary: parseFloat(employee.Salary) || 1500000,
-    hhoatDiscount: parseFloat(employee.hhoatDiscount) || 0,
     isNDS: employee.isNDS !== false,  // default true if not set
     autoTA: !!employee.autoTA,
   };
@@ -396,7 +398,7 @@ function closeModal() {
     Role: 'Employee',
     Email: '',
     Salary: 1500000,
-    hhoatDiscount: 0,    isNDS: true,
+    isNDS: true,
     autoTA: false,  };
 }
 

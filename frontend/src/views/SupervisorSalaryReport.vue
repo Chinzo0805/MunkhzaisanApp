@@ -286,7 +286,7 @@
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.calculatedSalary) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
               <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
-              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employeeNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)) : '—' }}</td>
+              <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employeeNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)+(emp.recurringDeductions||0)) : '—' }}</td>
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
               <td class="tc-expand">
                 <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId, emp)">
@@ -313,10 +313,17 @@
                       <span>НДШ ажилтан (11.5%):</span><span class="val-deduct">- {{ formatMnt(emp.employeeNDS) }}</span>
                       <span>ТНО:</span><span>{{ formatMnt(emp.tno) }}</span>
                       <span>ХХОАТ (10%):</span><span class="val-deduct">- {{ formatMnt(emp.hhoat) }}</span>
-                      <span>ХХОАТ хөнгөлөлт (emp):</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
+                      <span>ХХОАТ хөнгөлөлт (ТНО-р):</span><span :class="(emp.discount||0) > 0 ? 'val-money' : 'val-zero'">{{ formatMnt(emp.discount || 0) }}</span>
                       <span>ХХОАТ хөнгөлөлт хассан:</span><span class="val-deduct">- {{ formatMnt(emp.hhoatNet) }}</span>
                       <span>Урьдчилгаа:</span><span :class="(emp.advance||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.advance || 0) }}</span>
                       <span>Бусад суутгал:</span><span :class="(emp.otherDeductions||0) > 0 ? 'val-deduct' : 'val-zero'">- {{ formatMnt(emp.otherDeductions || 0) }}</span>
+                      <template v-if="(emp.recurringDeductions||0) > 0">
+                        <span class="grid-sep">Тогтмол суутгал:</span><span class="val-deduct grid-sep">- {{ formatMnt(emp.recurringDeductions) }}</span>
+                        <template v-for="d in (emp.recurringDeductionsDetail||[])" :key="d.id">
+                          <span style="padding-left:12px;font-size:0.78rem;color:#6b7280;">↳ {{ d.description }}</span>
+                          <span style="font-size:0.78rem;color:#b91c1c;">- {{ formatMnt(d.monthlyAmount) }}</span>
+                        </template>
+                      </template>
                       <span>Ажилласан цаг (ирсэн+томилолт):</span><span>{{ emp.normalHours ?? 0 }}ц</span>
                       <span>Тасалсан цаг (×2 тооцогдоно):</span><span class="val-deduct">−{{ (emp.absentHours ?? 0) * 2 }}ц</span>
                       <span>Цалин тооцоолох цаг:</span><span>{{ emp.effectiveHours ?? 0 }}ц</span>
@@ -333,19 +340,6 @@
                       :readonly="isSalaryLocked"
                       @updated="onAdjustmentsUpdated(emp.employeeId, $event)"
                     />
-                  </div>
-
-                  <!-- ХХОАТ хөнгөлөлт override -->
-                  <div v-if="editingOverrides[emp.employeeId] && !isSalaryLocked" class="detail-section detail-edit-section">
-                    <strong>✏️ ХХОАТ хөнгөлөлт тохируулах</strong>
-                    <div class="edit-form">
-                      <label class="edit-label">ХХОАТ хөнгөлөлт (₮):
-                        <input type="number" min="0" v-model.number="editingOverrides[emp.employeeId].discount" class="edit-input" />
-                      </label>
-                      <button @click="saveRowOverrides(emp.employeeId)" :disabled="savingRows.has(emp.employeeId)" class="btn-save-row">
-                        {{ savingRows.has(emp.employeeId) ? 'Хадгалж байна...' : '💾 Хадгалах' }}
-                      </button>
-                    </div>
                   </div>
                 </div>
               </td>
@@ -418,7 +412,7 @@
             <tr><td>НДШ байгааллага (12.5%)</td><td>totalGross × 12.5% → лавлах, суутгагдахгүй</td></tr>
             <tr><td>ТНО</td><td>totalGross − employeeNDS</td></tr>
             <tr><td>ХХОАТ</td><td>ТНО × 10%</td></tr>
-            <tr><td>ХХОАТ хөнгөлөлт хассан</td><td>ХХОАТ − hhoatDiscount</td></tr>
+            <tr><td>ХХОАТ хөнгөлөлт хассан</td><td>ХХОАТ − getHhoatDiscount(ТНО) (тогтмол хүснэгт)</td></tr>
             <tr class="fref-sep"><td>Гарт олгох</td><td>totalGross − employeeNDS − hhoatNet − урьдчилгаа − бусад суутгал</td></tr>
           </table>
         </div>
@@ -516,7 +510,7 @@ function salarySnapshot(employees) {
         gross: Math.round(e.totalGross       || 0),
         hhv:   Math.round(e.hhoatNet         || 0),
         add:   Math.round((e.additionalPay   || 0) + (e.annualLeavePay || 0)),
-        ded:   Math.round((e.advance         || 0) + (e.otherDeductions || 0)),
+        ded:   Math.round((e.advance         || 0) + (e.otherDeductions || 0) + (e.recurringDeductions || 0)),
         disc:  Math.round(e.discount         || 0),
       }))
   );
@@ -643,12 +637,49 @@ async function confirmSalary() {
       };
       await updateDoc(docRef, updates);
       confirmedInfo.value = { ...confirmedInfo.value, ...updates };
+      if (fullyConfirmed) {
+        await updateInstallmentBalances(salaryData.value, selectedMonth.value);
+      }
     }
   } catch (err) {
     console.error('confirmSalary error:', err);
     alert('Батлахад алдаа гарлаа: ' + err.message);
   } finally {
     confirming.value = false;
+  }
+}
+
+/**
+ * After salary is fully confirmed, update paidAmount on installment deductions.
+ * Uses lastAppliedMonth as idempotency guard — safe to call multiple times.
+ */
+async function updateInstallmentBalances(employees, yearMonth) {
+  try {
+    const dedSnap = await getDocs(
+      query(collection(db, 'employeeDeductions'),
+        where('status', '==', 'active'),
+        where('type',   '==', 'installment'),
+      )
+    );
+    const now = new Date().toISOString();
+    const batch = dedSnap.docs
+      .filter(d => {
+        const data = d.data();
+        return data.lastAppliedMonth !== yearMonth && (data.startMonth || '') <= yearMonth;
+      });
+    await Promise.all(batch.map(async d => {
+      const data = d.data();
+      const newPaid = (data.paidAmount || 0) + (data.monthlyAmount || 0);
+      const completed = newPaid >= (data.totalAmount || 0);
+      await updateDoc(doc(db, 'employeeDeductions', d.id), {
+        paidAmount:       newPaid,
+        status:           completed ? 'completed' : 'active',
+        lastAppliedMonth: yearMonth,
+        updatedAt:        now,
+      });
+    }));
+  } catch (e) {
+    console.error('updateInstallmentBalances error:', e);
   }
 }
 
@@ -884,7 +915,6 @@ function toggleExpand(id, emp) {
         [id]: {
           additionalPay:   emp?.additionalPay   || 0,
           annualLeavePay:  emp?.annualLeavePay  || 0,
-          discount:        emp?.discount        || 0,
           advance:         emp?.advance         || 0,
           otherDeductions: emp?.otherDeductions || 0,
         },
@@ -903,7 +933,7 @@ const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e
 const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
 const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
 const totalAdditions   = computed(() => salaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
-const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0), 0));
+const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0) + (e.recurringDeductions||0), 0));
 
 // ── Helpers ──────────────────────────────────────────────────────
 function formatMnt(n) {

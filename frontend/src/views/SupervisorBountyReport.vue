@@ -31,18 +31,8 @@
 
     <!-- Approval banners -->
     <div v-if="confirmedBountyInfo?.fullyConfirmed" class="confirmed-banner confirmed-full">
-      ✅ <strong>Урамшуулал бүрэн батлагдсан</strong>
+      ✅ <strong>Урамшуулал батлагдсан</strong>
       <span class="conf-stamp">👤 Менежер · {{ fmtApprovalDate(confirmedBountyInfo.supervisorApproval?.approvedAt) }}</span>
-      <span class="conf-sep">&amp;</span>
-      <span class="conf-stamp">🧾 Нягтлан · {{ fmtApprovalDate(confirmedBountyInfo.accountantApproval?.approvedAt) }}</span>
-    </div>
-    <div v-else-if="confirmedBountyInfo" class="confirmed-banner confirmed-partial">
-      ⏳ <strong>Урамшуулал батлалт хүлээж байна</strong>
-      <span v-if="confirmedBountyInfo.supervisorApproval" class="conf-stamp conf-done">✓ Менежер · {{ fmtApprovalDate(confirmedBountyInfo.supervisorApproval.approvedAt) }}</span>
-      <span v-else class="conf-stamp conf-wait">⏳ Менежер: Хүлээгүй</span>
-      <span class="conf-sep">·</span>
-      <span v-if="confirmedBountyInfo.accountantApproval" class="conf-stamp conf-done">✓ Нягтлан · {{ fmtApprovalDate(confirmedBountyInfo.accountantApproval.approvedAt) }}</span>
-      <span v-else class="conf-stamp conf-wait">⏳ Нягтлан: Хүлээгүй</span>
     </div>
 
     <div v-if="loading" class="loading">Тайлан бэлтгэж байна...</div>
@@ -356,14 +346,12 @@ const confirmedBountyInfo = ref(null);
 const confirming = ref(false);
 
 const iAmSupervisor    = computed(() => !!authStore.userData?.isSupervisor);
-const iAmAccountant    = computed(() => !!authStore.userData?.isAccountant);
-const canApproveBounty = computed(() => iAmSupervisor.value || iAmAccountant.value);
-const myApprovalKey    = computed(() => iAmSupervisor.value ? 'supervisorApproval' : 'accountantApproval');
+const canApproveBounty = computed(() => iAmSupervisor.value);
 const bountyDocId      = computed(() => `${selectedMonth.value}_${selectedRange.value}`);
 const isBountyLocked   = computed(() => confirmedBountyInfo.value?.fullyConfirmed === true);
 const alreadyApproved  = computed(() => {
   if (!confirmedBountyInfo.value || !canApproveBounty.value) return false;
-  return !!confirmedBountyInfo.value[myApprovalKey.value];
+  return !!confirmedBountyInfo.value.supervisorApproval;
 });
 
 function fmtApprovalDate(iso) {
@@ -407,12 +395,12 @@ function buildEmployeesSummary(projList) {
 async function resetApprovals() {
   if (!confirmedBountyInfo.value) return;
   if (confirmedBountyInfo.value.fullyConfirmed) return;
-  if (!confirmedBountyInfo.value.supervisorApproval && !confirmedBountyInfo.value.accountantApproval) return;
+  if (!confirmedBountyInfo.value.supervisorApproval) return;
   try {
     await updateDoc(doc(db, 'confirmedBounties', bountyDocId.value), {
-      supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null,
+      supervisorApproval: null, fullyConfirmed: false, confirmedAt: null,
     });
-    confirmedBountyInfo.value = { ...confirmedBountyInfo.value, supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null };
+    confirmedBountyInfo.value = { ...confirmedBountyInfo.value, supervisorApproval: null, fullyConfirmed: false, confirmedAt: null };
   } catch (e) { console.error('resetApprovals error:', e); }
 }
 
@@ -421,29 +409,19 @@ async function confirmBounty() {
   if (!confirm('Урамшуулалын батлалтыг үсэх үү? Таны батлалтаа өөрчлөх боломжгүй.')) return;
   confirming.value = true;
   try {
-    const docRef   = doc(db, 'confirmedBounties', bountyDocId.value);
-    const stamp    = myApprovalStamp();
-    const otherKey = iAmSupervisor.value ? 'accountantApproval' : 'supervisorApproval';
-    if (!confirmedBountyInfo.value) {
-      const newDoc = {
-        yearMonth:          selectedMonth.value,
-        range:              selectedRange.value,
-        supervisorApproval: iAmSupervisor.value ? stamp : null,
-        accountantApproval: iAmAccountant.value ? stamp : null,
-        fullyConfirmed:     false,
-        confirmedAt:        null,
-        employees:          buildEmployeesSummary(projects.value),
-      };
-      await setDoc(docRef, newDoc);
-      confirmedBountyInfo.value = newDoc;
-    } else {
-      const otherApproval  = confirmedBountyInfo.value[otherKey];
-      const fullyConfirmed = !!otherApproval;
-      const confirmedAt    = fullyConfirmed ? new Date().toISOString() : null;
-      const updates = { [myApprovalKey.value]: stamp, fullyConfirmed, confirmedAt };
-      await updateDoc(docRef, updates);
-      confirmedBountyInfo.value = { ...confirmedBountyInfo.value, ...updates };
-    }
+    const docRef      = doc(db, 'confirmedBounties', bountyDocId.value);
+    const stamp       = myApprovalStamp();
+    const confirmedAt = new Date().toISOString();
+    const newDoc = {
+      yearMonth:          selectedMonth.value,
+      range:              selectedRange.value,
+      supervisorApproval: stamp,
+      fullyConfirmed:     true,
+      confirmedAt,
+      employees:          buildEmployeesSummary(projects.value),
+    };
+    await setDoc(docRef, newDoc);
+    confirmedBountyInfo.value = newDoc;
   } catch (err) {
     console.error('confirmBounty error:', err);
     alert('Батлахад алдаа гарлаа: ' + err.message);

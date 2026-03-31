@@ -49,9 +49,11 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
         ...employees[idx],
         additionalPay:   typeof overrides.additionalPay   === 'number' ? overrides.additionalPay   : (employees[idx].additionalPay   || 0),
         annualLeavePay:  typeof overrides.annualLeavePay  === 'number' ? overrides.annualLeavePay  : (employees[idx].annualLeavePay  || 0),
-        discount:        typeof overrides.discount        === 'number' ? overrides.discount        : (employees[idx].discount        || 0),
         advance:         typeof overrides.advance         === 'number' ? overrides.advance         : (employees[idx].advance         || 0),
         otherDeductions: typeof overrides.otherDeductions === 'number' ? overrides.otherDeductions : (employees[idx].otherDeductions || 0),
+        // recurringDeductions is auto-computed at calculateSalaryForPeriod time — preserve from stored row
+        recurringDeductions:       employees[idx].recurringDeductions       || 0,
+        recurringDeductionsDetail: employees[idx].recurringDeductionsDetail || [],
       };
 
       const recalculated = recalcEmployeeRow(updated, data.workingDays);

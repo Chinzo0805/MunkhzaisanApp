@@ -140,5 +140,13 @@ service cloud.firestore {
                     && resource.data.fullyConfirmed == false;
       allow delete: if false;
     }
+
+    // Employee recurring/installment deductions — supervisors manage; all auth read (salary calc)
+    match /employeeDeductions/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && isSupervisorOrAccountant();
+      allow update: if request.auth != null && isSupervisorOrAccountant();
+      allow delete: if request.auth != null && isSupervisorOrAccountant();
+    }
   }
 }

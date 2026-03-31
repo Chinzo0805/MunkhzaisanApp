@@ -182,10 +182,7 @@ exports.syncEmployeesToExcel = functions
       const rowValues = [];
       for (let i = 0; i < headers.length; i++) {
         const header = headers[i];
-        // Map Excel column HHOAT_deduction ↔ Firestore field hhoatDiscount
-        const value = (header === 'HHOAT_deduction')
-          ? (employee.hhoatDiscount !== undefined ? employee.hhoatDiscount : (employee.HHOAT_deduction !== undefined ? employee.HHOAT_deduction : 0))
-          : employee[header];
+        const value = employee[header];
         if (value === undefined || value === null) {
           rowValues[i] = '';
         } else if (typeof value === 'number') {
