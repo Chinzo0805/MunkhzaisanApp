@@ -73,6 +73,9 @@
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
           </button>
+          <button @click="$router.push('/management-goals')" class="btn-action goals">
+            🎯 Удирдлагын зорилго
+          </button>
         </div>
 
         <!-- Accountant: Report buttons -->
@@ -95,6 +98,9 @@
           </button>
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
+          </button>
+          <button @click="$router.push('/management-goals')" class="btn-action goals">
+            🎯 Удирдлагын зорилго
           </button>
         </div>
       </div>
@@ -777,6 +783,10 @@ function handleSaved(event) {
 .btn-action.employee-table {
   background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
   box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+}
+.btn-action.goals {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
 }
 .btn-action.my-info {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);

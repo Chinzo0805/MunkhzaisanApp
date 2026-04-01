@@ -193,13 +193,14 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
   // Fetch employees, time attendance, AND recurring deductions
-  const [taSnap, empSnap, dedSnap] = await Promise.all([
+  const [taSnap, empSnap, dedSnap, adjSnap] = await Promise.all([
     db.collection('timeAttendance')
       .where('Day', '>=', startDate)
       .where('Day', '<=', endDate)
       .get(),
     db.collection('employees').get(),
     db.collection('employeeDeductions').where('status', '==', 'active').get(),
+    db.collection('salaryAdjustments').where('yearMonth', '==', yearMonth).get(),
   ]);
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
@@ -243,6 +244,24 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const targetMap = direction === 'addition' ? additionsByEmp : deductionsByEmp;
     if (!targetMap.has(empId)) targetMap.set(empId, []);
     targetMap.get(empId).push({ id: d.id, ...data });
+  });
+
+  // Monthly salary adjustments (advance, additions, other deductions) from salaryAdjustments collection.
+  // Keyed by normalised employeeId — built from entries stored by SalaryAdjustmentsPanel / applyAdvanceToEOM.
+  const adjByEmp = new Map();
+  adjSnap.docs.forEach(d => {
+    const adj    = d.data();
+    const empId  = normalizeId(adj.employeeId);
+    if (!empId) return;
+    const entries = adj.entries || [];
+    const adds = entries.filter(e => e.type === 'addition');
+    const deds = entries.filter(e => e.type === 'deduction');
+    adjByEmp.set(empId, {
+      additionalPay:   adds.filter(e => e.category !== 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
+      annualLeavePay:  adds.filter(e => e.category === 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
+      advance:         deds.filter(e => e.category === 'advance').reduce((s,  e) => s + (e.amount || 0), 0),
+      otherDeductions: deds.filter(e => e.category !== 'advance').reduce((s,  e) => s + (e.amount || 0), 0),
+    });
   });
 
   // Group time attendance by employee
@@ -329,10 +348,12 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       normalHours:    Math.round(ta.normalHours),
       absentHours:    Math.round(ta.absentHours),
       effectiveHours: Math.round(effectiveHours),
-      additionalPay:        0,
-      annualLeavePay:       0,
-      advance:              0,
-      otherDeductions:      0,
+      ...((adj => ({
+        additionalPay:   adj.additionalPay   || 0,
+        annualLeavePay:  adj.annualLeavePay  || 0,
+        advance:         adj.advance         || 0,
+        otherDeductions: adj.otherDeductions || 0,
+      }))(adjByEmp.get(empId) || {})),
       recurringDeductions,
       recurringDeductionsDetail,
       recurringAdditions,

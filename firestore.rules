@@ -155,5 +155,11 @@ service cloud.firestore {
       allow update: if request.auth != null && isSupervisorOrAccountant();
       allow delete: if request.auth != null && isSupervisorOrAccountant();
     }
+
+    // Management Goals — supervisors and accountants can read/write
+    match /managementGoals/{goalId} {
+      allow read: if request.auth != null && isSupervisorOrAccountant();
+      allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
+    }
   }
 }

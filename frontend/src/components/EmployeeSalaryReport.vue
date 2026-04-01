@@ -1,17 +1,21 @@
 ﻿<template>
   <div class="salary-page">
 
+    <!-- ===== Shared date picker ===== -->
+    <div class="shared-picker">
+      <label class="picker-label">📅 Сар:</label>
+      <input type="month" v-model="selectedMonth" @change="loadAll" class="month-input" />
+      <label class="picker-label" style="margin-left:12px;">Урамшуулал:</label>
+      <select v-model="bountyDay" @change="loadAll" class="day-select">
+        <option value="10">10-ны</option>
+        <option value="25">25-ны</option>
+      </select>
+    </div>
+
     <!-- ===== Bounty Section ===== -->
     <div class="section-card">
       <div class="section-header-row">
         <div class="section-title">🏆 Урамшуулал</div>
-        <div class="date-selectors">
-          <input type="month" v-model="bountyMonth" @change="loadBounty" class="month-input" />
-          <select v-model="bountyDay" @change="loadBounty" class="day-select">
-            <option value="10">10-ны</option>
-            <option value="25">25-ны</option>
-          </select>
-        </div>
       </div>
 
       <div v-if="bountyLoading" class="loading-spin-sm">
@@ -98,7 +102,7 @@
     <div class="section-card">
       <div class="section-header-row">
         <div class="section-title">💵 Цалин</div>
-        <input type="month" v-model="salaryMonth" @change="loadSalary" class="month-input" />
+        <span v-if="bountyDay === '10'" class="salary-month-note">{{ salaryMonth() }}</span>
       </div>
 
       <div class="period-tabs">
@@ -143,48 +147,69 @@
 
         <!-- Full month salary breakdown -->
         <template v-if="salaryTab === 'full'">
-          <div class="stat-row">
-            <span>Ажилласан өдөр</span>
-            <span>{{ currentRow.workedDays }} өдөр</span>
-          </div>
-          <div class="salary-breakdown">
-            <div class="breakdown-row">
-              <span>Үндсэн цалин</span>
-              <span>{{ fmt(currentRow.baseSalary) }}₮</span>
-            </div>
-            <div class="breakdown-row">
-              <span>Бодогдсон цалин</span>
-              <span>{{ fmt(currentRow.calculatedSalary) }}₮</span>
-            </div>
-            <div v-if="(currentRow.additionalPay || 0) + (currentRow.annualLeavePay || 0) > 0" class="breakdown-row">
-              <span>Нэмэгдэл цалин</span>
-              <span class="val-green">+{{ fmt((currentRow.additionalPay || 0) + (currentRow.annualLeavePay || 0)) }}₮</span>
-            </div>
-            <div class="breakdown-row breakdown-gross">
-              <span>Нийт бодогдсон</span>
-              <span>{{ fmt(currentRow.totalGross) }}₮</span>
-            </div>
-            <div v-if="(currentRow.employeeNDS || 0) > 0" class="breakdown-row">
-              <span>НДШ ажилтан (11.5%)</span>
-              <span class="val-red">−{{ fmt(currentRow.employeeNDS) }}₮</span>
-            </div>
-            <div v-if="(currentRow.hhoatNet || 0) > 0" class="breakdown-row">
-              <span>ХХОАТ</span>
-              <span class="val-red">−{{ fmt(currentRow.hhoatNet) }}₮</span>
-            </div>
-            <div v-if="(currentRow.advance || 0) > 0" class="breakdown-row">
-              <span>Урьдчилгаа</span>
-              <span class="val-red">−{{ fmt(currentRow.advance) }}₮</span>
-            </div>
-            <div v-if="(currentRow.otherDeductions || 0) > 0" class="breakdown-row">
-              <span>Бусад суутгал</span>
-              <span class="val-red">−{{ fmt(currentRow.otherDeductions) }}₮</span>
-            </div>
-            <div class="breakdown-row breakdown-net">
-              <span>Гарт олгох</span>
-              <strong class="val-green">{{ fmt(currentRow.netPay) }}₮</strong>
+
+          <!-- Hours -->
+          <div class="detail-block">
+            <div class="detail-block-title">⏱ Цагийн гүйцэтгэл</div>
+            <div class="dg">
+              <span>Ажиллах хоног</span><span>{{ currentRow.workingDays ?? '—' }} өдөр ({{ (currentRow.workingDays ?? 0) * 8 }}ц)</span>
+              <span>Ажилласан цаг</span><span>{{ currentRow.normalHours ?? 0 }}ц</span>
+              <span>Тасалсан цаг (×2)</span><span :class="(currentRow.absentHours ?? 0) > 0 ? 'val-red' : ''">−{{ currentRow.absentHours ?? 0 }}ц → −{{ (currentRow.absentHours ?? 0) * 2 }}ц</span>
+              <span>Тооцоолох цаг</span><strong>{{ currentRow.effectiveHours ?? 0 }}ц</strong>
             </div>
           </div>
+
+          <!-- Calculation -->
+          <div class="detail-block">
+            <div class="detail-block-title">💰 Цалингийн тооцоол</div>
+            <div class="dg">
+              <span>Үндсэн цалин</span><span class="val-money">{{ fmt(currentRow.baseSalary) }}₮</span>
+              <span>Бодогдсон цалин</span><span class="val-money">{{ fmt(currentRow.calculatedSalary) }}₮</span>
+              <template v-if="(currentRow.additionalPay || 0) > 0">
+                <span>Нэмэгдэл цалин</span><span class="val-green">+{{ fmt(currentRow.additionalPay) }}₮</span>
+              </template>
+              <template v-if="(currentRow.annualLeavePay || 0) > 0">
+                <span>Ээлжийн амралт</span><span class="val-green">+{{ fmt(currentRow.annualLeavePay) }}₮</span>
+              </template>
+              <template v-if="(currentRow.recurringAdditions || 0) > 0">
+                <span>Тогтмол нэмэгдэл</span><span class="val-green">+{{ fmt(currentRow.recurringAdditions) }}₮</span>
+              </template>
+              <span class="dg-sep">Нийт бодогдсон</span><strong class="dg-sep val-money">{{ fmt(currentRow.totalGross) }}₮</strong>
+              <span>НДШ ажилтан (11.5%)</span><span class="val-red">−{{ fmt(currentRow.employeeNDS) }}₮</span>
+              <span>ТНО</span><span>{{ fmt(currentRow.tno) }}₮</span>
+              <span>ХХОАТ (10%)</span><span>−{{ fmt(currentRow.hhoat) }}₮</span>
+              <span>ХХОАТ хөнгөлөлт</span><span class="val-green">{{ fmt(currentRow.discount) }}₮</span>
+              <span>ХХОАТ төлөх</span><span class="val-red">−{{ fmt(currentRow.hhoatNet) }}₮</span>
+              <template v-if="(currentRow.advance || 0) > 0">
+                <span>Урьдчилгаа</span><span class="val-red">−{{ fmt(currentRow.advance) }}₮</span>
+              </template>
+              <template v-if="(currentRow.otherDeductions || 0) > 0">
+                <span>Бусад суутгал</span><span class="val-red">−{{ fmt(currentRow.otherDeductions) }}₮</span>
+              </template>
+              <template v-if="(currentRow.recurringDeductions || 0) > 0">
+                <span>Тогтмол суутгал</span><span class="val-red">−{{ fmt(currentRow.recurringDeductions) }}₮</span>
+                <template v-for="d in (currentRow.recurringDeductionsDetail || [])" :key="d.id">
+                  <span style="padding-left:10px;font-size:0.78rem;color:#6b7280;">↳ {{ d.description }}</span>
+                  <span style="font-size:0.78rem;" class="val-red">−{{ fmt(d.monthlyAmount) }}₮</span>
+                </template>
+              </template>
+              <span class="dg-sep net-label">💵 Гарт олгох</span>
+              <strong class="dg-sep val-green net-val">{{ fmt(currentRow.netPay) }}₮</strong>
+            </div>
+          </div>
+
+          <!-- Monthly adjustments -->
+          <div v-if="salaryAdj.length > 0" class="detail-block">
+            <div class="detail-block-title">📋 Сарын нэмэлт / суутгал</div>
+            <div class="adj-list">
+              <div v-for="e in salaryAdj" :key="e.id" class="adj-row">
+                <span class="adj-type-badge" :class="e.type">{{ e.type === 'addition' ? '+' : '−' }}</span>
+                <span class="adj-note">{{ e.note || (e.category === 'advance' ? 'Урьдчилгаа' : e.category) }}</span>
+                <span :class="e.type === 'addition' ? 'val-green' : 'val-red'">{{ fmt(e.amount) }}₮</span>
+              </div>
+            </div>
+          </div>
+
         </template>
 
         <!-- Advance period breakdown -->
@@ -217,11 +242,12 @@ const authStore = useAuthStore();
 
 // ── State ──────────────────────────────────────────────────────────────
 const now = new Date();
-const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+// Default to previous month — salary/bounty are always for a completed month
+const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+const defaultMonth = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
 
-const bountyMonth = ref(thisMonth);
-const bountyDay   = ref('10');
-const salaryMonth   = ref(thisMonth);
+const selectedMonth = ref(defaultMonth); // single shared month picker
+const bountyDay     = ref('10');
 const salaryTab     = ref('full');
 
 const salaryLoading = ref(false);
@@ -234,6 +260,7 @@ const salaryConfirmed  = ref(null);
 const advanceRow       = ref(null);
 const advanceConfirmed = ref(null);
 const bountyProjects   = ref([]);
+const salaryAdj        = ref([]);
 
 // ── Computed ────────────────────────────────────────────────────────────
 const currentRow = computed(() =>
@@ -256,21 +283,35 @@ function fmtDate(iso) {
   catch { return iso.slice(0, 10); }
 }
 
+// When bountyDay=10, the April 10th payment covers March work → show March salary.
+// When bountyDay=25, the payment is mid-month for the selected month → show same month.
+function salaryMonth() {
+  if (bountyDay.value === '10') {
+    const [y, m] = selectedMonth.value.split('-').map(Number);
+    const d = new Date(y, m - 2, 1); // go back one month
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  return selectedMonth.value;
+}
+
 async function loadSalary() {
   const employeeId = authStore.userData?.employeeId;
-  if (!employeeId || !salaryMonth.value) return;
+  if (!employeeId || !selectedMonth.value) return;
   salaryLoading.value = true;
   salaryRow.value = null;
   salaryConfirmed.value = null;
   advanceRow.value = null;
   advanceConfirmed.value = null;
+  salaryAdj.value = [];
+  const sm = salaryMonth();
   try {
     const empIdStr = String(employeeId).trim();
-    const [fullDoc, advDoc, fullConf, advConf] = await Promise.all([
-      getDoc(doc(db, 'salaries', `${salaryMonth.value}_full`)),
-      getDoc(doc(db, 'salaries', `${salaryMonth.value}_advance`)),
-      getDoc(doc(db, 'confirmedSalaries', `${salaryMonth.value}_full`)),
-      getDoc(doc(db, 'confirmedSalaries', `${salaryMonth.value}_advance`)),
+    const [fullDoc, advDoc, fullConf, advConf, adjDoc] = await Promise.all([
+      getDoc(doc(db, 'salaries', `${sm}_full`)),
+      getDoc(doc(db, 'salaries', `${sm}_advance`)),
+      getDoc(doc(db, 'confirmedSalaries', `${sm}_full`)),
+      getDoc(doc(db, 'confirmedSalaries', `${sm}_advance`)),
+      getDoc(doc(db, 'salaryAdjustments', `${sm}_${empIdStr}`)),
     ]);
     const employees = fullDoc.exists() ? (fullDoc.data().employees || []) : [];
     salaryRow.value = employees.find(e => String(e.employeeId).trim() === empIdStr) || null;
@@ -279,6 +320,8 @@ async function loadSalary() {
     const advEmps = advDoc.exists() ? (advDoc.data().employees || []) : [];
     advanceRow.value = advEmps.find(e => String(e.employeeId).trim() === empIdStr) || null;
     advanceConfirmed.value = advConf.exists() ? advConf.data() : null;
+
+    salaryAdj.value = adjDoc.exists() ? (adjDoc.data().entries || []) : [];
   } catch (err) {
     console.error('Salary load error:', err);
   } finally {
@@ -289,7 +332,7 @@ async function loadSalary() {
 // ── Bounty data ──────────────────────────────────────────────────────────
 async function loadBounty() {
   const employeeId = authStore.userData?.employeeId;
-  if (!employeeId || !bountyMonth.value) return;
+  if (!employeeId || !selectedMonth.value) return;
 
   bountyLoading.value  = true;
   bountyProjects.value = [];
@@ -297,7 +340,7 @@ async function loadBounty() {
   bountyCalculated.value = false;
 
   try {
-    const docId   = `${bountyMonth.value}_${bountyDay.value}`;
+    const docId   = `${selectedMonth.value}_${bountyDay.value}`;
     const myIdStr = String(employeeId).trim();
 
     const [calcSnap, confSnap] = await Promise.all([
@@ -337,9 +380,16 @@ async function loadBounty() {
   }
 }
 
-onMounted(() => {
-  loadBounty();
+function loadAll() {
+  // 10th payout → completed previous month → show full salary
+  // 25th payout → mid-month advance for current month → show advance salary
+  salaryTab.value = bountyDay.value === '25' ? 'advance' : 'full';
   loadSalary();
+  loadBounty();
+}
+
+onMounted(() => {
+  loadAll();
 });
 </script>
 
@@ -349,6 +399,32 @@ onMounted(() => {
   margin: 0 auto;
   padding: 16px;
   font-family: 'Segoe UI', sans-serif;
+}
+
+/* Shared date/day picker bar */
+.shared-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #f0f4ff;
+  border: 1px solid #c9d6f0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+.picker-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #3a4a7a;
+}
+.salary-month-note {
+  font-size: 0.78rem;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 2px 8px;
 }
 
 /* Section header row with title + month picker */
@@ -653,4 +729,74 @@ onMounted(() => {
   font-weight: 700;
   font-size: 14px;
 }
+
+/* Detail blocks (new breakdown layout) */
+.detail-block {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.detail-block-title {
+  background: #f1f5f9;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dg {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0;
+}
+.dg > * {
+  padding: 7px 12px;
+  font-size: 13px;
+  color: #374151;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+}
+.dg > *:last-child,
+.dg > *:nth-last-child(2) { border-bottom: none; }
+.dg-sep {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #1e293b;
+  border-top: 1px solid #e2e8f0 !important;
+}
+.net-label, .net-val {
+  background: #f0fdf4 !important;
+  font-size: 14px;
+}
+.val-money { color: #1e293b; font-weight: 600; }
+
+/* Adjustments list */
+.adj-list { padding: 4px 0; }
+.adj-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.adj-row:last-child { border-bottom: none; }
+.adj-type-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.adj-type-badge.addition { background: #dcfce7; color: #15803d; }
+.adj-type-badge.deduction { background: #fee2e2; color: #991b1b; }
+.adj-note { flex: 1; color: #374151; }
 </style>

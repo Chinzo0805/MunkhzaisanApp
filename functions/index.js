@@ -67,6 +67,9 @@ exports.fullSyncExcelToFirestore = require("./fullSyncExcelToFirestore").fullSyn
 exports.scheduledTACheck = require("./scheduledTACheck").scheduledTACheck;
 exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTACheck;
 
+// Management Goals
+exports.manageGoal = require("./manageGoal").manageGoal;
+
 // Public data access functions (password-protected)
 exports.getPublicTASummary = require("./getPublicTASummary").getPublicTASummary;
 exports.getPublicProjects = require("./getPublicProjects").getPublicProjects;

@@ -19,6 +19,7 @@ import SupervisorBountyReport from '../views/SupervisorBountyReport.vue';
 import PublicBountyReport from '../views/PublicBountyReport.vue';
 import TransactionReport from '../views/TransactionReport.vue';
 import EmployeeTableView from '../views/EmployeeTableView.vue';
+import ManagementGoalsBoard from '../views/ManagementGoalsBoard.vue';
 
 
 const routes = [
@@ -137,6 +138,12 @@ const routes = [
     path: '/employee-table',
     name: 'EmployeeTable',
     component: EmployeeTableView,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/management-goals',
+    name: 'ManagementGoals',
+    component: ManagementGoalsBoard,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];
