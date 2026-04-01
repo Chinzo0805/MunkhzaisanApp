@@ -14,13 +14,13 @@
             required
             @change="onEmployeeSelect"
           >
-            <option value="">-- Choose your name --</option>
+            <option value="">-- Нэрээ сонгоно уу --</option>
             <option 
               v-for="employee in activeEmployees" 
               :key="employee.id"
               :value="employee.id"
             >
-              {{ (employee.LastName || employee.EmployeeLastName) }} {{ (employee.FirstName || '') }} - {{ employee.Position || employee.Role }}
+              {{ (employee.LastName || employee.EmployeeLastName) }} {{ (employee.FirstName || '') }} — {{ employee.Position || employee.Role }}{{ employee.Department ? ' | ' + employee.Department : '' }} (ID: {{ employee.Id ?? employee.NumID ?? '?' }}){{ employee.Email ? ' ✉' : '' }}
             </option>
           </select>
         </div>
@@ -34,19 +34,24 @@
           <p v-if="selectedEmployee.Role === 'Supervisor'" class="supervisor-notice">
             ⚠️ You will be registered as a Supervisor with full access
           </p>
-          <p><strong>Current Email:</strong> {{ selectedEmployee.Email || 'Not set' }}</p>
+          <p><strong>Одоогийн имэйл:</strong> {{ selectedEmployee.Email || 'Тохируулаагүй' }}</p>
+          <p v-if="selectedEmployee.Email" class="warn-email">
+            ⚠️ Энэ ажилтан аль хэдийн <strong>{{ selectedEmployee.Email }}</strong> имэйлтэй холбогдсон байна.  
+            Хэрэв та өөр хүн бол supervisor-т хандаж бүртгэлийг цэвэрлүүлнэ үү.
+          </p>
         </div>
 
         <!-- Submit button -->
         <button 
           type="submit" 
           class="submit-btn"
-          :disabled="!selectedEmployeeId || loading"
+          :disabled="!selectedEmployeeId || loading || !!selectedEmployee?.Email"
         >
           {{ loading ? 'Registering...' : 'Complete Registration' }}
         </button>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="selectedEmployee?.Email" class="error">Бүртгэл цэвэрлүүлсний дараа дахин оролдоно уу.</p>
+        <p v-else-if="error" class="error">{{ error }}</p>
       </form>
     </div>
   </div>
@@ -286,5 +291,15 @@ h1 {
   background: #fffaf0;
   border-left: 4px solid #d69e2e;
   border-radius: 4px;
+}
+.warn-email {
+  color: #b45309;
+  font-size: 13px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  line-height: 1.5;
 }
 </style>

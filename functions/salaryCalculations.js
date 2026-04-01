@@ -91,20 +91,29 @@ function getHhoatDiscount(tno) {
  */
 function recalcEmployeeRow(row, workingDays) {
   const wd = workingDays || 1;
+  // For the salary formula denominator always use the full-month working days.
+  // workingDaysMonth is stored in the row when called from calculateSalaryForPeriod;
+  // fall back to wd (= workingDays) for manual recalc calls that don't supply it.
+  const wdMonth = row.workingDaysMonth || wd;
   const baseSalary = row.baseSalary || 0;
-  const workedDays = row.workedDays || 0;
 
   // Бодогдсон цалин = Үндсэн цалин ÷ (А/хоног × 8) × эффектив цаг
   const effectiveHours = row.effectiveHours || 0;
-  const calculatedSalary = (wd > 0 && baseSalary > 0)
-    ? Math.round(baseSalary / (wd * 8) * effectiveHours)
+  // Ажилласан өдөр = эффектив цаг ÷ 8
+  const workedDays = Math.round((effectiveHours / 8) * 100) / 100;
+  const calculatedSalary = (wdMonth > 0 && baseSalary > 0)
+    ? Math.round(baseSalary / (wdMonth * 8) * effectiveHours)
     : 0;
 
-  const additionalPay  = row.additionalPay  || 0;  // manual
-  const annualLeavePay = row.annualLeavePay || 0;  // manual
+  const additionalPay       = row.additionalPay       || 0;  // manual
+  const annualLeavePay      = row.annualLeavePay      || 0;  // manual
+  const advance             = row.advance             || 0;  // manual
+  const otherDeductions     = row.otherDeductions     || 0;  // manual
+  const recurringAdditions  = row.recurringAdditions  || 0;  // auto from employeeDeductions additions
+  const recurringDeductions = row.recurringDeductions || 0;  // auto from employeeDeductions
 
-  // Нийт бодогдсон цалин
-  const totalGross = calculatedSalary + additionalPay + annualLeavePay;
+  // Нийт бодогдсон цалин  (recurring additions are taxable gross)
+  const totalGross = calculatedSalary + additionalPay + annualLeavePay + recurringAdditions;
 
   // НДШ ажилтан 11.5% — deducted from employee netPay
   // НДШ байгааллага 12.5% — reference only for managers (NOT deducted from netPay)
@@ -117,10 +126,6 @@ function recalcEmployeeRow(row, workingDays) {
   const tno = totalGross - employeeNDS;
   // ХХОАТ = ТНО × 10%
   const hhoat = Math.round(tno * 0.10);
-
-  const advance           = row.advance           || 0;  // manual
-  const otherDeductions   = row.otherDeductions   || 0;  // manual
-  const recurringDeductions = row.recurringDeductions || 0;  // auto from employeeDeductions
 
   // ХХОАТ хөнгөлөлт — auto-derived from ТНО (tiered government table)
   const discount = getHhoatDiscount(tno);
@@ -135,15 +140,18 @@ function recalcEmployeeRow(row, workingDays) {
     ...row,
     workingDays: wd,
     workingHours: wd * 8,
-    workedHours: workedDays * 8,
+    workedDays,
+    workedHours: effectiveHours,
     calculatedSalary,
     totalGross,
     employerNDS,
     employeeNDS,
     tno,
     hhoat,
+    discount,
     hhoatNet,
     recurringDeductions,
+    recurringAdditions,
     netPay,
     totalPay: Math.max(0, netPay),
   };
@@ -202,21 +210,39 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   }
 
   const empMap = new Map();
+  // Also build a Firestore-doc-ID → numeric-Id map so deductions stored with
+  // the wrong key (doc ID instead of numeric Id) can still be resolved.
+  const empDocIdToKey = new Map();
   empSnap.docs.forEach(d => {
     const e = d.data();
     const key = normalizeId(e.ID ?? e.Id);
-    if (key) empMap.set(key, e);
+    if (key) {
+      empMap.set(key, e);
+      empDocIdToKey.set(d.id, key); // d.id = Firestore document ID
+    }
   });
 
-  // Group recurring deductions by employeeId (only those that have started)
+  // Group recurring deductions by employeeId (only those that have started).
+  // employeeId may be the numeric Id (correct) OR the Firestore doc ID (legacy bug).
+  // Resolve the Firestore doc ID case via empDocIdToKey.
   const deductionsByEmp = new Map();
+  const additionsByEmp  = new Map();
   dedSnap.docs.forEach(d => {
     const data = d.data();
     if ((data.startMonth || '') > yearMonth) return; // not started yet
-    const empId = normalizeId(data.employeeId);
+    let empId = normalizeId(data.employeeId);
     if (!empId) return;
-    if (!deductionsByEmp.has(empId)) deductionsByEmp.set(empId, []);
-    deductionsByEmp.get(empId).push({ id: d.id, ...data });
+    // If this normalised value is not in empMap it might be a Firestore doc ID — resolve it
+    if (!empMap.has(empId) && empDocIdToKey.has(data.employeeId)) {
+      empId = empDocIdToKey.get(data.employeeId);
+    }
+    if (!empId) return;
+    const appliesTo = data.applyTo || 'salary'; // default salary for backward compat
+    if (!['salary', 'both'].includes(appliesTo)) return; // bounty-only → skip salary calc
+    const direction = data.direction || 'deduction'; // default deduction for backward compat
+    const targetMap = direction === 'addition' ? additionsByEmp : deductionsByEmp;
+    if (!targetMap.has(empId)) targetMap.set(empId, []);
+    targetMap.get(empId).push({ id: d.id, ...data });
   });
 
   // Group time attendance by employee
@@ -285,10 +311,20 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       monthlyAmount: d.monthlyAmount,
     }));
 
+    // Recurring additions from employeeDeductions collection
+    const empAdds = additionsByEmp.get(empId) || [];
+    const recurringAdditions = empAdds.reduce((s, d) => s + (d.monthlyAmount || 0), 0);
+    const recurringAdditionsDetail = empAdds.map(d => ({
+      id:            d.id,
+      description:   d.description,
+      monthlyAmount: d.monthlyAmount,
+    }));
+
     return recalcEmployeeRow({
       employeeId: empId,
       name, position, type, baseSalary,
       isNDS,  // propagate to row so recalc after overrides stays correct
+      workingDaysMonth,  // full-month denominator for salary formula
       workedDays:     ta.workedDays,
       normalHours:    Math.round(ta.normalHours),
       absentHours:    Math.round(ta.absentHours),
@@ -299,6 +335,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       otherDeductions:      0,
       recurringDeductions,
       recurringDeductionsDetail,
+      recurringAdditions,
+      recurringAdditionsDetail,
     }, workingDays);
   }
 

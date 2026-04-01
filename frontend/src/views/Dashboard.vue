@@ -26,6 +26,9 @@
         
         <!-- Time Attendance Request Button for all users -->
         <div class="quick-actions">
+          <button @click="openMyInfo" class="btn-action my-info">
+            👤 Миний мэдээлэл
+          </button>
           <button @click="$router.push('/time-attendance-request')" class="btn-action">
             📋 Ажиллах цагийн хүсэлт
           </button>
@@ -177,6 +180,59 @@
       </div>
     </main>
     
+    <!-- My Info Modal -->
+    <div v-if="showMyInfo" class="modal-overlay" @click.self="showMyInfo = false">
+      <div class="modal-content my-info-modal">
+        <div class="my-info-header">
+          <h3>👤 Миний мэдээлэл</h3>
+          <button @click="showMyInfo = false" class="modal-close">✕</button>
+        </div>
+        <div v-if="myInfoLoading" class="my-info-loading">Уншиж байна...</div>
+        <div v-else-if="myEmp" class="my-info-body">
+          <!-- Basic info -->
+          <div class="my-info-section">
+            <div class="my-info-row"><span class="mi-label">Нэр</span><span class="mi-value">{{ myEmp.LastName }} {{ myEmp.FirstName }}</span></div>
+            <div class="my-info-row"><span class="mi-label">Албан тушаал</span><span class="mi-value">{{ myEmp.Position || '—' }}</span></div>
+            <div class="my-info-row"><span class="mi-label">Хэлтэс</span><span class="mi-value">{{ myEmp.Department || '—' }}</span></div>
+            <div class="my-info-row"><span class="mi-label">Утас</span><span class="mi-value">{{ myEmp.Phone || '—' }}</span></div>
+            <div class="my-info-row"><span class="mi-label">Email</span><span class="mi-value">{{ myEmp.Email || '—' }}</span></div>
+            <div class="my-info-row"><span class="mi-label">Ажилласан огноо</span><span class="mi-value">{{ myEmp.DateJoined || '—' }}</span></div>
+          </div>
+          <!-- Bank info edit -->
+          <div class="my-info-section my-info-bank-section">
+            <div class="my-info-bank-title">🏦 Банкны мэдээлэл</div>
+            <div v-if="!myInfoEdit.editing" class="my-info-bank-view">
+              <div class="my-info-row"><span class="mi-label">Банк</span><span class="mi-value">{{ myEmp.BankName || '—' }}</span></div>
+              <div class="my-info-row"><span class="mi-label">IBAN Дансны дугаар</span><span class="mi-value">{{ myEmp.BankAccountNumber || '—' }}</span></div>
+              <button @click="startMyInfoEdit" class="btn-mi-edit">✏️ Банк засах</button>
+            </div>
+            <div v-else class="my-info-bank-edit">
+              <div class="mi-field">
+                <label class="mi-label">Банк</label>
+                <select v-model="myInfoEdit.BankName" class="mi-input">
+                  <option value="">— Банк сонгоно уу —</option>
+                  <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
+                </select>
+              </div>
+              <div class="mi-field">
+                <label class="mi-label">IBAN Дансны дугаар</label>
+                <input v-model="myInfoEdit.BankAccountNumber" type="text" class="mi-input" placeholder="IBAN Дансны дугаар" />
+              </div>
+              <div class="mi-actions">
+                <button @click="saveMyInfo" :disabled="myInfoEdit.saving" class="btn-mi-save">
+                  {{ myInfoEdit.saving ? 'Хадгалж байна...' : '💾 Хадгалах' }}
+                </button>
+                <button @click="myInfoEdit.editing = false" class="btn-mi-cancel">✖ Болих</button>
+                <span v-if="myInfoEdit.saved" class="mi-saved">✅ Хадгалагдлаа</span>
+                <span v-if="myInfoEdit.error" class="mi-error">⚠️ {{ myInfoEdit.error }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="my-info-loading">Мэдээлэл олдсонгүй. Бүртгэлтэй ажилтан биш байж болно.</div>
+      </div>
+    </div>
+
     <!-- Sync Direction Dialog -->
     <div v-if="showSyncDialog" class="modal-overlay" @click.self="showSyncDialog = false">
       <div class="modal-content sync-dialog">
@@ -202,8 +258,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
 import { useCustomersStore } from '../stores/customers';
@@ -228,6 +286,66 @@ const authStore = useAuthStore();
 const employeesStore = useEmployeesStore();
 const customersStore = useCustomersStore();
 const projectsStore = useProjectsStore();
+
+// ── My Info modal ────────────────────────────────────────────────
+const MONGOLIAN_BANKS = [
+  'Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк (ТДБ)',
+  'Хас банк (XacBank)', 'Улаанбаатар хот банк', 'Капитал банк',
+  'Богд банк', 'Нийслэл банк', 'Транс банк', 'Чингис хаан банк',
+  'М банк', 'Ариг банк', 'Кредит банк', 'Төрийн банк', 'Зоос банк',
+];
+const showMyInfo = ref(false);
+const myInfoLoading = ref(false);
+const myInfoEdit = ref({ editing: false, BankName: '', BankAccountNumber: '', saving: false, saved: false, error: '' });
+
+const myEmp = computed(() => {
+  const empId = authStore.userData?.employeeId;
+  if (empId == null) return null;
+  return employeesStore.employees.find(e => Number(e.Id ?? e.NumID) === Number(empId)) || null;
+});
+
+async function openMyInfo() {
+  showMyInfo.value = true;
+  myInfoEdit.value.editing = false;
+  if (!employeesStore.employees.length) {
+    myInfoLoading.value = true;
+    await employeesStore.fetchEmployees();
+    myInfoLoading.value = false;
+  }
+}
+
+function startMyInfoEdit() {
+  const emp = myEmp.value;
+  myInfoEdit.value = {
+    editing: true,
+    BankName: emp?.BankName || '',
+    BankAccountNumber: emp?.BankAccountNumber || '',
+    saving: false, saved: false, error: '',
+  };
+}
+
+async function saveMyInfo() {
+  const emp = myEmp.value;
+  if (!emp) return;
+  myInfoEdit.value.saving = true;
+  myInfoEdit.value.error = '';
+  try {
+    const patch = {
+      BankName: myInfoEdit.value.BankName.trim(),
+      BankAccountNumber: myInfoEdit.value.BankAccountNumber.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    await updateDoc(doc(db, 'employees', emp.id), patch);
+    Object.assign(emp, patch);
+    myInfoEdit.value.saved = true;
+    myInfoEdit.value.editing = false;
+    setTimeout(() => { myInfoEdit.value.saved = false; }, 2500);
+  } catch (e) {
+    myInfoEdit.value.error = e.message || 'Хадгалахад алдаа гарлаа';
+  } finally {
+    myInfoEdit.value.saving = false;
+  }
+}
 
 const syncing = ref(false);
 const syncResult = ref(null);
@@ -660,6 +778,127 @@ function handleSaved(event) {
   background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
   box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
 }
+.btn-action.my-info {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+/* My Info Modal */
+.my-info-modal {
+  max-width: 480px;
+  width: 95%;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.my-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+.my-info-header h3 { margin: 0; font-size: 17px; }
+.modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.modal-close:hover { background: rgba(255,255,255,0.2); }
+.my-info-loading {
+  padding: 24px 20px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+.my-info-body { padding: 16px 20px; }
+.my-info-section { margin-bottom: 16px; }
+.my-info-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+}
+.mi-label {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 12px;
+  min-width: 110px;
+  flex-shrink: 0;
+}
+.mi-value { color: #1e293b; }
+.my-info-bank-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 8px;
+}
+.my-info-bank-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 10px;
+}
+.my-info-bank-view { display: flex; flex-direction: column; gap: 2px; }
+.btn-mi-edit {
+  margin-top: 10px;
+  padding: 6px 14px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  align-self: flex-start;
+}
+.btn-mi-edit:hover { background: #4338ca; }
+.my-info-bank-edit { display: flex; flex-direction: column; gap: 10px; }
+.mi-field { display: flex; flex-direction: column; gap: 4px; }
+.mi-input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+.mi-input:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px #10b98133; }
+.mi-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.btn-mi-save {
+  padding: 7px 16px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-mi-save:hover:not(:disabled) { background: #059669; }
+.btn-mi-save:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-mi-cancel {
+  padding: 7px 12px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #475569;
+}
+.btn-mi-cancel:hover { background: #e2e8f0; }
+.mi-saved { font-size: 13px; color: #059669; font-weight: 600; }
+.mi-error { font-size: 13px; color: #dc2626; }
 .btn-action.employee-table:hover {
   box-shadow: 0 4px 8px rgba(99, 102, 241, 0.4);
 }

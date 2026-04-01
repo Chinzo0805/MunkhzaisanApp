@@ -1,8 +1,20 @@
-<template>
+﻿<template>
   <div class="emp-table-page">
     <div class="page-header">
       <button @click="$router.back()" class="btn-back">← Буцах</button>
       <h2>👥 Ажилтны жагсаалт</h2>
+      <div class="month-picker">
+        <label>📅 Тайлбарын сар:</label>
+        <input type="month" v-model="selectedMonth" class="month-input" />
+      </div>
+      <div class="month-picker">
+        <label>🏆 Урамшуулал:</label>
+        <input type="month" v-model="bountyMonth" class="month-input" />
+        <select v-model="bountyRange" class="month-input" style="width:auto;padding:4px 8px;">
+          <option value="10">10-ны</option>
+          <option value="25">25-ны</option>
+        </select>
+      </div>
     </div>
 
     <!-- Column toggle -->
@@ -21,7 +33,35 @@
         <input type="checkbox" v-model="showInactive" />
         Гарсан харуулах
       </label>
+      <label class="show-inactive-label">
+        <input type="checkbox" v-model="showEmpty" />
+        Хоосон бичлэг харуулах
+      </label>
       <span class="emp-count">{{ tableFiltered.length }} ажилтан</span>
+      <button
+        v-if="canEditSome && !bulkEditMode"
+        @click="openAllEdits"
+        class="btn-edit-all"
+      >✏️ Бүгдийг засах</button>
+      <button
+        v-if="bulkEditMode"
+        @click="saveAllEdits"
+        :disabled="savingAll"
+        class="btn-save-all"
+      >{{ savingAll ? 'Хадгалж байна...' : '💾 Бүгдийг хадгалах' }}</button>
+      <button
+        v-if="bulkEditMode"
+        @click="cancelAllEdits"
+        class="btn-cancel-all"
+      >✖ Болих</button>
+      <button
+        v-if="authStore.userData?.isSupervisor && emptyEmployees.length > 0"
+        @click="deleteEmptyEmployees"
+        :disabled="deletingEmpty"
+        class="btn-delete-empty"
+      >
+        {{ deletingEmpty ? 'Устгаж байна...' : `🗑️ Хоосон устгах (${emptyEmployees.length})` }}
+      </button>
     </div>
 
     <!-- Table -->
@@ -34,13 +74,12 @@
               {{ col.label }}
               <span v-if="tableSort.col === col.key">{{ tableSort.asc ? ' ▲' : ' ▼' }}</span>
             </th>
-            <th></th>
+            <th class="th-actions"></th>
           </tr>
         </thead>
         <tbody>
           <template v-for="emp in tableFiltered" :key="emp.id">
-            <tr :class="emp.State !== 'Ажиллаж байгаа' ? 'row-inactive' : ''"
-                @click="toggleExpand(emp)" style="cursor:pointer;">
+            <tr :class="emp.State !== 'Ажиллаж байгаа' ? 'row-inactive' : ''">
               <td v-for="col in activeColumns" :key="col.key">
                 <template v-if="col.key === 'State'">
                   <span class="state-badge" :class="emp.State === 'Ажиллаж байгаа' ? 'active' : 'inactive'">
@@ -60,21 +99,140 @@
                   {{ emp[col.key] || '—' }}
                 </template>
               </td>
-              <td class="td-expand">{{ expandedId === emp.id ? '▲' : '▼' }}</td>
+              <td class="td-actions">
+                <button
+                  v-if="canEdit(emp) && !bulkEditMode"
+                  @click="openEditRow(emp)"
+                  class="btn-row-edit"
+                >✏️ Засах</button>
+                <button
+                  v-if="authStore.userData?.isSupervisor && !bulkEditMode"
+                  @click="clearRegistration(emp)"
+                  class="btn-row-unlink"
+                  :disabled="!!clearingReg[emp.id]"
+                >{{ clearingReg[emp.id] ? 'Цэвэрлж байна...' : '🔓 Бүртгэл цэвэрлэх' }}</button>
+                <button
+                  @click="togglePanels(emp)"
+                  class="btn-row-panels"
+                  :class="panelsId === emp.id ? 'active' : ''"
+                >{{ panelsId === emp.id ? '▲ Хаах' : '▼ Тохируулалт' }}</button>
+              </td>
             </tr>
 
-            <!-- Expanded deductions row -->
-            <tr v-if="expandedId === emp.id" class="row-expanded">
+            <!-- Inline edit row -->
+            <tr v-if="editState[emp.id]?.editing" class="row-edit-inline">
               <td :colspan="activeColumns.length + 1" class="td-panel">
-                <div class="panel-header">
-                  <strong>{{ emp.LastName }} {{ emp.FirstName }}</strong>
-                  <span class="panel-pos">{{ emp.Position }}</span>
+                <div class="emp-info-block">
+                  <div class="emp-info-header">
+                    <div>
+                      <strong>{{ emp.LastName }} {{ emp.FirstName }}</strong>
+                      <span class="panel-pos">{{ emp.Position }}</span>
+                    </div>
+                    <div class="emp-header-actions">
+                      <button @click.stop="saveEdit(emp)" :disabled="editState[emp.id].saving" class="btn-save-bank">
+                        {{ editState[emp.id].saving ? 'Хадгалж байна...' : '💾 Хадгалах' }}
+                      </button>
+                      <button @click.stop="cancelEdit(emp)" class="btn-emp-edit btn-cancel">✖ Болих</button>
+                      <span v-if="editState[emp.id].saved" class="bank-saved">✅ Хадгалагдлаа</span>
+                      <span v-if="editState[emp.id].error" class="bank-error">⚠️ {{ editState[emp.id].error }}</span>
+                    </div>
+                  </div>
+                  <div class="emp-edit-grid">
+                    <template v-if="canEditAll(emp)">
+                      <div class="edit-item">
+                        <label class="edit-label">Төлөв</label>
+                        <select v-model="editState[emp.id].State" class="edit-input">
+                          <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
+                          <option value="Гарсан">Гарсан</option>
+                          <option value="Чөлөөтэй/Амралт">Чөлөөтэй/Амралт</option>
+                        </select>
+                      </div>
+                      <div class="edit-item">
+                        <label class="edit-label">Төрөл</label>
+                        <select v-model="editState[emp.id].Type" class="edit-input">
+                          <option value="">—</option>
+                          <option value="Гэрээт">Гэрээт</option>
+                          <option value="Үндсэн">Үндсэн</option>
+                          <option value="Дадлагжигч">Дадлагжигч</option>
+                        </select>
+                      </div>
+                      <div class="edit-item">
+                        <label class="edit-label">Role</label>
+                        <select v-model="editState[emp.id].Role" class="edit-input">
+                          <option value="Employee">Employee</option>
+                          <option value="Supervisor">Supervisor</option>
+                          <option value="Accountant">Accountant</option>
+                          <option value="nonEmployee">nonEmployee</option>
+                          <option value="Financial">Financial</option>
+                        </select>
+                      </div>
+                      <div class="edit-item">
+                        <label class="edit-label">Цалин ₮</label>
+                        <input v-model.number="editState[emp.id].Salary" type="number" min="0" step="1000" class="edit-input" />
+                      </div>
+                      <div class="edit-item">
+                        <label class="edit-label">Утас</label>
+                        <input v-model="editState[emp.id].Phone" type="text" class="edit-input" />
+                      </div>
+                      <div class="edit-item">
+                        <label class="edit-label">Имэйл</label>
+                        <input v-model="editState[emp.id].Email" type="email" class="edit-input" />
+                      </div>
+                    </template>
+                    <div class="edit-item">
+                      <label class="edit-label">🏦 Банк</label>
+                      <select v-model="editState[emp.id].BankName" class="edit-input">
+                        <option value="">— Банк сонгоно уу —</option>
+                        <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
+                      </select>
+                    </div>
+                    <div class="edit-item">
+                      <label class="edit-label">IBAN Данс №</label>
+                      <input v-model="editState[emp.id].BankAccountNumber" type="text" class="edit-input" placeholder="IBAN Дансны дугаар" />
+                    </div>
+                  </div>
                 </div>
-                <EmployeeDeductionsPanel
-                  :employeeId="String(emp.Id)"
-                  :employeeName="emp.LastName + ' ' + emp.FirstName"
-                  :readonly="false"
-                />
+              </td>
+            </tr>
+
+            <!-- Adjustment panels row (toggled by 📋 button) -->
+            <tr v-if="panelsId === emp.id" class="row-expanded">
+              <td :colspan="activeColumns.length + 1" class="td-panel">
+                <div class="panels-grid">
+                  <div class="panel-section">
+                    <div class="panel-section-title">💰 Цалин тохируулалт</div>
+                    <div class="panel-subsection-title">📋 Тогтмол (цалин)</div>
+                    <EmployeeDeductionsPanel
+                      :employeeId="String(emp.Id ?? emp.NumID ?? emp.id ?? '')"
+                      :employeeName="emp.LastName + ' ' + emp.FirstName"
+                      filterApplyTo="salary"
+                      :readonly="false"
+                    />
+                    <div class="panel-subsection-title panel-subsection-mt">✨ Нэмэлт / суутгал ({{ selectedMonth }})</div>
+                    <SalaryAdjustmentsPanel
+                      :employeeId="String(emp.Id ?? emp.NumID ?? emp.id ?? '')"
+                      :employeeName="emp.LastName + ' ' + emp.FirstName"
+                      :yearMonth="selectedMonth"
+                      @updated="onAdjUpdated(emp, $event)"
+                    />
+                  </div>
+                  <div class="panel-section">
+                    <div class="panel-section-title">🏆 Урамшуулал тохируулалт</div>
+                    <div class="panel-subsection-title">📋 Тогтмол (урамшуулал)</div>
+                    <EmployeeDeductionsPanel
+                      :employeeId="String(emp.Id ?? emp.NumID ?? emp.id ?? '')"
+                      :employeeName="emp.LastName + ' ' + emp.FirstName"
+                      filterApplyTo="bounty"
+                      :readonly="false"
+                    />
+                    <div class="panel-subsection-title panel-subsection-mt">✨ Нэмэлт / суутгал ({{ bountyMonth }}-{{ bountyRange }})</div>
+                    <BountyAdjustmentsPanel
+                      :employeeId="String(emp.Id ?? emp.NumID ?? emp.id ?? '')"
+                      :employeeName="emp.LastName + ' ' + emp.FirstName"
+                      :bountyDocId="bountyMonth + '_' + bountyRange"
+                    />
+                  </div>
+                </div>
               </td>
             </tr>
           </template>
@@ -85,11 +243,139 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import { doc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { useEmployeesStore } from '../stores/employees';
+import { useAuthStore } from '../stores/auth';
+import { updateSalaryRow } from '../services/api';
 import EmployeeDeductionsPanel from '../components/EmployeeDeductionsPanel.vue';
+import SalaryAdjustmentsPanel from '../components/SalaryAdjustmentsPanel.vue';
+import BountyAdjustmentsPanel from '../components/BountyAdjustmentsPanel.vue';
 
 const employeesStore = useEmployeesStore();
+const authStore = useAuthStore();
+
+// ── Mongolian bank list ──────────────────────────────────────────
+const MONGOLIAN_BANKS = [
+  'Хаан банк',
+  'Голомт банк',
+  'Худалдаа хөгжлийн банк (ТДБ)',
+  'Хас банк (XacBank)',
+  'Улаанбаатар хот банк',
+  'Капитал банк',
+  'Богд банк',
+  'Нийслэл банк',
+  'Транс банк',
+  'Чингис хаан банк',
+  'М банк',
+  'Ариг банк',
+  'Кредит банк',
+  'Төрийн банк',
+  'Зоос банк',
+];
+
+// ── Unified edit state ───────────────────────────────────────────
+const editState = ref({});
+
+function canEditAll(emp) {
+  return !!(authStore.userData?.isSupervisor || authStore.userData?.isAccountant);
+}
+
+function canEditBank(emp) {
+  const myEmpId = authStore.userData?.employeeId;
+  if (myEmpId == null) return false;
+  return Number(myEmpId) === Number(emp.Id ?? emp.NumID);
+}
+
+function canEdit(emp) {
+  return canEditAll(emp) || canEditBank(emp);
+}
+
+function openEdit(emp) {
+  editState.value[emp.id] = {
+    editing: true,
+    State:  emp.State  || '',
+    Type:   emp.Type   || '',
+    Role:   emp.Role   || 'Employee',
+    Salary: parseFloat(emp.Salary) || 0,
+    Phone:  emp.Phone  || '',
+    Email:  emp.Email  || '',
+    BankName: emp.BankName || '',
+    BankAccountNumber: emp.BankAccountNumber || '',
+    saving: false, saved: false, error: '',
+  };
+}
+
+// Alias used by the ✏️ button in the row
+function openEditRow(emp) {
+  openEdit(emp);
+}
+
+function cancelEdit(emp) {
+  if (editState.value[emp.id]) editState.value[emp.id].editing = false;
+}
+
+async function saveEdit(emp) {
+  const state = editState.value[emp.id];
+  if (!state) return;
+  state.saving = true; state.error = ''; state.saved = false;
+  try {
+    let patch;
+    if (canEditAll(emp)) {
+      patch = {
+        State:  state.State,
+        Type:   state.Type,
+        Role:   state.Role,
+        Salary: state.Salary,
+        Phone:  state.Phone,
+        Email:  state.Email,
+        BankName: state.BankName.trim(),
+        BankAccountNumber: state.BankAccountNumber.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      // Own employee: bank fields only
+      patch = {
+        BankName: state.BankName.trim(),
+        BankAccountNumber: state.BankAccountNumber.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    await updateDoc(doc(db, 'employees', emp.id), patch);
+    Object.assign(emp, patch);
+    state.saved = true;
+    state.editing = false;
+    setTimeout(() => { if (editState.value[emp.id]) editState.value[emp.id].saved = false; }, 2500);
+  } catch (e) {
+    state.error = e.message || 'Хадгалахад алдаа гарлаа';
+  } finally {
+    state.saving = false;
+  }
+}
+
+// ── Empty record cleanup ─────────────────────────────────────────
+const showEmpty = ref(false);
+const deletingEmpty = ref(false);
+
+const emptyEmployees = computed(() =>
+  employeesStore.employees.filter(e => !e.LastName && !e.FirstName)
+);
+
+async function deleteEmptyEmployees() {
+  if (!confirm(`${emptyEmployees.value.length} хоосон бичлэгийг устгах уу?`)) return;
+  deletingEmpty.value = true;
+  try {
+    for (const emp of emptyEmployees.value) {
+      await deleteDoc(doc(db, 'employees', emp.id));
+    }
+    await employeesStore.fetchEmployees();
+  } catch (e) {
+    alert('Устгахад алдаа: ' + e.message);
+  } finally {
+    deletingEmpty.value = false;
+  }
+}
 
 // ── Columns ─────────────────────────────────────────────────────
 const ALL_COLUMNS = [
@@ -112,7 +398,9 @@ const ALL_COLUMNS = [
   { key: 'autoTA',      label: 'Auto TA' },
   { key: 'Gender',      label: 'Хүйс' },
   { key: 'DateBirth',   label: 'Төрсөн өдөр' },
-  { key: 'DoorNum',     label: 'Хаалганы №' },
+  { key: 'DoorNum',       label: 'Хаалганы №' },
+  { key: 'BankName',        label: 'Банк' },
+  { key: 'BankAccountNumber', label: 'IBAN Дансны дугаар' },
 ];
 
 const DEFAULT_VISIBLE = ['Id', 'LastName', 'FirstName', 'Position', 'State', 'Phone', 'Salary', 'Type', 'Role'];
@@ -138,6 +426,7 @@ const tableFiltered = computed(() => {
   const q = tableSearch.value.trim().toLowerCase();
   let items = employeesStore.employees.filter(emp => {
     if (!showInactive.value && emp.State !== 'Ажиллаж байгаа') return false;
+    if (!showEmpty.value && !emp.LastName && !emp.FirstName) return false;
     if (!q) return true;
     return ['LastName', 'FirstName', 'NumID', 'Position', 'Email', 'Phone', 'Mobile']
       .some(k => (emp[k] || '').toLowerCase().includes(q));
@@ -150,11 +439,86 @@ const tableFiltered = computed(() => {
   });
 });
 
-// ── Expand row ───────────────────────────────────────────────────
-const expandedId = ref(null);
-function toggleExpand(emp) {
-  expandedId.value = expandedId.value === emp.id ? null : emp.id;
+// ── Clear registration (supervisor only) ───────────────────────────
+const clearingReg = ref({});
+
+async function clearRegistration(emp) {
+  const empName = `${emp.LastName || ''} ${emp.FirstName || ''}`.trim() || emp.id;
+  const empNumId = emp.Id ?? emp.NumID;
+  if (!confirm(`"${empName}"-ын бүртгэлийг цэвэрлэх үү?\nТэр дахин бүртгүүлэх шаардлагатай болно.\nTA болон бусад бичлэгт нөлөөлөхгүй.`)) return;
+
+  clearingReg.value[emp.id] = true;
+  try {
+    // Delete all users docs linked to this employee
+    if (empNumId != null) {
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('employeeId', '==', empNumId)));
+      for (const userDoc of usersSnap.docs) {
+        await deleteDoc(doc(db, 'users', userDoc.id));
+      }
+    }
+    // Clear email from employee record
+    await updateDoc(doc(db, 'employees', emp.id), { Email: '', updatedAt: new Date().toISOString() });
+    emp.Email = '';
+    alert(`${empName}-ын бүртгэл цэвэрлэгдлээ. Дахин бүртгүүлж болно.`);
+  } catch (e) {
+    alert('Алдаа: ' + e.message);
+  } finally {
+    delete clearingReg.value[emp.id];
+  }
 }
+
+// ── Bulk edit mode ──────────────────────────────────────────────
+const bulkEditMode = ref(false);
+const savingAll = ref(false);
+
+const canEditSome = computed(() => tableFiltered.value.some(emp => canEdit(emp)));
+
+function openAllEdits() {
+  bulkEditMode.value = true;
+  for (const emp of tableFiltered.value) {
+    if (canEdit(emp)) openEdit(emp);
+  }
+}
+
+function cancelAllEdits() {
+  bulkEditMode.value = false;
+  editState.value = {};
+}
+
+async function saveAllEdits() {
+  savingAll.value = true;
+  const editing = tableFiltered.value.filter(emp => editState.value[emp.id]?.editing);
+  await Promise.all(editing.map(emp => saveEdit(emp)));
+  savingAll.value = false;
+  bulkEditMode.value = false;
+}
+
+// ── Panels row (adjustment panels) ──────────────────────────────
+const panelsId = ref(null);
+function togglePanels(emp) {
+  panelsId.value = panelsId.value === emp.id ? null : emp.id;
+}
+
+// ── Month picker ─────────────────────────────────────────────────
+const today = new Date();
+const selectedMonth = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
+const bountyMonth   = ref(selectedMonth.value);
+const bountyRange   = ref('10');
+
+// Push adjustments to EOM salary document (best-effort)
+async function onAdjUpdated(emp, fields) {
+  const empId = String(emp.Id ?? emp.NumID ?? emp.id ?? '');
+  if (!empId || !selectedMonth.value) return;
+  try {
+    await updateSalaryRow(selectedMonth.value, 'full', empId, fields);
+  } catch { /* EOM salary not calculated yet — adjustment saved in salaryAdjustments anyway */ }
+}
+
+onMounted(() => {
+  if (!employeesStore.employees.length) {
+    employeesStore.fetchEmployees();
+  }
+});
 </script>
 
 <style scoped>
@@ -254,18 +618,278 @@ function toggleExpand(emp) {
 .state-badge.inactive { background: #fee2e2; color: #991b1b; }
 
 /* Expanded deductions row */
+.row-edit-inline td { padding: 0; }
 .row-expanded td { padding: 0; }
 .td-panel {
   background: #f8fafc;
   border-top: 2px solid #6366f1;
   padding: 16px !important;
 }
-.panel-header {
+
+/* Action buttons in each row */
+.th-actions { width: 180px; text-align: center; }
+.td-actions {
+  white-space: nowrap;
+  text-align: center;
+  padding: 4px 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+.btn-row-edit, .btn-row-panels {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  width: 100%;
+  text-align: center;
+}
+.btn-row-edit { color: #4338ca; border-color: #a5b4fc; background: #eef2ff; }
+.btn-row-edit:hover { background: #e0e7ff; border-color: #6366f1; }
+.btn-row-panels { color: #065f46; border-color: #6ee7b7; background: #f0fdf4; }
+.btn-row-panels:hover { background: #dcfce7; }
+.btn-row-panels.active { background: #dcfce7; border-color: #10b981; color: #047857; }
+
+.btn-edit-all {
+  padding: 6px 14px;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #a5b4fc;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-edit-all:hover { background: #e0e7ff; border-color: #6366f1; }
+.btn-save-all {
+  padding: 6px 14px;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-save-all:hover { background: #a7f3d0; }
+.btn-save-all:disabled { opacity: 0.6; cursor: default; }
+.btn-cancel-all {
+  padding: 6px 14px;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-cancel-all:hover { background: #fee2e2; }
+
+.btn-row-unlink {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  width: 100%;
+  text-align: center;
+}
+.btn-row-unlink:hover:not(:disabled) { background: #fee2e2; border-color: #ef4444; }
+.btn-row-unlink:disabled { opacity: 0.5; cursor: default; }
+
+/* Employee info/edit block */
+.emp-info-block {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #6366f1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.emp-info-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 15px;
 }
+.emp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.emp-info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px 16px;
+}
+@media (max-width: 700px) {
+  .emp-info-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.info-value {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+}
+.emp-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px 14px;
+}
+@media (max-width: 700px) {
+  .emp-edit-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.edit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.edit-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.edit-input {
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+.edit-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px #6366f133; }
+
 .panel-pos { color: #64748b; font-size: 13px; }
+
+/* Two-panel side-by-side layout */
+.panels-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 900px) {
+  .panels-grid { grid-template-columns: 1fr; }
+}
+.panel-section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+.panel-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 6px;
+}
+.panel-subsection-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 6px;
+  padding: 4px 0 4px 2px;
+  border-left: 3px solid #6366f1;
+  padding-left: 8px;
+}
+.panel-subsection-mt { margin-top: 16px; border-left-color: #10b981; }
+
+.bank-input {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+.bank-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px #6366f133; }
+.bank-saved { font-size: 13px; color: #059669; font-weight: 600; }
+.bank-error { font-size: 13px; color: #dc2626; }
+
+.btn-save-bank {
+  padding: 5px 14px;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-save-bank:hover:not(:disabled) { background: #4338ca; }
+.btn-save-bank:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-emp-edit {
+  padding: 4px 12px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+.btn-emp-edit:hover { background: #e2e8f0; }
+.btn-cancel { color: #dc2626; border-color: #fca5a5; background: #fff1f2; }
+.btn-cancel:hover { background: #fee2e2; }
+
+.btn-delete-empty {
+  padding: 4px 12px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #dc2626;
+  margin-left: auto;
+}
+.btn-delete-empty:hover:not(:disabled) { background: #fecaca; }
+.btn-delete-empty:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Month picker in header */
+.month-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+.month-input {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
 </style>

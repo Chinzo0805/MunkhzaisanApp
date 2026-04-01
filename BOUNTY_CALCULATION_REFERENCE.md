@@ -145,6 +145,10 @@ The employee with the **most `WorkingHour` in Role = 'Инженер'** across a
 - Employee has at least one TA record for the project
 - `projectType ≠ 'unpaid'`
 
+### Employee-level exclusions
+
+- **`Type = 'Дадлагжигч'`** → bounty = 0 for all bounty types (engineer, non-engineer, overtime). Salary is calculated normally — only bounty is excluded.
+
 ---
 
 ## 💰 Financial Transactions (project expenses)

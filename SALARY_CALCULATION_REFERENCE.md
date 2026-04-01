@@ -12,7 +12,7 @@ Last updated: 2026-03-30
 | `ID` (or `Id`) | Employee identifier key | Normalized: float `5.0` → `"5"` |
 | `FirstName` / `LastName` | Display name | Combined with space |
 | `Position` | Position label | Display only |
-| `Type` | Employee type | `Дадлагжигч` → calculatedSalary = 0 |
+| `Type` | Employee type | `Дадлагжигч` → salary calculated normally; **no bounty** |
 | `State` | Active/inactive filter | Only `Ажиллаж байгаа` included when no TA records |
 | `Salary` (or `BasicSalary`) | `baseSalary` | Base monthly salary ₮ |
 | `hhoatDiscount` | `discount` | ХХОАТ хөнгөлөлт ₮ |
@@ -204,7 +204,7 @@ Stored in `salaries/{yearMonth}_advance` → confirmed in `confirmedSalaries/{ye
 | Employee has more тасалсан hours than ирсэн hours | `effectiveHours = 0`, `laborCost = 0` ← data issue, check TA records |
 | Employee has no TA records AND `State = Ажиллаж байгаа` | Included with `workedDays = 0`, `laborCost = 0` |
 | Employee has no TA records AND `State ≠ Ажиллаж байгаа` | **Excluded** from calculation |
-| Employee `Type = Дадлагжигч` | `calculatedSalary = 0`, but still shown in table |
+| Employee `Type = Дадлагжигч` | Salary calculated normally (same formula); **excluded from bounty entirely** |
 | `employees.Salary` field not set | `baseSalary = 0`, `laborCost = 0` — enter salary in Employee Management |
 | `isNDS = false` | `baseSalary` forced to 0 in calculation; employee still shows in list |
 | `autoTA = true` | TA records ignored; overridden with full period working days |

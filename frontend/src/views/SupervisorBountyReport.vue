@@ -135,6 +135,8 @@
                 {{ proj.referenceIdfromCustomer || ('#' + proj.id) }}
               </th>
               <th class="num total-col">Нийт</th>
+              <th v-if="hasAnyBountyAdj" class="num adj-col">Тогтмол тохир.</th>
+              <th v-if="hasAnyBountyAdj" class="num final-col">Эцсийн дүн</th>
             </tr>
           </thead>
           <tbody>
@@ -144,6 +146,15 @@
                 {{ (row.byProject[proj.docId] || 0) > 0 ? (row.byProject[proj.docId] || 0).toLocaleString() : '-' }}
               </td>
               <td class="num total-col"><strong>{{ row.total.toLocaleString() }}</strong></td>
+              <td v-if="hasAnyBountyAdj" class="num adj-col">
+                <span v-if="bountyRowAdj(row) !== 0" :class="bountyRowAdj(row) > 0 ? 'adj-pos' : 'adj-neg'">
+                  {{ bountyRowAdj(row) > 0 ? '+' : '' }}{{ bountyRowAdj(row).toLocaleString() }}
+                </span>
+                <span v-else class="adj-zero">—</span>
+              </td>
+              <td v-if="hasAnyBountyAdj" class="num final-col">
+                <strong>{{ (row.total + bountyRowAdj(row)).toLocaleString() }}</strong>
+              </td>
             </tr>
           </tbody>
           <tfoot>
@@ -153,6 +164,10 @@
                 <strong>{{ (proj._totalBounty || 0).toLocaleString() }}</strong>
               </td>
               <td class="num total-col"><strong>{{ grandTotal.toLocaleString() }}</strong></td>
+              <td v-if="hasAnyBountyAdj" class="num adj-col">—</td>
+              <td v-if="hasAnyBountyAdj" class="num final-col">
+                <strong>{{ adjustedGrandTotal.toLocaleString() }}</strong>
+              </td>
             </tr>
           </tfoot>
         </table>
@@ -180,7 +195,7 @@ const summaryByEmployee = computed(() => {
   const empMap = new Map();
   for (const proj of projects.value) {
     for (const emp of (proj._employees || [])) {
-      if (!empMap.has(emp.name)) empMap.set(emp.name, { name: emp.name, byProject: {}, total: 0 });
+      if (!empMap.has(emp.name)) empMap.set(emp.name, { name: emp.name, employeeId: emp.employeeId || '', byProject: {}, total: 0 });
       const row = empMap.get(emp.name);
       row.byProject[proj.docId] = (row.byProject[proj.docId] || 0) + emp.totalBounty;
       row.total += emp.totalBounty;
@@ -190,6 +205,42 @@ const summaryByEmployee = computed(() => {
 });
 
 const grandTotal = computed(() => summaryByEmployee.value.reduce((s, e) => s + e.total, 0));
+
+// ── Recurring bounty adjustments (from employeeDeductions with applyTo = 'bounty' | 'both') ──
+const recurringBountyAdjByEmp = ref({});
+const hasAnyBountyAdj = computed(() =>
+  Object.values(recurringBountyAdjByEmp.value).some(v => v !== 0)
+);
+const adjustedGrandTotal = computed(() =>
+  summaryByEmployee.value.reduce((s, row) => s + row.total + bountyRowAdj(row), 0)
+);
+
+function bountyRowAdj(row) {
+  if (row.employeeId && recurringBountyAdjByEmp.value[row.employeeId] !== undefined)
+    return recurringBountyAdjByEmp.value[row.employeeId];
+  return 0;
+}
+
+async function loadRecurringBountyAdj() {
+  try {
+    const snap = await getDocs(query(collection(db, 'employeeDeductions'), where('status', '==', 'active')));
+    const adjMap = {};
+    snap.forEach(d => {
+      const data = d.data();
+      const appliesTo = data.applyTo || 'salary';
+      if (!['bounty', 'both'].includes(appliesTo)) return;
+      if ((data.startMonth || '') > selectedMonth.value) return;
+      const empId = String(data.employeeId || '').trim();
+      if (!empId) return;
+      const direction = data.direction || 'deduction';
+      const amount    = data.monthlyAmount || 0;
+      adjMap[empId]   = (adjMap[empId] || 0) + (direction === 'addition' ? amount : -amount);
+    });
+    recurringBountyAdjByEmp.value = adjMap;
+  } catch (e) {
+    console.error('loadRecurringBountyAdj error:', e);
+  }
+}
 
 function getDateRange() {
   const [year, month] = selectedMonth.value.split('-');
@@ -209,6 +260,7 @@ async function fetchSavedData() {
     if (calcSnap.exists()) {
       projects.value = calcSnap.data().projects || [];
     }
+    await loadRecurringBountyAdj();
   } catch (err) {
     console.error('Error loading saved bounty:', err);
     errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
@@ -225,6 +277,21 @@ async function recalculate() {
   errorMsg.value = '';
   try {
     const bountyPayDate = `${selectedMonth.value}-${String(selectedRange.value).padStart(2, '0')}`;
+
+    // Load employee types once — Дадлагжигч employees receive no bounty
+    const empTypeSnap = await getDocs(collection(db, 'employees'));
+    const empTypeMap = new Map();
+    empTypeSnap.forEach(d => {
+      const emp = d.data();
+      const raw = emp.Id ?? emp.ID;
+      const n = parseFloat(String(raw ?? '').trim());
+      empTypeMap.set(isNaN(n) ? String(raw || '').trim() : String(Math.round(n)), emp.Type || '');
+    });
+    function normEmpId(v) {
+      const n = parseFloat(String(v ?? '').trim());
+      return isNaN(n) ? String(v || '').trim() : String(Math.round(n));
+    }
+
     const projSnap = await getDocs(
       query(collection(db, 'projects'), where('bountyPayDate', '==', bountyPayDate))
     );
@@ -263,9 +330,11 @@ async function recalculate() {
 
       let sumEH = 0, sumNEH = 0, sumOH = 0, sumEB = 0, sumNEB = 0, sumOB = 0;
       const employees = Array.from(empMap.entries()).map(([key, e]) => {
-        const engineerBounty = (!isOvertime && key === mainEngineerKey && engineerHand > 0) ? Math.max(0, engineerHand) : 0;
-        const nonEngineerBounty = !isOvertime ? Math.max(0, Math.round(e.nonEngineerHours * 5000)) : 0;
-        const overtimeBounty = isOvertime ? Math.max(0, Math.round(e.overtimeHours * 15000)) : 0;
+        // Дадлагжигч (Trainee) employees receive no bounty of any kind
+        const isTrainee = empTypeMap.get(normEmpId(e.employeeId)) === 'Дадлагжигч';
+        const engineerBounty = (!isOvertime && !isTrainee && key === mainEngineerKey && engineerHand > 0) ? Math.max(0, engineerHand) : 0;
+        const nonEngineerBounty = (!isOvertime && !isTrainee) ? Math.max(0, Math.round(e.nonEngineerHours * 5000)) : 0;
+        const overtimeBounty = (isOvertime && !isTrainee) ? Math.max(0, Math.round(e.overtimeHours * 15000)) : 0;
         const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
         sumEH += e.engineerHours; sumNEH += e.nonEngineerHours; sumOH += e.overtimeHours;
         sumEB += engineerBounty; sumNEB += nonEngineerBounty; sumOB += overtimeBounty;
@@ -300,6 +369,7 @@ async function recalculate() {
         grandTotal: grandTotal.value,
       });
       await resetApprovals();
+      await loadRecurringBountyAdj();
     } catch (saveErr) {
       console.error('Save bounty error:', saveErr);
     }
@@ -501,4 +571,10 @@ h4 { font-size: 1.1rem; font-weight: 700; margin: 32px 0 12px; color: #374151; }
 .conf-done { color: #166534; }
 .conf-wait { color: #92400e; }
 .conf-sep { opacity: .5; }
+
+.adj-col   { background: #faf5ff; white-space: nowrap; }
+.final-col { background: #f0fdf4; font-weight: 700; }
+.adj-pos   { color: #059669; font-weight: 600; }
+.adj-neg   { color: #dc2626; font-weight: 600; }
+.adj-zero  { color: #cbd5e1; }
 </style>

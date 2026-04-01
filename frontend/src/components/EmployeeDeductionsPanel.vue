@@ -8,18 +8,24 @@
     <div v-if="errorMsg" class="ded-error">⚠️ {{ errorMsg }}</div>
 
     <div v-if="!loading && deductions.length === 0" class="ded-empty">
-      Тогтмол суутгал бүртгэгдээгүй байна
+      Тогтмол бүртгэл байхгүй байна
     </div>
 
-    <div v-for="d in deductions" :key="d.id" class="ded-row" :class="d.status">
+    <div v-for="d in filteredDeductions" :key="d.id" class="ded-row" :class="d.status">
       <div class="ded-main">
+        <span class="ded-dir-badge" :class="(d.direction || 'deduction') === 'addition' ? 'dir-add' : 'dir-ded'">
+          {{ (d.direction || 'deduction') === 'addition' ? '▲' : '▼' }}
+        </span>
         <span class="ded-desc">{{ d.description }}</span>
-        <span class="ded-badge" :class="d.type">{{ d.type === 'installment' ? 'Хэсэгчлэн' : 'Тогтмол' }}</span>
+        <span class="ded-badge ded-applyto">{{ applyToLabel(d.applyTo) }}</span>
+        <span v-if="(d.direction || 'deduction') !== 'addition'" class="ded-badge" :class="d.type">{{ d.type === 'installment' ? 'Хэсэгчлэн' : 'Тогтмол' }}</span>
         <span class="ded-badge ded-status" :class="d.status">{{ statusLabel(d.status) }}</span>
       </div>
       <div class="ded-amounts">
-        <span class="ded-monthly">{{ fmt(d.monthlyAmount) }}/сар</span>
-        <template v-if="d.type === 'installment'">
+        <span class="ded-monthly" :class="(d.direction || 'deduction') === 'addition' ? 'ded-add' : 'ded-ded'">
+          {{ (d.direction || 'deduction') === 'addition' ? '+' : '−' }}{{ fmt(d.monthlyAmount) }}/сар
+        </span>
+        <template v-if="(d.direction || 'deduction') !== 'addition' && d.type === 'installment'">
           <span class="ded-progress">
             {{ fmt(d.paidAmount || 0) }} / {{ fmt(d.totalAmount) }}
             <em>(үлдэгдэл: {{ fmt(Math.max(0, d.totalAmount - (d.paidAmount || 0))) }})</em>
@@ -34,9 +40,18 @@
     </div>
 
     <div v-if="!props.readonly" class="ded-form">
-      <div class="ded-form-title">➕ Шинэ суутгал нэмэх</div>
+      <div class="ded-form-title">➕ Шинэ нэмэгдэл / суутгал нэмэх</div>
       <div class="ded-form-row">
-        <select v-model="form.type" class="ded-sel">
+        <select v-model="form.direction" class="ded-sel">
+          <option value="deduction">− Суутгал</option>
+          <option value="addition">+ Нэмэгдэл</option>
+        </select>
+        <select v-if="!filterApplyTo" v-model="form.applyTo" class="ded-sel">
+          <option value="salary">Цалин</option>
+          <option value="bounty">Урамшуулал</option>
+          <option value="both">Хоёулан</option>
+        </select>
+        <select v-if="form.direction === 'deduction'" v-model="form.type" class="ded-sel">
           <option value="recurring">Тогтмол (хязгааргүй)</option>
           <option value="installment">Хэсэгчлэн (нийт дүнтэй)</option>
         </select>
@@ -45,7 +60,7 @@
       <div class="ded-form-row">
         <label class="ded-lbl">Сарын дүн ₮</label>
         <input v-model.number="form.monthlyAmount" type="number" min="1" placeholder="Дүн" class="ded-inp" />
-        <template v-if="form.type === 'installment'">
+        <template v-if="form.direction === 'deduction' && form.type === 'installment'">
           <label class="ded-lbl">Нийт дүн ₮</label>
           <input v-model.number="form.totalAmount" type="number" min="1" placeholder="Нийт" class="ded-inp" />
         </template>
@@ -65,17 +80,32 @@ import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc } 
 import { db } from '../config/firebase';
 
 const props = defineProps({
-  employeeId:   { type: String, required: true },
-  employeeName: { type: String, default: '' },
-  readonly:     { type: Boolean, default: false },
+  employeeId:    { type: String, required: true },
+  employeeName:  { type: String, default: '' },
+  readonly:      { type: Boolean, default: false },
+  // 'salary' | 'bounty' | null (null = show all)
+  filterApplyTo: { type: String, default: null },
 });
 
-const deductions = ref([]);
+// All loaded entries; filteredDeductions narrows by filterApplyTo
+const allDeductions = ref([]);
+const filteredDeductions = computed(() => {
+  if (!props.filterApplyTo) return allDeductions.value;
+  return allDeductions.value.filter(d => {
+    const at = d.applyTo || 'salary';
+    return at === props.filterApplyTo || at === 'both';
+  });
+});
+// Keep legacy template refs working
+const deductions = allDeductions;
+
 const loading    = ref(false);
 const saving     = ref(false);
 const errorMsg   = ref('');
 
 const defaultForm = () => ({
+  direction:     'deduction',
+  applyTo:       props.filterApplyTo || 'salary',
   type:          'recurring',
   description:   '',
   monthlyAmount: null,
@@ -87,7 +117,7 @@ const form = ref(defaultForm());
 const isFormValid = computed(() => {
   if (!(form.value.monthlyAmount > 0)) return false;
   if (!form.value.description.trim()) return false;
-  if (form.value.type === 'installment' && !(form.value.totalAmount > 0)) return false;
+  if (form.value.direction === 'deduction' && form.value.type === 'installment' && !(form.value.totalAmount > 0)) return false;
   return true;
 });
 
@@ -96,6 +126,12 @@ function statusLabel(s) {
   if (s === 'paused')    return 'Зогсоосон';
   if (s === 'completed') return 'Дууссан';
   return s;
+}
+
+function applyToLabel(v) {
+  if (v === 'bounty') return 'Урамшуулал';
+  if (v === 'both')   return 'Хоёулан';
+  return 'Цалин';
 }
 
 function fmt(n) {
@@ -110,7 +146,7 @@ async function load() {
     const snap = await getDocs(
       query(collection(db, 'employeeDeductions'), where('employeeId', '==', String(props.employeeId)))
     );
-    deductions.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    allDeductions.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
   } catch (e) {
     errorMsg.value = e.message || 'Уншихад алдаа гарлаа';
@@ -128,10 +164,12 @@ async function addDeduction() {
     const data = {
       employeeId:    String(props.employeeId),
       employeeName:  props.employeeName,
-      type:          form.value.type,
+      direction:     form.value.direction,
+      applyTo:       props.filterApplyTo || form.value.applyTo,
+      type:          form.value.direction === 'deduction' ? form.value.type : 'recurring',
       description:   form.value.description.trim(),
       monthlyAmount: form.value.monthlyAmount,
-      totalAmount:   form.value.type === 'installment' ? form.value.totalAmount : 0,
+      totalAmount:   form.value.direction === 'deduction' && form.value.type === 'installment' ? form.value.totalAmount : 0,
       paidAmount:    0,
       startMonth:    form.value.startMonth,
       status:        'active',
@@ -160,7 +198,7 @@ async function togglePause(d, newStatus) {
 }
 
 async function remove(d) {
-  if (!confirm(`"${d.description}" суутгалыг устгах уу?`)) return;
+  if (!confirm(`"${d.description}" устгах уу?`)) return;
   errorMsg.value = '';
   try {
     await deleteDoc(doc(db, 'employeeDeductions', d.id));
@@ -191,7 +229,13 @@ onMounted(load);
 .ded-badge.ded-status.paused    { background: #fef9c3; color: #92400e; }
 .ded-badge.ded-status.completed { background: #f3f4f6; color: #6b7280; }
 .ded-amounts { display: flex; flex-direction: column; gap: 2px; min-width: 160px; }
-.ded-monthly { font-weight: 600; color: #dc2626; }
+.ded-monthly { font-weight: 600; }
+.ded-add { color: #059669; }
+.ded-ded { color: #dc2626; }
+.ded-dir-badge { font-size: 0.72rem; padding: 2px 5px; border-radius: 4px; font-weight: 700; margin-right: 2px; }
+.dir-add { background: #d1fae5; color: #065f46; }
+.dir-ded { background: #fee2e2; color: #991b1b; }
+.ded-applyto { background: #e0e7ff; color: #3730a3; }
 .ded-progress { font-size: 0.78rem; color: #6b7280; }
 .ded-progress em { font-style: normal; color: #374151; }
 .ded-actions { display: flex; gap: 4px; }

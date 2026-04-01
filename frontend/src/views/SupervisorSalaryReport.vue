@@ -593,6 +593,9 @@ async function confirmAdvance() {
       const updates = { [myApprovalKey.value]: stamp, fullyConfirmed, confirmedAt };
       await updateDoc(docRef, updates);
       confirmedAdvanceInfo.value = { ...confirmedAdvanceInfo.value, ...updates };
+      if (fullyConfirmed) {
+        await applyAdvanceToEOM(confirmedAdvanceInfo.value.employees ?? advanceData.value, selectedMonth.value);
+      }
     }
   } catch (err) {
     console.error('confirmAdvance error:', err);
@@ -650,11 +653,75 @@ async function confirmSalary() {
 }
 
 /**
- * After salary is fully confirmed, update paidAmount on installment deductions.
+ * When advance is fully confirmed, automatically write an advance deduction
+ * entry to salaryAdjustments for each employee who received an advance,
+ * and push it into the EOM salary document if it already exists.
+ * Idempotent — skips employees that already have an advance deduction entry.
+ */
+async function applyAdvanceToEOM(employees, yearMonth) {
+  const empWithAdvance = (employees || []).filter(e => (e.advancePay || 0) > 0);
+  if (!empWithAdvance.length) return;
+  try {
+    await Promise.all(empWithAdvance.map(async emp => {
+      const empId  = String(emp.employeeId);
+      const adjRef = doc(db, 'salaryAdjustments', `${yearMonth}_${empId}`);
+      const snap   = await getDoc(adjRef);
+      let entries  = snap.exists() ? (snap.data().entries || []) : [];
+
+      // Idempotent
+      if (entries.some(e => e.type === 'deduction' && e.category === 'advance')) return;
+
+      entries = [...entries, {
+        id:        Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        type:      'deduction',
+        category:  'advance',
+        amount:    emp.advancePay,
+        note:      'Урьдчилгаа (автомат)',
+        createdAt: new Date().toISOString(),
+      }];
+
+      await setDoc(adjRef, {
+        yearMonth,
+        employeeId:   empId,
+        employeeName: emp.name || '',
+        entries,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Build overrides from all entries
+      const adds = entries.filter(e => e.type === 'addition');
+      const deds = entries.filter(e => e.type === 'deduction');
+      const overrides = {
+        additionalPay:   adds.filter(e => e.category !== 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
+        annualLeavePay:  adds.filter(e => e.category === 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
+        advance:         deds.filter(e => e.category === 'advance').reduce((s, e) => s + (e.amount || 0), 0),
+        otherDeductions: deds.filter(e => e.category !== 'advance').reduce((s, e) => s + (e.amount || 0), 0),
+      };
+
+      // Best-effort: push to EOM salary doc if it exists already
+      try { await updateSalaryRow(yearMonth, 'full', empId, overrides); } catch { /* not yet calculated — fine */ }
+    }));
+  } catch (e) {
+    console.error('applyAdvanceToEOM error:', e);
+  }
+}
+
+/**
  * Uses lastAppliedMonth as idempotency guard — safe to call multiple times.
+ * Only advances deductions that actually appeared in the salary document.
  */
 async function updateInstallmentBalances(employees, yearMonth) {
   try {
+    // Collect only the deduction IDs that were actually applied in this salary run
+    const appliedIds = new Set();
+    employees.forEach(emp => {
+      (emp.recurringDeductionsDetail || []).forEach(d => {
+        if (d.id) appliedIds.add(d.id);
+      });
+    });
+    if (appliedIds.size === 0) return;
+
+    // Fetch only installment deductions that are active and were applied
     const dedSnap = await getDocs(
       query(collection(db, 'employeeDeductions'),
         where('status', '==', 'active'),
@@ -665,7 +732,9 @@ async function updateInstallmentBalances(employees, yearMonth) {
     const batch = dedSnap.docs
       .filter(d => {
         const data = d.data();
-        return data.lastAppliedMonth !== yearMonth && (data.startMonth || '') <= yearMonth;
+        return appliedIds.has(d.id)
+          && data.lastAppliedMonth !== yearMonth
+          && (data.startMonth || '') <= yearMonth;
       });
     await Promise.all(batch.map(async d => {
       const data = d.data();

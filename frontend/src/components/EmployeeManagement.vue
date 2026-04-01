@@ -193,6 +193,20 @@
 
           <div class="form-row">
             <div class="form-group">
+              <label>Банкны нэр</label>
+              <select v-model="form.BankName">
+                <option value="">— Банк сонгоно уу —</option>
+                <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>IBAN Дансны дугаар</label>
+              <input v-model="form.BankAccountNumber" type="text" placeholder="IBAN Дансны дугаар" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
               <label>НДШ тооцох</label>
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.isNDS" />
@@ -221,7 +235,7 @@
         <!-- Recurring deductions — only shown when editing an existing employee -->
         <div v-if="editingItem" style="margin-top:16px;">
           <EmployeeDeductionsPanel
-            :employeeId="String(editingItem.Id || editingItem.id || '')"
+            :employeeId="String(editingItem.Id ?? editingItem.NumID ?? editingItem.id ?? '')"
             :employeeName="(editingItem.FirstName || '') + ' ' + (editingItem.LastName || '')"
           />
         </div>
@@ -235,6 +249,13 @@ import { ref, computed, watch } from 'vue';
 import { useEmployeesStore } from '../stores/employees';
 import { manageEmployee } from '../services/api';
 import EmployeeDeductionsPanel from './EmployeeDeductionsPanel.vue';
+
+const MONGOLIAN_BANKS = [
+  'Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк (ТДБ)',
+  'Хас банк (XacBank)', 'Улаанбаатар хот банк', 'Капитал банк',
+  'Богд банк', 'Нийслэл банк', 'Транс банк', 'Чингис хаан банк',
+  'М банк', 'Ариг банк', 'Кредит банк', 'Төрийн банк', 'Зоос банк',
+];
 
 const employeesStore = useEmployeesStore();
 
@@ -268,6 +289,8 @@ const form = ref({
   Salary: 1500000,
   isNDS: true,
   autoTA: false,
+  BankName: '',
+  BankAccountNumber: '',
 });
 
 const emit = defineEmits(['saved']);
@@ -371,6 +394,8 @@ function editItem(employee) {
     Salary: parseFloat(employee.Salary) || 1500000,
     isNDS: employee.isNDS !== false,  // default true if not set
     autoTA: !!employee.autoTA,
+    BankName: employee.BankName || '',
+    BankAccountNumber: employee.BankAccountNumber || '',
   };
 }
 
@@ -399,7 +424,10 @@ function closeModal() {
     Email: '',
     Salary: 1500000,
     isNDS: true,
-    autoTA: false,  };
+    autoTA: false,
+    BankName: '',
+    BankAccountNumber: '',
+  };
 }
 
 async function handleSave() {
