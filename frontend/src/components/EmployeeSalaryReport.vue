@@ -5,7 +5,7 @@
     <div class="shared-picker">
       <label class="picker-label">📅 Сар:</label>
       <input type="month" v-model="selectedMonth" @change="loadAll" class="month-input" />
-      <label class="picker-label" style="margin-left:12px;">Урамшуулал:</label>
+      <label class="picker-label" style="margin-left:12px;">Цалингийн өдөр:</label>
       <select v-model="bountyDay" @change="loadAll" class="day-select">
         <option value="10">10-ны</option>
         <option value="25">25-ны</option>
@@ -165,14 +165,13 @@
             <div class="dg">
               <span>Үндсэн цалин</span><span class="val-money">{{ fmt(currentRow.baseSalary) }}₮</span>
               <span>Бодогдсон цалин</span><span class="val-money">{{ fmt(currentRow.calculatedSalary) }}₮</span>
-              <template v-if="(currentRow.additionalPay || 0) > 0">
-                <span>Нэмэгдэл цалин</span><span class="val-green">+{{ fmt(currentRow.additionalPay) }}₮</span>
-              </template>
-              <template v-if="(currentRow.annualLeavePay || 0) > 0">
-                <span>Ээлжийн амралт</span><span class="val-green">+{{ fmt(currentRow.annualLeavePay) }}₮</span>
-              </template>
               <template v-if="(currentRow.recurringAdditions || 0) > 0">
                 <span>Тогтмол нэмэгдэл</span><span class="val-green">+{{ fmt(currentRow.recurringAdditions) }}₮</span>
+              </template>
+              <!-- One-time additions from salaryAdjustments -->
+              <template v-for="e in salaryAdj.filter(e => e.type === 'addition')" :key="e.id">
+                <span class="adj-inline adj-inline-add">▲ {{ e.note || (e.category === 'annual_leave' ? 'Ээлжийн амралт' : 'Нэмэгдэл') }}<span class="adj-tai"> · Тайлбар: {{ e.note || e.category }}</span></span>
+                <span class="val-green">+{{ fmt(e.amount) }}₮</span>
               </template>
               <span class="dg-sep">Нийт бодогдсон</span><strong class="dg-sep val-money">{{ fmt(currentRow.totalGross) }}₮</strong>
               <span>НДШ ажилтан (11.5%)</span><span class="val-red">−{{ fmt(currentRow.employeeNDS) }}₮</span>
@@ -180,33 +179,20 @@
               <span>ХХОАТ (10%)</span><span>−{{ fmt(currentRow.hhoat) }}₮</span>
               <span>ХХОАТ хөнгөлөлт</span><span class="val-green">{{ fmt(currentRow.discount) }}₮</span>
               <span>ХХОАТ төлөх</span><span class="val-red">−{{ fmt(currentRow.hhoatNet) }}₮</span>
-              <template v-if="(currentRow.advance || 0) > 0">
-                <span>Урьдчилгаа</span><span class="val-red">−{{ fmt(currentRow.advance) }}₮</span>
-              </template>
-              <template v-if="(currentRow.otherDeductions || 0) > 0">
-                <span>Бусад суутгал</span><span class="val-red">−{{ fmt(currentRow.otherDeductions) }}₮</span>
-              </template>
               <template v-if="(currentRow.recurringDeductions || 0) > 0">
                 <span>Тогтмол суутгал</span><span class="val-red">−{{ fmt(currentRow.recurringDeductions) }}₮</span>
                 <template v-for="d in (currentRow.recurringDeductionsDetail || [])" :key="d.id">
-                  <span style="padding-left:10px;font-size:0.78rem;color:#6b7280;">↳ {{ d.description }}</span>
-                  <span style="font-size:0.78rem;" class="val-red">−{{ fmt(d.monthlyAmount) }}₮</span>
+                  <span class="adj-inline adj-inline-ded">↳ {{ d.description }}<span class="adj-tai"> · Тайлбар: {{ d.description }}</span></span>
+                  <span class="val-red">−{{ fmt(d.monthlyAmount) }}₮</span>
                 </template>
+              </template>
+              <!-- One-time deductions from salaryAdjustments -->
+              <template v-for="e in salaryAdj.filter(e => e.type === 'deduction')" :key="e.id">
+                <span class="adj-inline adj-inline-ded">▼ {{ e.category === 'advance' ? 'Урьдчилгаа' : 'Суутгал' }}<span class="adj-tai"> · Тайлбар: {{ e.note || e.category }}</span></span>
+                <span class="val-red">−{{ fmt(e.amount) }}₮</span>
               </template>
               <span class="dg-sep net-label">💵 Гарт олгох</span>
               <strong class="dg-sep val-green net-val">{{ fmt(currentRow.netPay) }}₮</strong>
-            </div>
-          </div>
-
-          <!-- Monthly adjustments -->
-          <div v-if="salaryAdj.length > 0" class="detail-block">
-            <div class="detail-block-title">📋 Сарын нэмэлт / суутгал</div>
-            <div class="adj-list">
-              <div v-for="e in salaryAdj" :key="e.id" class="adj-row">
-                <span class="adj-type-badge" :class="e.type">{{ e.type === 'addition' ? '+' : '−' }}</span>
-                <span class="adj-note">{{ e.note || (e.category === 'advance' ? 'Урьдчилгаа' : e.category) }}</span>
-                <span :class="e.type === 'addition' ? 'val-green' : 'val-red'">{{ fmt(e.amount) }}₮</span>
-              </div>
             </div>
           </div>
 
@@ -242,9 +228,8 @@ const authStore = useAuthStore();
 
 // ── State ──────────────────────────────────────────────────────────────
 const now = new Date();
-// Default to previous month — salary/bounty are always for a completed month
-const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-const defaultMonth = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+// Default to current month — salaryMonth() offsets back when day=10
+const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
 const selectedMonth = ref(defaultMonth); // single shared month picker
 const bountyDay     = ref('10');
@@ -785,6 +770,23 @@ onMounted(() => {
   border-bottom: 1px solid #f1f5f9;
 }
 .adj-row:last-child { border-bottom: none; }
+/* Inline adj label inside the calc grid */
+.adj-inline {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 1px 0;
+}
+.adj-inline-add {
+  color: #16a34a;
+}
+.adj-inline-ded {
+  color: #dc2626;
+}
+.adj-tai {
+  font-weight: 400;
+  color: #6b7280;
+  font-size: 0.76rem;
+}
 .adj-type-badge {
   width: 20px;
   height: 20px;

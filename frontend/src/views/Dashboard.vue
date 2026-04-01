@@ -49,7 +49,9 @@
           <button @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>
-
+          <button @click="$router.push('/management-goals')" class="btn-action goals">
+            🎯 Удирдлагын зорилго
+          </button>
         </div>
 
         <!-- Supervisor: Report buttons -->
@@ -73,9 +75,6 @@
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
           </button>
-          <button @click="$router.push('/management-goals')" class="btn-action goals">
-            🎯 Удирдлагын зорилго
-          </button>
         </div>
 
         <!-- Accountant: Report buttons -->
@@ -98,9 +97,6 @@
           </button>
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
-          </button>
-          <button @click="$router.push('/management-goals')" class="btn-action goals">
-            🎯 Удирдлагын зорилго
           </button>
         </div>
       </div>

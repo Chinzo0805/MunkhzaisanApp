@@ -198,10 +198,10 @@ export async function calculateSalary(yearMonth, range) {
 }
 
 // Update manual salary fields for a single employee row and recalculate
-export async function updateSalaryRow(yearMonth, range, employeeId, overrides) {
+export async function updateSalaryRow(yearMonth, range, employeeId) {
   try {
     const response = await api.post('/calculateSalary', {
-      action: 'updateRow', yearMonth, range, employeeId, overrides,
+      action: 'updateRow', yearMonth, range, employeeId,
     });
     return response.data;
   } catch (error) {

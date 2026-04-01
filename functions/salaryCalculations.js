@@ -13,6 +13,7 @@
  *   Гарт олгох дүн = Нийт бодогдсон − Байгааллагаас НДШ − ХХОАТ(хөнг.) − Урьдчилгаа − Бусад суутгал
  *   (Урамшуулал тооцохгүй — тусдаа систем)
  */
+const { FieldPath } = require('firebase-admin/firestore');
 
 const mongolianHolidays = [
   '2024-01-01','2024-02-12','2024-02-13','2024-02-14','2024-03-08',
@@ -192,15 +193,28 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   }
   if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
-  // Fetch employees, time attendance, AND recurring deductions
-  const [taSnap, empSnap, dedSnap, adjSnap] = await Promise.all([
+  // Fetch employees, time attendance, recurring deductions, and (for full range)
+  // monthly salary adjustments + confirmed advance for auto-deduction.
+  const [taSnap, empSnap, dedSnap, adjSnap, confirmedAdvSnap] = await Promise.all([
     db.collection('timeAttendance')
       .where('Day', '>=', startDate)
       .where('Day', '<=', endDate)
       .get(),
     db.collection('employees').get(),
     db.collection('employeeDeductions').where('status', '==', 'active').get(),
-    db.collection('salaryAdjustments').where('yearMonth', '==', yearMonth).get(),
+    // salaryAdjustments are EOM-only — only fetch for full range.
+    // Use doc-ID range query (${yearMonth}_*) so it matches regardless of
+    // whether the 'yearMonth' field inside the doc is set or formatted correctly.
+    range === 'full'
+      ? db.collection('salaryAdjustments')
+          .where(FieldPath.documentId(), '>=', `${yearMonth}_`)
+          .where(FieldPath.documentId(), '<=', `${yearMonth}_\uf8ff`)
+          .get()
+      : Promise.resolve({ docs: [] }),
+    // confirmed advance — used to auto-deduct from full salary without any frontend action
+    range === 'full'
+      ? db.collection('confirmedSalaries').doc(`${yearMonth}_advance`).get()
+      : Promise.resolve({ exists: false }),
   ]);
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
@@ -246,8 +260,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     targetMap.get(empId).push({ id: d.id, ...data });
   });
 
-  // Monthly salary adjustments (advance, additions, other deductions) from salaryAdjustments collection.
-  // Keyed by normalised employeeId — built from entries stored by SalaryAdjustmentsPanel / applyAdvanceToEOM.
+  // Monthly salary adjustments (additionalPay, annualLeavePay, otherDeductions, advance override).
+  // Only loaded for full range — these are EOM-only one-time entries.
   const adjByEmp = new Map();
   adjSnap.docs.forEach(d => {
     const adj    = d.data();
@@ -263,6 +277,21 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       otherDeductions: deds.filter(e => e.category !== 'advance').reduce((s,  e) => s + (e.amount || 0), 0),
     });
   });
+
+  // Auto-deduct confirmed advance from full salary.
+  // Auto-deduct confirmed advance from full salary.
+  // The confirmedSalaries/{yearMonth}_advance document is created when someone presses
+  // "Батлах". Its existence means the advance is approved — no need to check fields.
+  // The doc is deleted when approvals reset (advance recalculated with changed amounts).
+  const confirmedAdvanceByEmp = new Map();
+  if (range === 'full' && confirmedAdvSnap.exists) {
+    (confirmedAdvSnap.data().employees || []).forEach(e => {
+      const empId = normalizeId(e.employeeId);
+      if (empId && (e.advancePay || 0) > 0) {
+        confirmedAdvanceByEmp.set(empId, e.advancePay);
+      }
+    });
+  }
 
   // Group time attendance by employee
   // workedDays   = count of qualifying days (ірсэн/ажилласан/томилолт) for salary formula
@@ -348,12 +377,14 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       normalHours:    Math.round(ta.normalHours),
       absentHours:    Math.round(ta.absentHours),
       effectiveHours: Math.round(effectiveHours),
-      ...((adj => ({
-        additionalPay:   adj.additionalPay   || 0,
-        annualLeavePay:  adj.annualLeavePay  || 0,
-        advance:         adj.advance         || 0,
-        otherDeductions: adj.otherDeductions || 0,
-      }))(adjByEmp.get(empId) || {})),
+      // One-time EOM adjustments — only for full range (salaryAdjustments are EOM-only)
+      additionalPay:   (adjByEmp.get(empId) || {}).additionalPay   || 0,
+      annualLeavePay:  (adjByEmp.get(empId) || {}).annualLeavePay  || 0,
+      otherDeductions: (adjByEmp.get(empId) || {}).otherDeductions || 0,
+      // Advance: prefer auto-deduct from confirmed advance doc; fall back to salaryAdjustments
+      advance: confirmedAdvanceByEmp.get(empId)
+            || (adjByEmp.get(empId) || {}).advance
+            || 0,
       recurringDeductions,
       recurringDeductionsDetail,
       recurringAdditions,

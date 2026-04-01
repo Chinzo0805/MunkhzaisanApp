@@ -425,7 +425,7 @@
 import { ref, computed, onMounted, reactive } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { addDoc, updateDoc } from 'firebase/firestore';
+import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
 import { manageSalaryPeriod, calculateSalary, updateSalaryRow } from '../services/api';
@@ -460,7 +460,7 @@ const alreadyApproved = computed(() => {
   if (!confirmedInfo.value || !canApproveSalary.value) return false;
   return !!confirmedInfo.value[myApprovalKey.value];
 });
-const isAdvanceLocked = computed(() => confirmedAdvanceInfo.value?.fullyConfirmed === true);
+const isAdvanceLocked = computed(() => !!confirmedAdvanceInfo.value);
 const alreadyApprovedAdvance = computed(() => {
   if (!confirmedAdvanceInfo.value || !canApproveSalary.value) return false;
   return !!confirmedAdvanceInfo.value[myApprovalKey.value];
@@ -543,16 +543,11 @@ async function resetApprovals() {
 
 async function resetAdvanceApprovals() {
   if (!confirmedAdvanceInfo.value) return;
-  if (confirmedAdvanceInfo.value.fullyConfirmed) return;
-  if (!confirmedAdvanceInfo.value.supervisorApproval && !confirmedAdvanceInfo.value.accountantApproval) return;
+  // Advance amounts changed — delete the confirmed doc entirely so the backend
+  // no longer auto-deducts the stale amount until someone re-approves.
   try {
-    await updateDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_advance`), {
-      supervisorApproval: null,
-      accountantApproval: null,
-      fullyConfirmed:     false,
-      confirmedAt:        null,
-    });
-    confirmedAdvanceInfo.value = { ...confirmedAdvanceInfo.value, supervisorApproval: null, accountantApproval: null, fullyConfirmed: false, confirmedAt: null };
+    await deleteDoc(doc(db, 'confirmedSalaries', `${selectedMonth.value}_advance`));
+    confirmedAdvanceInfo.value = null;
   } catch (e) {
     console.error('resetAdvanceApprovals error:', e);
   }
@@ -586,6 +581,9 @@ async function confirmAdvance() {
       };
       await setDoc(docRef, newDoc);
       confirmedAdvanceInfo.value = newDoc;
+      // Write audit entries to salaryAdjustments immediately on first approval
+      // so backend adjByEmp fallback also works, and employee view shows the deduction.
+      await applyAdvanceToEOM(advanceData.value, selectedMonth.value);
     } else {
       const otherApproval  = confirmedAdvanceInfo.value[otherKey];
       const fullyConfirmed = !!otherApproval;
@@ -688,18 +686,8 @@ async function applyAdvanceToEOM(employees, yearMonth) {
         updatedAt: new Date().toISOString(),
       });
 
-      // Build overrides from all entries
-      const adds = entries.filter(e => e.type === 'addition');
-      const deds = entries.filter(e => e.type === 'deduction');
-      const overrides = {
-        additionalPay:   adds.filter(e => e.category !== 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
-        annualLeavePay:  adds.filter(e => e.category === 'annual_leave').reduce((s, e) => s + (e.amount || 0), 0),
-        advance:         deds.filter(e => e.category === 'advance').reduce((s, e) => s + (e.amount || 0), 0),
-        otherDeductions: deds.filter(e => e.category !== 'advance').reduce((s, e) => s + (e.amount || 0), 0),
-      };
-
-      // Best-effort: push to EOM salary doc if it exists already
-      try { await updateSalaryRow(yearMonth, 'full', empId, overrides); } catch { /* not yet calculated — fine */ }
+      // Backend auto-deducts from confirmedSalaries — no need to push overrides.
+      // The salaryAdjustments entry is kept only as an audit record for the employee view.
     }));
   } catch (e) {
     console.error('applyAdvanceToEOM error:', e);
@@ -1127,29 +1115,21 @@ async function savePeriodAndRecalc() {
   }
 }
 
-// ── Save manual field overrides for a single employee row ─────────
-// Called by SalaryAdjustmentsPanel when an entry is added/deleted
-async function onAdjustmentsUpdated(empId, fields) {
-  editingOverrides.value = {
-    ...editingOverrides.value,
-    [empId]: {
-      ...(editingOverrides.value[empId] || {}),
-      ...fields,
-    },
-  };
+// Called by SalaryAdjustmentsPanel when an entry is added/deleted.
+// Panel has already saved to salaryAdjustments collection — trigger backend re-read.
+async function onAdjustmentsUpdated(empId) {
   await saveRowOverrides(empId);
 }
 
 async function saveRowOverrides(empId) {
   if (isSalaryLocked.value) return;
-  const overrides = editingOverrides.value[empId];
-  if (!overrides) return;
   const s = new Set(savingRows.value);
   s.add(empId);
   savingRows.value = s;
   try {
     const oldEmp = savedReport.value?.employees?.find(e => String(e.employeeId) === String(empId));
-    const result = await updateSalaryRow(selectedMonth.value, selectedRange, empId, overrides);
+    // Backend reads salaryAdjustments + confirmedAdvance fresh — no overrides from frontend
+    const result = await updateSalaryRow(selectedMonth.value, selectedRange, empId);
     if (savedReport.value && result.employee) {
       savedReport.value = {
         ...savedReport.value,
@@ -1157,29 +1137,16 @@ async function saveRowOverrides(empId) {
           String(e.employeeId) === String(empId) ? result.employee : e
         ),
       };
-      // Refresh edit form with updated values
-      editingOverrides.value = {
-        ...editingOverrides.value,
-        [empId]: {
-          additionalPay:   result.employee.additionalPay   || 0,
-          annualLeavePay:  result.employee.annualLeavePay  || 0,
-          discount:        result.employee.discount        || 0,
-          advance:         result.employee.advance         || 0,
-          otherDeductions: result.employee.otherDeductions || 0,
-        },
-      };
-      // Only reset approvals if any financial figure actually changed
       if (salarySnapshot([result.employee]) !== salarySnapshot(oldEmp ? [oldEmp] : [])) {
         await resetApprovals();
       }
     }
-  } catch (e) {
-    console.error('saveRowOverrides error:', e);
-    alert('Хадгалах алдаа: ' + e.message);
+  } catch (err) {
+    console.error('saveRowOverrides error:', err);
   } finally {
-    const s2 = new Set(savingRows.value);
-    s2.delete(empId);
-    savingRows.value = s2;
+    const s = new Set(savingRows.value);
+    s.delete(empId);
+    savingRows.value = s;
   }
 }
 
