@@ -70,6 +70,9 @@ exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTA
 // Management Goals
 exports.manageGoal = require("./manageGoal").manageGoal;
 
+// HSE (Health, Safety, Environment) Instructions
+exports.manageHseInstruction = require("./manageHseInstruction").manageHseInstruction;
+
 // Public data access functions (password-protected)
 exports.getPublicTASummary = require("./getPublicTASummary").getPublicTASummary;
 exports.getPublicProjects = require("./getPublicProjects").getPublicProjects;

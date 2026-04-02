@@ -110,8 +110,16 @@ exports.manageEmployee = functions.region('asia-east2').https.onRequest(async (r
         projectsUpdated,
       });
       
+    } else if (action === 'delete') {
+      if (!employeeId) {
+        return res.status(400).send({ error: 'Missing employeeId for delete' });
+      }
+      await db.collection('employees').doc(employeeId).delete();
+      console.log(`Deleted employee with ID: ${employeeId}`);
+      res.status(200).send({ success: true, message: 'Employee deleted successfully', employeeId });
+
     } else {
-      return res.status(400).send({ error: 'Invalid action. Use "add" or "update"' });
+      return res.status(400).send({ error: 'Invalid action. Use "add", "update", or "delete"' });
     }
     
   } catch (error) {

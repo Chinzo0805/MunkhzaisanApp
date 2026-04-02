@@ -397,4 +397,15 @@ export async function manageGoal(action, goal = null) {
   }
 }
 
+// HSE Instructions
+export async function manageHseInstruction(payload) {
+  try {
+    const response = await api.post('/manageHseInstruction', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error managing HSE instruction:', error);
+    throw error;
+  }
+}
+
 export default api;

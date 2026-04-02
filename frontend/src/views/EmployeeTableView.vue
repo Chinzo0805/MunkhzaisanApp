@@ -28,14 +28,35 @@
 
     <!-- Search + count -->
     <div class="search-bar">
-      <input v-model="tableSearch" type="text" placeholder="Хайх (нэр, утас, имэйл...)..." class="search-input" />
-      <label class="show-inactive-label">
-        <input type="checkbox" v-model="showInactive" />
-        Гарсан харуулах
-      </label>
-      <label class="show-inactive-label">
+      <input v-model="tableSearch" type="text" placeholder="Хайх (нэр, албан, NumID...)..." class="search-input" />
+      <select v-model="filterDept" class="filter-select">
+        <option value="">Бүх хэлтэс</option>
+        <option v-for="d in deptOptions" :key="d" :value="d">{{ d }}</option>
+      </select>
+      <select v-model="filterRole" class="filter-select">
+        <option value="">Бүх Role</option>
+        <option value="Employee">Employee</option>
+        <option value="Supervisor">Supervisor</option>
+        <option value="Accountant">Accountant</option>
+        <option value="nonEmployee">nonEmployee</option>
+        <option value="Financial">Financial</option>
+      </select>
+      <select v-model="filterType" class="filter-select">
+        <option value="">Бүх төрөл</option>
+        <option value="Үндсэн">Үндсэн</option>
+        <option value="Гэрээт">Гэрээт</option>
+        <option value="Дадлагжигч">Дадлагжигч</option>
+      </select>
+    </div>
+
+    <div class="filter-chip-bar">
+      <button v-for="f in stateChips" :key="f.value"
+        class="fchip" :class="{ active: filterState === f.value }"
+        @click="filterState = f.value; showInactive = f.value !== 'active'"
+      >{{ f.label }} <span class="fchip-count">{{ f.count }}</span></button>
+      <label class="show-inactive-label" style="margin-left:auto">
         <input type="checkbox" v-model="showEmpty" />
-        Хоосон бичлэг харуулах
+        Хоосон
       </label>
       <span class="emp-count">{{ tableFiltered.length }} ажилтан</span>
       <button
@@ -103,19 +124,22 @@
                 <button
                   v-if="canEdit(emp) && !bulkEditMode"
                   @click="openEditRow(emp)"
-                  class="btn-row-edit"
-                >✏️ Засах</button>
+                  class="btn-row-edit btn-icon"
+                  title="Засах"
+                >✏️</button>
                 <button
                   v-if="authStore.userData?.isSupervisor && !bulkEditMode"
                   @click="clearRegistration(emp)"
-                  class="btn-row-unlink"
+                  class="btn-row-unlink btn-icon"
                   :disabled="!!clearingReg[emp.id]"
-                >{{ clearingReg[emp.id] ? 'Цэвэрлж байна...' : '🔓 Бүртгэл цэвэрлэх' }}</button>
+                  :title="clearingReg[emp.id] ? 'Цэвэрлж байна...' : 'Бүртгэл цэвэрлэх'"
+                >{{ clearingReg[emp.id] ? '⏳' : '🔓' }}</button>
                 <button
                   @click="togglePanels(emp)"
-                  class="btn-row-panels"
+                  class="btn-row-panels btn-icon"
                   :class="panelsId === emp.id ? 'active' : ''"
-                >{{ panelsId === emp.id ? '▲ Хаах' : '▼ Тохируулалт' }}</button>
+                  :title="panelsId === emp.id ? 'Хаах' : 'Тохируулалт'"
+                >{{ panelsId === emp.id ? '▲' : '⚙️' }}</button>
               </td>
             </tr>
 
@@ -244,11 +268,11 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { doc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useEmployeesStore } from '../stores/employees';
 import { useAuthStore } from '../stores/auth';
-import { updateSalaryRow } from '../services/api';
+import { updateSalaryRow, manageEmployee } from '../services/api';
 import EmployeeDeductionsPanel from '../components/EmployeeDeductionsPanel.vue';
 import SalaryAdjustmentsPanel from '../components/SalaryAdjustmentsPanel.vue';
 import BountyAdjustmentsPanel from '../components/BountyAdjustmentsPanel.vue';
@@ -367,7 +391,7 @@ async function deleteEmptyEmployees() {
   deletingEmpty.value = true;
   try {
     for (const emp of emptyEmployees.value) {
-      await deleteDoc(doc(db, 'employees', emp.id));
+      await manageEmployee('delete', {}, emp.id);
     }
     await employeesStore.fetchEmployees();
   } catch (e) {
@@ -415,7 +439,30 @@ const activeColumns = computed(() => ALL_COLUMNS.filter(c => visibleCols.value.i
 // ── Search / Sort / Filter ───────────────────────────────────────
 const tableSearch  = ref('');
 const showInactive = ref(false);
+const filterState  = ref('active');   // 'active' | 'left' | 'leave' | 'all'
+const filterRole   = ref('');
+const filterDept   = ref('');
+const filterType   = ref('');
 const tableSort    = ref({ col: 'LastName', asc: true });
+
+const STATES = [
+  { value: 'active', label: 'Ажиллаж байгаа', match: 'Ажиллаж байгаа' },
+  { value: 'left',   label: 'Гарсан',          match: 'Гарсан' },
+  { value: 'leave',  label: 'Чөлөөтэй',        match: 'Чөлөөтэй/Амралт' },
+  { value: 'all',    label: 'Бүгд',             match: null },
+];
+
+const stateChips = computed(() => {
+  const all = employeesStore.employees;
+  return STATES.map(s => ({
+    ...s,
+    count: s.match ? all.filter(e => e.State === s.match).length : all.length,
+  }));
+});
+
+const deptOptions = computed(() => [
+  ...new Set(employeesStore.employees.map(e => e.Department).filter(Boolean)),
+].sort());
 
 function toggleSort(col) {
   if (tableSort.value.col === col) tableSort.value.asc = !tableSort.value.asc;
@@ -423,10 +470,14 @@ function toggleSort(col) {
 }
 
 const tableFiltered = computed(() => {
-  const q = tableSearch.value.trim().toLowerCase();
+  const q     = tableSearch.value.trim().toLowerCase();
+  const state = STATES.find(s => s.value === filterState.value);
   let items = employeesStore.employees.filter(emp => {
-    if (!showInactive.value && emp.State !== 'Ажиллаж байгаа') return false;
     if (!showEmpty.value && !emp.LastName && !emp.FirstName) return false;
+    if (state?.match && emp.State !== state.match) return false;
+    if (filterRole.value && emp.Role !== filterRole.value) return false;
+    if (filterDept.value && emp.Department !== filterDept.value) return false;
+    if (filterType.value && emp.Type !== filterType.value) return false;
     if (!q) return true;
     return ['LastName', 'FirstName', 'NumID', 'Position', 'Email', 'Phone', 'Mobile']
       .some(k => (emp[k] || '').toLowerCase().includes(q));
@@ -564,20 +615,61 @@ onMounted(() => {
 
 .search-bar {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 .search-input {
   flex: 1;
-  max-width: 360px;
-  padding: 7px 10px;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 6px 10px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
 }
+.filter-select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  cursor: pointer;
+}
+.filter-chip-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 99px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  transition: all 0.15s;
+}
+.fchip:hover { background: #e5e7eb; }
+.fchip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+.fchip-count {
+  background: rgba(0,0,0,0.12);
+  border-radius: 99px;
+  padding: 0 5px;
+  font-size: 11px;
+  min-width: 18px;
+  text-align: center;
+}
+.fchip.active .fchip-count { background: rgba(255,255,255,0.25); }
 .show-inactive-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569; cursor: pointer; }
-.emp-count { font-size: 13px; color: #64748b; }
+.emp-count { font-size: 12px; color: #64748b; white-space: nowrap; }
 
 .table-wrap { overflow-x: auto; }
 
@@ -627,27 +719,32 @@ onMounted(() => {
 }
 
 /* Action buttons in each row */
-.th-actions { width: 180px; text-align: center; }
+.th-actions { width: 82px; text-align: center; }
 .td-actions {
   white-space: nowrap;
   text-align: center;
-  padding: 4px 6px !important;
+  padding: 2px 4px !important;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: stretch;
+  flex-direction: row;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
 }
-.btn-row-edit, .btn-row-panels {
-  padding: 4px 10px;
+.btn-icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border-radius: 5px;
   border: 1px solid #cbd5e1;
   background: #f8fafc;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  width: 100%;
+  font-size: 13px;
+  line-height: 26px;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .btn-row-edit { color: #4338ca; border-color: #a5b4fc; background: #eef2ff; }
 .btn-row-edit:hover { background: #e0e7ff; border-color: #6366f1; }
@@ -693,19 +790,7 @@ onMounted(() => {
 }
 .btn-cancel-all:hover { background: #fee2e2; }
 
-.btn-row-unlink {
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid #fca5a5;
-  background: #fef2f2;
-  color: #991b1b;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  width: 100%;
-  text-align: center;
-}
+.btn-row-unlink { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
 .btn-row-unlink:hover:not(:disabled) { background: #fee2e2; border-color: #ef4444; }
 .btn-row-unlink:disabled { opacity: 0.5; cursor: default; }
 

@@ -3,32 +3,38 @@
     <h4>Employee Management</h4>
     <div class="management-buttons">
       <button @click="handleAddItem" class="action-btn add-btn">
-        + Add Employee
+        + Add
       </button>
       <button @click="showList = !showList" class="action-btn">
-        {{ showList ? 'Hide' : 'Edit' }} Employees
+        {{ showList ? 'Hide' : 'Edit' }}
       </button>
     </div>
 
     <!-- Employee List (card grid) -->
     <div v-if="showList" class="item-list">
-      <h5>Select Employee to Edit:</h5>
-      
       <div class="list-controls">
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="Search by name, position, or NumID..." 
+          placeholder="Search name / position / NumID..." 
           class="search-input"
         />
-        <select v-model="sortBy" class="sort-select">
-          <option value="lastName">Sort by Last Name</option>
-          <option value="firstName">Sort by First Name</option>
-          <option value="position">Sort by Position</option>
-          <option value="state">Sort by State</option>
-        </select>
       </div>
-      
+
+      <div class="filter-bar">
+        <button
+          v-for="f in stateFilters"
+          :key="f.value"
+          class="filter-chip"
+          :class="{ active: stateFilter === f.value }"
+          @click="stateFilter = f.value"
+        >
+          {{ f.label }}
+          <span class="chip-count">{{ f.count }}</span>
+        </button>
+        <span class="result-count">{{ filteredAndSorted.length }} shown</span>
+      </div>
+
       <div class="item-grid">
         <div 
           v-for="employee in filteredAndSorted" 
@@ -263,7 +269,7 @@ const showList  = ref(false);
 const showModal = ref(false);
 const editingItem = ref(null);
 const searchQuery = ref('');
-const sortBy = ref('state');
+const stateFilter = ref('all');
 const saving = ref(false);
 const formError = ref('');
 
@@ -306,36 +312,42 @@ watch(() => form.value.State, (newState) => {
   }
 });
 
+const stateFilters = computed(() => {
+  const all = employeesStore.employees;
+  const counts = (state) => all.filter(e => e.State === state).length;
+  return [
+    { value: 'all',                label: 'Бүгд',            count: all.length },
+    { value: 'Ажиллаж байгаа',    label: 'Ажиллаж байгаа', count: counts('Ажиллаж байгаа') },
+    { value: 'Гарсан',            label: 'Гарсан',          count: counts('Гарсан') },
+    { value: 'Чөлөөтэй/Амралт',  label: 'Чөлөөтэй',       count: counts('Чөлөөтэй/Амралт') },
+  ];
+});
+
 const filteredAndSorted = computed(() => {
   let items = [...employeesStore.employees];
-  
+
+  if (stateFilter.value !== 'all') {
+    items = items.filter(emp => emp.State === stateFilter.value);
+  }
+
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
     items = items.filter(emp => {
-      const lastName = (emp.LastName || '').toLowerCase();
+      const lastName  = (emp.LastName  || '').toLowerCase();
       const firstName = (emp.FirstName || '').toLowerCase();
-      const position = (emp.Position || '').toLowerCase();
-      const numId = (emp.NumID || '').toLowerCase();
-      
-      return lastName.includes(query) || firstName.includes(query) || 
+      const position  = (emp.Position  || '').toLowerCase();
+      const numId     = (emp.NumID     || '').toLowerCase();
+      return lastName.includes(query) || firstName.includes(query) ||
              position.includes(query) || numId.includes(query);
     });
   }
-  
+
   items.sort((a, b) => {
-    const stateA = (a.State || '').toLowerCase();
-    const stateB = (b.State || '').toLowerCase();
-    
-    if (stateA !== stateB) {
-      return stateA < stateB ? -1 : 1;
-    }
-    
     const firstNameA = (a.FirstName || '').toLowerCase();
     const firstNameB = (b.FirstName || '').toLowerCase();
-    
     return firstNameA < firstNameB ? -1 : firstNameA > firstNameB ? 1 : 0;
   });
-  
+
   return items;
 });
 
@@ -464,17 +476,18 @@ async function handleSave() {
 
 .management-buttons {
   display: flex;
-  gap: 10px;
-  margin-top: 15px;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .action-btn {
-  padding: 10px 20px;
+  padding: 5px 12px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
 .add-btn {
@@ -487,26 +500,72 @@ async function handleSave() {
 }
 
 .item-list {
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
 .list-controls {
   display: flex;
-  gap: 10px;
-  margin: 15px 0;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .search-input {
   flex: 1;
-  padding: 8px;
+  padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
+  font-size: 13px;
 }
 
-.sort-select {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 99px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  transition: all 0.15s;
+}
+
+.filter-chip:hover {
+  background: #e5e7eb;
+}
+
+.filter-chip.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.chip-count {
+  background: rgba(0,0,0,0.12);
+  border-radius: 99px;
+  padding: 0 5px;
+  font-size: 11px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.filter-chip.active .chip-count {
+  background: rgba(255,255,255,0.25);
+}
+
+.result-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .item-grid {
