@@ -81,19 +81,54 @@
         </div>
 
         <!-- Confirmed list -->
-        <h4 class="section-title">✅ Баталгаажуулсан ажилтнууд</h4>
+        <div class="section-title-row">
+          <h4 class="section-title">✅ Баталгаажуулсан ажилтнууд</h4>
+          <button
+            v-if="confirmations.length > 0 && selectedConfirmed.length > 0"
+            @click="showFoodPanel = true"
+            class="btn-food-add"
+          >
+            💳 Гүйлгээ нэмэх ({{ selectedConfirmed.length }})
+          </button>
+        </div>
         <div v-if="confirmations.length === 0" class="state-msg-small">Байхгүй</div>
         <table v-else class="report-table">
           <thead>
             <tr>
+              <th style="width:36px">
+                <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="Бүгдийг сонгох" />
+              </th>
               <th>Ажилтан</th>
+              <th>Төсөл</th>
+              <th>Төрөл</th>
               <th>Зааварчилгаа</th>
               <th>Цаг</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="c in confirmations" :key="c.id">
+              <td>
+                <input type="checkbox" :value="c.employeeId" v-model="selectedConfirmed" />
+              </td>
               <td>{{ c.employeeName || c.employeeId }}</td>
+              <td>{{ c.selectedProjectID || '—' }}</td>
+              <td>
+                <div class="type-toggle">
+                  <button
+                    :class="['toggle-btn', 'food', c.transactionType === 'Хоолны мөнгө' ? 'active' : '']"
+                    @click="setType(c, 'Хоолны мөнгө')"
+                    :disabled="updatingType === c.id"
+                    title="Хоолны мөнгө"
+                  >🍽️</button>
+                  <button
+                    :class="['toggle-btn', 'trip', c.transactionType === 'Томилолт' ? 'active' : '']"
+                    @click="setType(c, 'Томилолт')"
+                    :disabled="updatingType === c.id"
+                    title="Томилолт"
+                  >🚗</button>
+                  <span v-if="updatingType === c.id" class="type-saving">...</span>
+                </div>
+              </td>
               <td>{{ c.instructionTitle }}</td>
               <td>{{ formatTime(c.confirmedAt) }}</td>
             </tr>
@@ -171,6 +206,52 @@
       </div>
     </div>
 
+    <!-- ─── Food Money Modal ─── -->
+    <div v-if="showFoodPanel" class="modal-overlay" @click.self="showFoodPanel = false">
+      <div class="modal">
+        <h3>💳 Гүйлгээ нэмэх</h3>
+
+        <p class="food-panel-info">
+          Огноо: <strong>{{ reportDate }}</strong> &nbsp;·&nbsp;
+          {{ selectedConfirmed.length }} ажилтан
+        </p>
+
+        <!-- Summary table of what will be added -->
+        <div class="food-summary-table">
+          <div class="food-summary-head">
+            <span>Ажилтан</span>
+            <span>Төсөл</span>
+            <span>Төрөл</span>
+            <span>Дүн</span>
+          </div>
+          <div
+            v-for="empId in selectedConfirmed"
+            :key="empId"
+            class="food-summary-row"
+            :class="{ 'row-warn': !getConfirmation(empId)?.selectedProjectID || !getConfirmation(empId)?.transactionType }"
+          >
+            <span>{{ getConfirmation(empId)?.employeeName || empId }}</span>
+            <span>{{ getConfirmation(empId)?.selectedProjectID || '⚠️ Байхгүй' }}</span>
+            <span>{{ getConfirmation(empId)?.transactionType || '⚠️ Байхгүй' }}</span>
+            <span>{{ getAmount(getConfirmation(empId)?.transactionType).toLocaleString() }}₮</span>
+          </div>
+        </div>
+
+        <div v-if="hasMissingData" class="food-msg food-warn">
+          ⚠️ Зарим ажилтны төсөл эсвэл төрөл байхгүй байна. Тэднийг алгасах болно.
+        </div>
+
+        <div v-if="foodMessage" :class="['food-msg', foodMsgType]">{{ foodMessage }}</div>
+
+        <div class="modal-footer">
+          <button @click="showFoodPanel = false" class="btn-cancel" :disabled="isAddingFood">Цуцлах</button>
+          <button @click="addFoodMoney" :disabled="isAddingFood" class="btn-save">
+            {{ isAddingFood ? 'Нэмж байна...' : 'Хадгалах' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ─── Delete Confirm Modal ─── -->
     <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
       <div class="modal modal-small">
@@ -191,10 +272,14 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
-import { manageHseInstruction } from '../services/api';
+import { useProjectsStore } from '../stores/projects';
+import { manageHseInstruction, manageFinancialTransaction } from '../services/api';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 const authStore = useAuthStore();
 const employeesStore = useEmployeesStore();
+const projectsStore = useProjectsStore();
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const activeTab = ref('instructions');
@@ -226,9 +311,33 @@ const notConfirmedEmployees = computed(() => {
   );
 });
 
+// ─── Food Money State ─────────────────────────────────────────────────────────
+const selectedConfirmed = ref([]);
+const showFoodPanel      = ref(false);
+const isAddingFood       = ref(false);
+const foodMessage        = ref('');
+const foodMsgType        = ref('food-success');
+const foodSettings       = ref({ foodAmount: 10000, tripAmount: 75000 });
+
+const allSelected = computed(() =>
+  confirmations.value.length > 0 &&
+  selectedConfirmed.value.length === confirmations.value.length
+);
+
+const hasMissingData = computed(() =>
+  selectedConfirmed.value.some(id => {
+    const c = confirmations.value.find(c => c.employeeId === id);
+    return !c?.selectedProjectID || !c?.transactionType;
+  })
+);
+
+const activeProjects = computed(() =>
+  (projectsStore.projects || []).filter(p => p.Status === 'Ажиллаж байгаа')
+);
+
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([loadInstructions(), employeesStore.fetchEmployees()]);
+  await Promise.all([loadInstructions(), employeesStore.fetchEmployees(), projectsStore.fetchProjects(), loadFoodSettings()]);
 });
 
 // ─── Methods ─────────────────────────────────────────────────────────────────
@@ -248,6 +357,8 @@ async function loadInstructions() {
 async function loadReport() {
   loadingReport.value = true;
   reportError.value = '';
+  selectedConfirmed.value = [];
+  foodMessage.value = '';
   try {
     const res = await manageHseInstruction({ action: 'getReport', date: reportDate.value });
     confirmations.value = res.confirmations || [];
@@ -345,6 +456,133 @@ async function deleteInstruction() {
     alert('Устгахад алдаа гарлаа.');
   } finally {
     deleting.value = false;
+  }
+}
+
+// ─── Food Money Methods ───────────────────────────────────────────────────────
+async function loadFoodSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'financialTransaction'));
+    if (snap.exists()) foodSettings.value = snap.data();
+  } catch (e) {
+    console.error('Could not load food settings', e);
+  }
+}
+
+function toggleSelectAll(e) {
+  if (e.target.checked) {
+    selectedConfirmed.value = confirmations.value.map(c => c.employeeId);
+  } else {
+    selectedConfirmed.value = [];
+  }
+}
+
+const updatingType = ref('');
+
+function getConfirmation(empId) {
+  return confirmations.value.find(c => c.employeeId === empId) || null;
+}
+
+async function setType(conf, type) {
+  if (conf.transactionType === type) return;
+  updatingType.value = conf.id;
+  try {
+    await updateDoc(doc(db, 'hseConfirmations', conf.id), { transactionType: type });
+    conf.transactionType = type; // update local reactive copy
+  } catch (e) {
+    alert('Төрөл шинэчлэхэд алдаа гарлаа.');
+    console.error(e);
+  } finally {
+    updatingType.value = '';
+  }
+}
+
+function getAmount(type) {
+  if (type === 'Хоолны мөнгө') return foodSettings.value.foodAmount || 10000;
+  if (type === 'Томилолт') return foodSettings.value.tripAmount || 75000;
+  return 0;
+}
+
+function onFoodProjectChange() {
+  const p = projectsStore.projects.find(p => p.id === foodProjectID?.value);
+  if (p) foodProjectLocation.value = p?.siteLocation || '';
+}
+
+async function addFoodMoney() {
+  isAddingFood.value = true;
+  foodMessage.value = '';
+
+  let successCount = 0;
+  let failCount = 0;
+  const warnings = [];
+  const errors = [];
+
+  for (const empId of selectedConfirmed.value) {
+    const conf = getConfirmation(empId);
+    if (!conf?.selectedProjectID || !conf?.transactionType) continue; // skip incomplete
+
+    const emp = employeesStore.employees.find(e => String(e.ID || e.Id) === String(empId));
+    const projectInfo = projectsStore.projects.find(p => p.id === conf.selectedProjectID);
+
+    const transaction = {
+      date: reportDate.value,
+      projectID: conf.selectedProjectID,
+      projectLocation: conf.selectedProjectLocation || projectInfo?.siteLocation || '',
+      employeeID: emp?.Id || empId,
+      employeeFirstName: emp?.FirstName || conf.employeeName || '',
+      amount: getAmount(conf.transactionType),
+      type: conf.transactionType,
+      purpose: 'Хоол/томилолт',
+      ebarimt: false,
+      НӨАТ: false,
+      comment: 'HSE баталгаажуулалт',
+    };
+
+    try {
+      const res = await manageFinancialTransaction('create', transaction);
+      if (res.success) {
+        successCount++;
+      } else if (res.error === 'DUPLICATE_FOOD_WARNING' && res.needsConfirmation) {
+        warnings.push({ empId, transaction, name: conf.employeeName });
+      } else {
+        failCount++;
+        errors.push(`${conf.employeeName}: ${res.error}`);
+      }
+    } catch (err) {
+      failCount++;
+      errors.push(`${conf.employeeName}: ${err.message}`);
+    }
+  }
+
+  // Handle duplicate confirmations
+  if (warnings.length > 0) {
+    const names = warnings.map(w => w.name).join(', ');
+    const ok = confirm(`Дараах ажилтнууд тухайн өдөр хоолны мөнгө 1 удаа авсан байна:\n\n${names}\n\nДахин нэмэх үү?`);
+    if (ok) {
+      for (const { transaction, name } of warnings) {
+        transaction.confirmDuplicate = true;
+        try {
+          const res = await manageFinancialTransaction('create', transaction);
+          if (res.success) successCount++;
+          else { failCount++; errors.push(`${name}: ${res.error}`); }
+        } catch (err) {
+          failCount++;
+          errors.push(`${name}: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  isAddingFood.value = false;
+
+  if (errors.length > 0) {
+    alert(`❌ ${failCount} ажилтанд алдаа гарлаа:\n\n${errors.join('\n')}`);
+  }
+  if (successCount > 0) {
+    foodMessage.value = `✅ ${successCount} ажилтанд гүйлгээ амжилттай нэмэгдлээ`;
+    foodMsgType.value = 'food-success';
+    selectedConfirmed.value = [];
+    showFoodPanel.value = false;
   }
 }
 
@@ -539,4 +777,47 @@ function formatTime(iso) {
 }
 
 .form-error { color: #dc2626; font-size: 0.85rem; margin-top: 8px; }
+
+/* Food Money */
+.section-title-row {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+}
+.btn-food-add {
+  background: #f59e0b; color: #fff; border: none; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+}
+.btn-food-add:hover { background: #d97706; }
+.food-panel-info { font-size: 0.88rem; color: #374151; margin: 0 0 12px; }
+.food-amount-note { font-size: 0.85rem; color: #059669; margin: 8px 0 0; }
+.food-msg { padding: 8px 12px; border-radius: 6px; font-size: 0.88rem; margin-top: 10px; }
+.food-success { background: #dcfce7; color: #15803d; }
+.food-error { background: #fee2e2; color: #dc2626; }
+.food-warn { background: #fef9c3; color: #92400e; }
+
+/* Food summary table */
+.food-summary-table { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin: 10px 0; font-size: 0.84rem; }
+.food-summary-head, .food-summary-row {
+  display: grid; grid-template-columns: 2fr 1.5fr 1.5fr 1fr; gap: 4px; padding: 7px 10px;
+}
+.food-summary-head { background: #f8fafc; font-weight: 600; color: #374151; border-bottom: 1px solid #e2e8f0; }
+.food-summary-row { border-bottom: 1px solid #f1f5f9; }
+.food-summary-row:last-child { border-bottom: none; }
+.food-summary-row.row-warn { background: #fefce8; }
+
+/* Transaction type toggle */
+.type-toggle { display: flex; gap: 4px; align-items: center; }
+.toggle-btn {
+  font-size: 1rem; padding: 3px 8px; border-radius: 6px; border: 2px solid transparent;
+  background: #f1f5f9; cursor: pointer; opacity: 0.45; transition: all 0.15s;
+}
+.toggle-btn:hover:not(:disabled) { opacity: 0.8; }
+.toggle-btn.active.food { background: #fef9c3; border-color: #f59e0b; opacity: 1; }
+.toggle-btn.active.trip { background: #dbeafe; border-color: #3b82f6; opacity: 1; }
+.toggle-btn:disabled { cursor: not-allowed; }
+.type-saving { font-size: 0.75rem; color: #94a3b8; }
+/* Legacy pills (still used in food modal) */
+.type-pill { font-size: 0.78rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+.type-pill.food { background: #fef9c3; color: #92400e; }
+.type-pill.trip { background: #dbeafe; color: #1d4ed8; }
+.type-pill.none { color: #94a3b8; }
 </style>

@@ -176,6 +176,8 @@ exports.manageFinancialTransaction = functions
           ebarimt: transaction.ebarimt || false,
           НӨАТ: transaction.НӨАТ || false,
           comment: transaction.comment || "",
+          isEbarimtReceived: transaction.isEbarimtReceived || false,
+          isNOATinSystem: transaction.isNOATinSystem || false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -220,6 +222,8 @@ exports.manageFinancialTransaction = functions
           ebarimt: transaction.ebarimt || false,
           НӨАТ: transaction.НӨАТ || false,
           comment: transaction.comment || "",
+          isEbarimtReceived: transaction.isEbarimtReceived || false,
+          isNOATinSystem: transaction.isNOATinSystem || false,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 

@@ -1,9 +1,7 @@
 <template>
   <div class="txn-report-container">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <h3 style="margin:0;">💵 Гүйлгээний тайлан</h3>
-      <button @click="$router.back()" class="btn-back">← Буцах</button>
-    </div>
+    <SupervisorNav />
+    <h3 style="margin:0 0 16px;">💵 Гүйлгээний тайлан</h3>
 
     <!-- Filters -->
     <div class="filters-section">
@@ -210,6 +208,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import * as XLSX from 'xlsx';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 
 const transactionsStore = useFinancialTransactionsStore();

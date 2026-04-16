@@ -1,14 +1,8 @@
 <template>
   <div class="ta-summary-container">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <h3 style="margin:0;">📊 Ирцийн нэгтгэл (Удирдлага)</h3>
-      <button @click="$router.back()" class="btn-back">← Буцах</button>
-    </div>
+    <SupervisorNav />
+    <h3 style="margin:0 0 12px;">📊 Ирцийн нэгтгэл (Удирдлага)</h3>
 
-    <!-- Quick nav -->
-    <div style="margin-bottom:16px;">
-      <router-link to="/supervisor-bounty" class="btn-bounty-nav">🏆 Урамшуулал тайлан →</router-link>
-    </div>
     <div class="filters-section">
       <div class="filter-group">
         <label>Он сар:</label>
@@ -151,6 +145,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
 

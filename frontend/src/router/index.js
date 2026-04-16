@@ -20,6 +20,11 @@ import PublicBountyReport from '../views/PublicBountyReport.vue';
 import TransactionReport from '../views/TransactionReport.vue';
 import EmployeeTableView from '../views/EmployeeTableView.vue';
 import ManagementGoalsBoard from '../views/ManagementGoalsBoard.vue';
+import ConfirmedSalaryView from '../views/ConfirmedSalaryView.vue';
+import TomdProjects from '../views/TomdProjects.vue';
+import HseConfirmation from '../views/HseConfirmation.vue';
+import HseInstructionManagement from '../views/HseInstructionManagement.vue';
+import TransactionCheckView from '../views/TransactionCheckView.vue';
 
 
 const routes = [
@@ -117,6 +122,12 @@ const routes = [
     meta: { requiresAuth: true, requiresRegistration: true },
   },
   {
+    path: '/confirmed-salary',
+    name: 'ConfirmedSalaryView',
+    component: ConfirmedSalaryView,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
     path: '/supervisor-bounty',
     name: 'SupervisorBountyReport',
     component: SupervisorBountyReport,
@@ -126,6 +137,12 @@ const routes = [
     path: '/transaction-report',
     name: 'TransactionReport',
     component: TransactionReport,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/transaction-check',
+    name: 'TransactionCheck',
+    component: TransactionCheckView,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
   {
@@ -144,6 +161,24 @@ const routes = [
     path: '/management-goals',
     name: 'ManagementGoals',
     component: ManagementGoalsBoard,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/hse-confirm',
+    name: 'HseConfirmation',
+    component: HseConfirmation,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/tomd-projects',
+    name: 'TomdProjects',
+    component: TomdProjects,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/hse-instructions',
+    name: 'HseInstructionManagement',
+    component: HseInstructionManagement,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

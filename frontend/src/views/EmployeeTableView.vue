@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="emp-table-page">
+    <SupervisorNav />
     <div class="page-header">
-      <button @click="$router.back()" class="btn-back">← Буцах</button>
       <h2>👥 Ажилтны жагсаалт</h2>
       <div class="month-picker">
         <label>📅 Тайлбарын сар:</label>
@@ -214,6 +214,10 @@
                       <label class="edit-label">IBAN Данс №</label>
                       <input v-model="editState[emp.id].BankAccountNumber" type="text" class="edit-input" placeholder="IBAN Дансны дугаар" />
                     </div>
+                    <div class="edit-item">
+                      <label class="edit-label">ТТД</label>
+                      <input v-model="editState[emp.id].TIN" type="text" class="edit-input" placeholder="Татвар төлөгчийн дугаар" />
+                    </div>
                   </div>
                 </div>
               </td>
@@ -269,6 +273,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import { db } from '../config/firebase';
 import { useEmployeesStore } from '../stores/employees';
 import { useAuthStore } from '../stores/auth';
@@ -327,6 +332,7 @@ function openEdit(emp) {
     Email:  emp.Email  || '',
     BankName: emp.BankName || '',
     BankAccountNumber: emp.BankAccountNumber || '',
+    TIN: emp.TIN || '',
     saving: false, saved: false, error: '',
   };
 }
@@ -356,6 +362,7 @@ async function saveEdit(emp) {
         Email:  state.Email,
         BankName: state.BankName.trim(),
         BankAccountNumber: state.BankAccountNumber.trim(),
+        TIN: state.TIN.trim(),
         updatedAt: new Date().toISOString(),
       };
     } else {
@@ -425,6 +432,7 @@ const ALL_COLUMNS = [
   { key: 'DoorNum',       label: 'Хаалганы №' },
   { key: 'BankName',        label: 'Банк' },
   { key: 'BankAccountNumber', label: 'IBAN Дансны дугаар' },
+  { key: 'TIN',             label: 'ТТД' },
 ];
 
 const DEFAULT_VISIBLE = ['Id', 'LastName', 'FirstName', 'Position', 'State', 'Phone', 'Salary', 'Type', 'Role'];

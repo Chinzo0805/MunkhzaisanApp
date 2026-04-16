@@ -1,9 +1,7 @@
 <template>
   <div class="salary-container">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <h3 style="margin:0;">💰 Цалингийн тооцоо (Удирдлага)</h3>
-      <button @click="$router.back()" class="btn-back">← Буцах</button>
-    </div>
+    <SupervisorNav />
+    <h3 style="margin:0 0 16px;">💰 Цалингийн тооцоо (Удирдлага)</h3>
 
     <!-- Filters -->
     <div class="filters-section">
@@ -424,6 +422,7 @@
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -581,9 +580,6 @@ async function confirmAdvance() {
       };
       await setDoc(docRef, newDoc);
       confirmedAdvanceInfo.value = newDoc;
-      // Write audit entries to salaryAdjustments immediately on first approval
-      // so backend adjByEmp fallback also works, and employee view shows the deduction.
-      await applyAdvanceToEOM(advanceData.value, selectedMonth.value);
     } else {
       const otherApproval  = confirmedAdvanceInfo.value[otherKey];
       const fullyConfirmed = !!otherApproval;
@@ -591,10 +587,8 @@ async function confirmAdvance() {
       const updates = { [myApprovalKey.value]: stamp, fullyConfirmed, confirmedAt };
       await updateDoc(docRef, updates);
       confirmedAdvanceInfo.value = { ...confirmedAdvanceInfo.value, ...updates };
-      if (fullyConfirmed) {
-        await applyAdvanceToEOM(confirmedAdvanceInfo.value.employees ?? advanceData.value, selectedMonth.value);
-      }
     }
+    // EOM salary will auto-deduct this advance on the next manual recalculation.
   } catch (err) {
     console.error('confirmAdvance error:', err);
     alert('Батлахад алдаа гарлаа: ' + err.message);
@@ -872,11 +866,12 @@ async function calculateAdvance() {
 
     // Build result rows
     const rows = [];
-    for (const [empId, ta] of empTA.entries()) {
-      const emp = empMap.get(empId);
-      const first    = emp?.FirstName || '';
-      const last     = emp?.LastName || emp?.EmployeeLastName || '';
-      const name     = (first + ' ' + last).trim() || `ID:${empId}`;
+
+    // Helper: build one advance row
+    function buildAdvanceRow(empId, ta, emp) {
+      const first = emp?.FirstName || '';
+      const last  = emp?.LastName || emp?.EmployeeLastName || '';
+      const name  = (first + ' ' + last).trim() || `ID:${empId}`;
       const isNDS = emp?.isNDS !== false;
       // isNDS=false employees are bounty-only — no advance pay.
       const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
@@ -896,6 +891,24 @@ async function calculateAdvance() {
         autoTA:         emp?.autoTA === true,
       });
     }
+
+    // Employees WITH TA records in 1–15
+    for (const [empId, ta] of empTA.entries()) {
+      buildAdvanceRow(empId, ta, empMap.get(empId));
+    }
+
+    // Active employees WITHOUT any TA records in 1–15 — include with 0 hours.
+    // Supervisors can still grant them advance via the forceAdvance toggle.
+    for (const [empId, emp] of empMap.entries()) {
+      if (empTA.has(empId)) continue; // already included above
+      const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
+      const isNDS = emp?.isNDS !== false;
+      if (!baseSalary && isNDS) continue; // skip unconfigured employees
+      const state = (emp?.State || '').trim();
+      if (state && state !== 'Ажиллаж байгаа') continue; // active only
+      buildAdvanceRow(empId, { workedDays: 0, normalHours: 0, absentHours: 0 }, emp);
+    }
+
     rows.sort((a, b) => a.name.localeCompare(b.name, 'mn'));
 
     // Save to Firestore: salaries/{yearMonth}_advance

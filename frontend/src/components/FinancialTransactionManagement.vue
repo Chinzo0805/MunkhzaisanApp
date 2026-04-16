@@ -74,6 +74,8 @@
               </th>
               <th>ebarimt</th>
               <th>НӨАТ</th>
+              <th class="center-th">eBarimt<br/>авсан</th>
+              <th class="center-th">НӨАТ<br/>системд</th>
               <th>Comment</th>
               <th>Action</th>
             </tr>
@@ -91,6 +93,8 @@
               <td>{{ transaction.purpose }}</td>
               <td>{{ transaction.ebarimt ? '✓' : '' }}</td>
               <td>{{ transaction.НӨАТ ? '✓' : '' }}</td>
+              <td class="center-cell">{{ transaction.isEbarimtReceived ? '✓' : '–' }}</td>
+              <td class="center-cell">{{ transaction.isNOATinSystem ? '✓' : '–' }}</td>
               <td><small>{{ transaction.comment }}</small></td>
               <td><button @click="editItem(transaction)" class="btn-edit-small">Edit</button></td>
             </tr>
@@ -437,6 +441,8 @@ const formData = ref({
   ebarimt: false,
   НӨАТ: false,
   comment: '',
+  isEbarimtReceived: false,
+  isNOATinSystem: false,
 });
 
 const activeProjects = computed(() => {
@@ -659,6 +665,8 @@ function handleAddItem() {
     ebarimt: false,
     НӨАТ: false,
     comment: '',
+    isEbarimtReceived: false,
+    isNOATinSystem: false,
   };
   displayAmount.value = '0';
   showForm.value = true;
@@ -686,6 +694,8 @@ function closeForm() {
     ebarimt: false,
     НӨАТ: false,
     comment: '',
+    isEbarimtReceived: false,
+    isNOATinSystem: false,
   };
 }
 
@@ -899,6 +909,20 @@ async function saveSettings() {
   }
 }
 
+async function toggleCompletionField(transaction, field) {
+  try {
+    const updated = { ...transaction, [field]: !transaction[field] };
+    const response = await manageFinancialTransaction('update', updated);
+    if (!response.success) {
+      showMessage(response.error || 'Update failed', 'error');
+    }
+    // Store auto-refreshes via onSnapshot
+  } catch (error) {
+    console.error('Error toggling field:', error);
+    showMessage(error.message || 'Failed to update', 'error');
+  }
+}
+
 function showMessage(msg, type) {
   message.value = msg;
   messageType.value = type;
@@ -934,6 +958,55 @@ onMounted(async () => {
 <style scoped>
 .btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-back:hover { background: #4b5563; }
+
+.center-th { text-align: center; white-space: nowrap; }
+.center-cell { text-align: center; }
+
+.completion-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.badge-complete {
+  display: inline-block;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.badge-pending {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.filter-pending-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 5px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.filter-pending-label input { cursor: pointer; }
 
 .management-section {
   padding: 20px;

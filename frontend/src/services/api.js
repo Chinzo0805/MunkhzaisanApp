@@ -386,17 +386,6 @@ export async function manageWarehouseRequest(data) {
   }
 }
 
-// Management Goals
-export async function manageGoal(action, goal = null) {
-  try {
-    const response = await api.post('/manageGoal', { action, goal });
-    return response.data;
-  } catch (error) {
-    console.error('Error managing goal:', error);
-    throw error;
-  }
-}
-
 // HSE Instructions
 export async function manageHseInstruction(payload) {
   try {

@@ -5,12 +5,6 @@
       <span v-if="loading" class="adj-loading"> уншиж байна...</span>
     </div>
 
-    <!-- Advance deduction hint -->
-    <div v-if="!props.readonly && advancePaid > 0 && !hasAdvanceDeduction" class="adj-advance-hint">
-      ⚠️ <strong>{{ fmt(advancePaid) }}</strong> урьдчилгаа олгосон —
-      <button class="adj-btn-hint" @click="addAdvanceDeduction">Суутгалд нэмэх</button>
-    </div>
-
     <!-- Entry lists -->
     <div v-if="additions.length || deductions.length" class="adj-lists">
       <div v-if="additions.length" class="adj-group">

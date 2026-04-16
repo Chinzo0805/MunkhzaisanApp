@@ -159,7 +159,7 @@ exports.manageHseInstruction = functions
 
       // ─── CONFIRM (employee) ────────────────────────────────────────────────
       if (action === "confirm") {
-        const { employeeId, employeeName, instructionId, date } = req.body;
+        const { employeeId, employeeName, instructionId, date, selectedProjectID, selectedProjectLocation, transactionType } = req.body;
 
         if (!employeeId || !instructionId || !date) {
           return res.status(400).json({
@@ -192,6 +192,9 @@ exports.manageHseInstruction = functions
           confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
           scope: instr.scope,
           projectId: instr.projectId || null,
+          selectedProjectID: selectedProjectID || "",
+          selectedProjectLocation: selectedProjectLocation || "",
+          transactionType: transactionType || "",
         });
 
         return res.json({ success: true, alreadyConfirmed: false });

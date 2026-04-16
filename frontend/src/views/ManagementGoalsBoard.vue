@@ -1,10 +1,14 @@
 <template>
   <div class="goals-board-page">
     <!-- Header -->
+    <SupervisorNav />
     <div class="board-header">
       <div class="board-header-left">
-        <button @click="$router.back()" class="btn-back">← Буцах</button>
         <h2>🎯 Удирдлагын зорилго</h2>
+        <div class="view-tabs">
+          <button :class="['view-tab', activeView === 'kanban' ? 'active' : '']" @click="activeView = 'kanban'">📋 Канбан</button>
+          <button :class="['view-tab', activeView === 'tasks' ? 'active' : '']" @click="activeView = 'tasks'">👥 Даалгаварын хяналт</button>
+        </div>
       </div>
       <button @click="openCreateGoal" class="btn-new-goal">+ Зорилго нэмэх</button>
     </div>
@@ -14,7 +18,7 @@
     <div v-else-if="error" class="error-state">{{ error }}</div>
 
     <!-- Kanban Board -->
-    <div v-else class="kanban-board">
+    <div v-else-if="activeView === 'kanban'" class="kanban-board">
       <div
         v-for="col in columns"
         :key="col.status"
@@ -75,6 +79,80 @@
             Зорилго байхгүй
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Task Overview ── -->
+    <div v-else-if="activeView === 'tasks'" class="tasks-overview">
+
+      <!-- Score leaderboard -->
+      <div class="overview-section">
+        <h3 class="overview-section-title">🏅 Хүний оноо (одоогийн байдлаар)</h3>
+        <div v-if="personScores.length === 0" class="ov-empty">Даалгавар олдсонгүй</div>
+        <div v-else class="leaderboard">
+          <div v-for="(ps, idx) in personScores" :key="ps.person" class="lb-row">
+            <span class="lb-rank">{{ idx + 1 }}</span>
+            <span class="lb-name">{{ ps.person }}</span>
+            <div class="lb-bar-wrap">
+              <div class="lb-bar" :style="{ width: (personScores[0].total > 0 ? (ps.total / personScores[0].total) * 100 : 0) + '%' }"></div>
+            </div>
+            <div class="lb-scores">
+              <span class="lb-done">✓ {{ ps.done }}</span>
+              <span class="lb-slash">/</span>
+              <span class="lb-total">{{ ps.total }}</span>
+              <span class="lb-pct">{{ ps.total > 0 ? Math.round(ps.done / ps.total * 100) : 0 }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All tasks table grouped by person -->
+      <div class="overview-section">
+        <div class="ov-filter-row">
+          <h3 class="overview-section-title">📋 Даалгаварууд — хүнээр</h3>
+          <div class="ov-filters">
+            <select v-model="ovFilterPerson" class="ov-select">
+              <option value="">Бүх хүн</option>
+              <option v-for="ps in personScores" :key="ps.person" :value="ps.person">{{ ps.person }}</option>
+            </select>
+            <select v-model="ovFilterStatus" class="ov-select">
+              <option value="">Бүх төлөв</option>
+              <option value="not-started">Эхлээгүй</option>
+              <option value="in-progress">Хийгдэж байна</option>
+              <option value="done">Дууссан</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="filteredTaskRows.length === 0" class="ov-empty">Даалгавар байхгүй</div>
+        <table v-else class="ov-table">
+          <thead>
+            <tr>
+              <th>Хариуцагч</th>
+              <th>Даалгавар</th>
+              <th>Зорилго</th>
+              <th>Зорилгын төлөв</th>
+              <th>Даалгаварын төлөв</th>
+              <th>Оноо</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in filteredTaskRows"
+              :key="row.taskId"
+              :class="['ov-row', `task-status-${row.taskStatus}`]"
+              @click="openGoalDetail(row.goal)"
+              style="cursor:pointer"
+            >
+              <td><span class="ov-person">{{ row.person || '—' }}</span></td>
+              <td class="ov-task-title" :class="{ 'task-done-text': row.taskStatus === 'done' }">{{ row.taskTitle }}</td>
+              <td class="ov-goal-title">{{ row.goalTitle }}</td>
+              <td><span :class="['status-dot', `s-${row.goalStatus}`]">{{ statusLabel(row.goalStatus) }}</span></td>
+              <td><span :class="['status-dot', `s-${row.taskStatus}`]">{{ taskStatusLabel(row.taskStatus) }}</span></td>
+              <td class="ov-score">{{ row.score }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -284,7 +362,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import {
   collection, doc, getDocs, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, serverTimestamp
@@ -299,6 +378,56 @@ const goals = ref([]);
 const loading = ref(true);
 const error = ref(null);
 const saving = ref(false);
+const activeView = ref('kanban');
+
+// ── Task overview filters ──
+const ovFilterPerson = ref('');
+const ovFilterStatus = ref('');
+
+// Flatten all tasks from all goals into rows
+const allTaskRows = computed(() => {
+  const rows = [];
+  for (const goal of goals.value) {
+    for (const task of (goal.tasks || [])) {
+      rows.push({
+        taskId: `${goal.id}_${task.id}`,
+        person: task.assignedTo || '',
+        taskTitle: task.title,
+        taskStatus: task.status,
+        score: Number(task.score) || 0,
+        goalTitle: goal.title,
+        goalStatus: goal.status,
+        goalId: goal.id,
+        goal,
+      });
+    }
+  }
+  return rows;
+});
+
+// Person score leaderboard — sorted by total score descending
+const personScores = computed(() => {
+  const map = {};
+  for (const row of allTaskRows.value) {
+    const key = row.person || '(Хариуцагчгүй)';
+    if (!map[key]) map[key] = { person: key, done: 0, total: 0 };
+    map[key].total += row.score;
+    if (row.taskStatus === 'done') map[key].done += row.score;
+  }
+  return Object.values(map).sort((a, b) => b.total - a.total);
+});
+
+const filteredTaskRows = computed(() => {
+  return allTaskRows.value
+    .filter(r => !ovFilterPerson.value || r.person === ovFilterPerson.value)
+    .filter(r => !ovFilterStatus.value || r.taskStatus === ovFilterStatus.value)
+    .sort((a, b) => {
+      // Sort by person, then by task status (in-progress first, then not-started, then done)
+      const statusOrder = { 'in-progress': 0, 'not-started': 1, 'done': 2 };
+      if (a.person !== b.person) return a.person.localeCompare(b.person);
+      return (statusOrder[a.taskStatus] ?? 1) - (statusOrder[b.taskStatus] ?? 1);
+    });
+});
 
 const showModal = ref(false);
 const isCreating = ref(false);
@@ -350,6 +479,9 @@ function priorityLabel(p) {
 }
 function statusLabel(s) {
   return { 'not-started': 'Эхлээгүй', 'in-progress': 'Хийгдэж байна', 'completed': 'Дууссан' }[s] || s;
+}
+function taskStatusLabel(s) {
+  return { 'not-started': 'Эхлээгүй', 'in-progress': 'Хийгдэж байна', 'done': 'Дууссан' }[s] || s;
 }
 function isOverdue(dueDate) {
   return dueDate ? new Date(dueDate) < new Date() : false;
@@ -1025,4 +1157,75 @@ onMounted(() => {
   .task-edit-main > *:nth-child(5) { grid-column: 2; grid-row: 1; }
   .form-row { flex-direction: column; }
 }
+
+/* ─── View tabs ─────────────────────────────────────────────────── */
+.view-tabs { display: flex; gap: 4px; margin-left: 16px; }
+.view-tab {
+  background: rgba(255,255,255,0.12); color: #cbd5e1;
+  border: none; border-radius: 6px;
+  padding: 5px 14px; font-size: 0.85rem; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.view-tab:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.view-tab.active { background: #6366f1; color: #fff; }
+
+/* ─── Task Overview page ────────────────────────────────────────── */
+.tasks-overview {
+  max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px;
+  display: flex; flex-direction: column; gap: 32px;
+}
+.overview-section {
+  background: #fff; border-radius: 14px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.07); padding: 20px 24px;
+}
+.overview-section-title { margin: 0 0 16px; font-size: 1rem; font-weight: 700; color: #1e293b; }
+.ov-empty { color: #94a3b8; font-size: 0.9rem; padding: 12px 0; }
+
+/* Leaderboard */
+.leaderboard { display: flex; flex-direction: column; gap: 10px; }
+.lb-row {
+  display: grid;
+  grid-template-columns: 28px 160px 1fr auto;
+  align-items: center; gap: 12px;
+}
+.lb-rank { font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-align: right; }
+.lb-name { font-size: 0.9rem; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 10px; overflow: hidden; }
+.lb-bar { background: linear-gradient(90deg, #6366f1, #a5b4fc); height: 100%; border-radius: 20px; transition: width 0.3s; }
+.lb-scores { display: flex; align-items: center; gap: 4px; font-size: 0.82rem; white-space: nowrap; }
+.lb-done { color: #16a34a; font-weight: 700; }
+.lb-slash { color: #94a3b8; }
+.lb-total { color: #374151; font-weight: 600; }
+.lb-pct { color: #6366f1; font-weight: 700; min-width: 36px; text-align: right; }
+
+/* Filters */
+.ov-filter-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.ov-filters { display: flex; gap: 8px; }
+.ov-select {
+  border: 1.5px solid #e2e8f0; border-radius: 7px;
+  padding: 5px 10px; font-size: 0.85rem; background: #f8fafc;
+}
+
+/* Table */
+.ov-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.ov-table th {
+  background: #f8fafc; text-align: left; padding: 8px 12px;
+  font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0;
+}
+.ov-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.ov-row:hover { background: #f8fafc; }
+.ov-row.task-status-done { opacity: 0.6; }
+.ov-person { font-weight: 600; color: #4338ca; font-size: 0.84rem; }
+.ov-task-title { color: #1e293b; font-weight: 500; }
+.ov-task-title.task-done-text { text-decoration: line-through; color: #94a3b8; }
+.ov-goal-title { color: #64748b; font-size: 0.83rem; }
+.ov-score { font-weight: 700; color: #6d28d9; text-align: center; }
+
+/* Status dots */
+.status-dot {
+  font-size: 0.78rem; padding: 2px 9px; border-radius: 20px; font-weight: 600; white-space: nowrap;
+}
+.s-not-started { background: #f1f5f9; color: #64748b; }
+.s-in-progress  { background: #dbeafe; color: #1d4ed8; }
+.s-done, .s-completed { background: #dcfce7; color: #15803d; }
 </style>

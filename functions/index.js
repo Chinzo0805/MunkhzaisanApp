@@ -67,9 +67,6 @@ exports.fullSyncExcelToFirestore = require("./fullSyncExcelToFirestore").fullSyn
 exports.scheduledTACheck = require("./scheduledTACheck").scheduledTACheck;
 exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTACheck;
 
-// Management Goals
-exports.manageGoal = require("./manageGoal").manageGoal;
-
 // HSE (Health, Safety, Environment) Instructions
 exports.manageHseInstruction = require("./manageHseInstruction").manageHseInstruction;
 

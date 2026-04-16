@@ -162,5 +162,18 @@ service cloud.firestore {
       allow read: if request.auth != null && isSupervisorOrAccountant();
       allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
     }
+
+    // HSE Instructions — supervisors manage; all authenticated users read (employees need to see instruction)
+    match /hseInstructions/{instrId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only backend Cloud Function can write
+    }
+
+    // HSE Confirmations — employees create their own daily doc; supervisors read all
+    // Doc ID format: {YYYY-MM-DD}_{employeeId}
+    match /hseConfirmations/{confirmId} {
+      allow read: if request.auth != null && isSupervisor();
+      allow write: if false; // Only backend Cloud Function can write
+    }
   }
 }

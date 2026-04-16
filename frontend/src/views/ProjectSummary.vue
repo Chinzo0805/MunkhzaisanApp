@@ -1,9 +1,7 @@
 <template>
   <div class="project-summary-container">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <h3 style="margin:0;">📊 Төслийн нэгтгэл</h3>
-      <button @click="$router.back()" class="btn-back">← Буцах</button>
-    </div>
+    <SupervisorNav />
+    <h3 style="margin:0 0 12px;">📊 Төслийн нэгтгэл</h3>
 
     <!-- Filter Buttons -->
     <div class="filter-buttons-section">
@@ -511,6 +509,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
+import SupervisorNav from '../components/SupervisorNav.vue';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useProjectsStore } from '../stores/projects';

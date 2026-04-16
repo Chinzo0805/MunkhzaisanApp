@@ -35,8 +35,17 @@
           <button @click="$router.push('/warehouse-requests')" class="btn-action warehouse-request">
             📦 Агуулахын хүсэлт
           </button>
+          <button @click="$router.push('/hse-confirm')" class="btn-action hse">
+            🦺 HSE Зааварчилгаа
+          </button>
+          <button @click="$router.push('/tomd-projects')" class="btn-action tomd">
+            ⏱️ TOMD ажлууд
+          </button>
           <button v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
+          </button>
+          <button v-if="authStore.userData?.isSupervisor || authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
+            💰 Миний цалин
           </button>
         </div>
 
@@ -51,6 +60,9 @@
           </button>
           <button @click="$router.push('/management-goals')" class="btn-action goals">
             🎯 Удирдлагын зорилго
+          </button>
+          <button @click="$router.push('/hse-instructions')" class="btn-action hse">
+            🦺 HSE Удирдлага
           </button>
         </div>
 
@@ -72,12 +84,13 @@
           <button @click="$router.push('/transaction-report')" class="btn-action finance">
             💵 Гүйлгээний тайлан
           </button>
+          <button @click="$router.push('/transaction-check')" class="btn-action ebarimt">
+            🧾 eBarimt/НӨАТ шалгалт
+          </button>
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
           </button>
         </div>
-
-        <!-- Accountant: Report buttons -->
         <div v-if="authStore.userData?.isAccountant" class="quick-actions" style="margin-top:12px;">
           <div class="section-label">📊 Тайлангууд</div>
           <button @click="$router.push('/project-summary?kanban=1')" class="btn-action project">
@@ -94,6 +107,9 @@
           </button>
           <button @click="$router.push('/transaction-report')" class="btn-action finance">
             💵 Гүйлгээний тайлан
+          </button>
+          <button @click="$router.push('/transaction-check')" class="btn-action ebarimt">
+            🧾 eBarimt/НӨАТ шалгалт
           </button>
           <button @click="$router.push('/employee-table')" class="btn-action employee-table">
             👥 Ажилтны жагсаалт
@@ -757,6 +773,11 @@ function handleSaved(event) {
   box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
 }
 
+.btn-action.ebarimt {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
 .btn-action.warehouse {
   background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
   box-shadow: 0 2px 4px rgba(251, 146, 60, 0.3);
@@ -783,6 +804,14 @@ function handleSaved(event) {
 .btn-action.goals {
   background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
   box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
+}
+.btn-action.hse {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+.btn-action.tomd {
+  background: linear-gradient(135deg, #1e3a5f 0%, #274f82 100%);
+  box-shadow: 0 2px 4px rgba(30, 58, 95, 0.3);
 }
 .btn-action.my-info {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);

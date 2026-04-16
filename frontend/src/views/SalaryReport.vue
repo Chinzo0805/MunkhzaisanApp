@@ -1,7 +1,11 @@
 <template>
   <div class="salary-report-page">
-    <header class="page-header">
+    <SupervisorNav v-if="authStore.userData?.isSupervisor || authStore.userData?.isAccountant" />
+    <header v-else class="page-header employee-header">
       <button @click="$router.push('/dashboard')" class="back-btn">← Буцах</button>
+      <h1>💰 Цалингийн мэдээлэл</h1>
+    </header>
+    <header v-if="authStore.userData?.isSupervisor || authStore.userData?.isAccountant" class="page-header">
       <h1>💰 Цалингийн мэдээлэл</h1>
     </header>
 
@@ -11,6 +15,10 @@
 
 <script setup>
 import EmployeeSalaryReport from '../components/EmployeeSalaryReport.vue';
+import SupervisorNav from '../components/SupervisorNav.vue';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 </script>
 
 <style scoped>

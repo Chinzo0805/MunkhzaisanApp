@@ -71,6 +71,13 @@
               <input v-model="form.NumID" type="text" required placeholder="УХ01261770" maxlength="10" />
             </div>
           </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>ТТД (Татвар төлөгчийн дугаар)</label>
+              <input v-model="form.TIN" type="text" placeholder="ТТД дугаар" />
+            </div>
+          </div>
           
           <div class="form-row">
             <div class="form-group">
@@ -297,6 +304,7 @@ const form = ref({
   autoTA: false,
   BankName: '',
   BankAccountNumber: '',
+  TIN: '',
 });
 
 const emit = defineEmits(['saved']);
@@ -408,6 +416,7 @@ function editItem(employee) {
     autoTA: !!employee.autoTA,
     BankName: employee.BankName || '',
     BankAccountNumber: employee.BankAccountNumber || '',
+    TIN: employee.TIN || '',
   };
 }
 
@@ -439,6 +448,7 @@ function closeModal() {
     autoTA: false,
     BankName: '',
     BankAccountNumber: '',
+    TIN: '',
   };
 }
 
