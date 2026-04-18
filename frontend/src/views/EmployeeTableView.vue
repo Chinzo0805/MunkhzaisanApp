@@ -218,6 +218,18 @@
                       <label class="edit-label">ТТД</label>
                       <input v-model="editState[emp.id].TIN" type="text" class="edit-input" placeholder="Татвар төлөгчийн дугаар" />
                     </div>
+                    <div class="edit-item">
+                      <label class="edit-label">👔 Дээд хувцас</label>
+                      <input v-model="editState[emp.id].ClothesUpperSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
+                    </div>
+                    <div class="edit-item">
+                      <label class="edit-label">👖 Доод хувцас</label>
+                      <input v-model="editState[emp.id].ClothesLowerSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
+                    </div>
+                    <div class="edit-item">
+                      <label class="edit-label">👟 Гутлын хэмжээ</label>
+                      <input v-model="editState[emp.id].ClothesShoesSize" type="text" class="edit-input" placeholder="38 / 40 / 42 / 44" />
+                    </div>
                   </div>
                 </div>
               </td>
@@ -333,6 +345,9 @@ function openEdit(emp) {
     BankName: emp.BankName || '',
     BankAccountNumber: emp.BankAccountNumber || '',
     TIN: emp.TIN || '',
+    ClothesUpperSize: emp.ClothesUpperSize || '',
+    ClothesLowerSize: emp.ClothesLowerSize || '',
+    ClothesShoesSize: emp.ClothesShoesSize || '',
     saving: false, saved: false, error: '',
   };
 }
@@ -363,13 +378,19 @@ async function saveEdit(emp) {
         BankName: state.BankName.trim(),
         BankAccountNumber: state.BankAccountNumber.trim(),
         TIN: state.TIN.trim(),
+        ClothesUpperSize: state.ClothesUpperSize.trim(),
+        ClothesLowerSize: state.ClothesLowerSize.trim(),
+        ClothesShoesSize: state.ClothesShoesSize.trim(),
         updatedAt: new Date().toISOString(),
       };
     } else {
-      // Own employee: bank fields only
+      // Own employee: bank + clothes size fields
       patch = {
         BankName: state.BankName.trim(),
         BankAccountNumber: state.BankAccountNumber.trim(),
+        ClothesUpperSize: state.ClothesUpperSize.trim(),
+        ClothesLowerSize: state.ClothesLowerSize.trim(),
+        ClothesShoesSize: state.ClothesShoesSize.trim(),
         updatedAt: new Date().toISOString(),
       };
     }

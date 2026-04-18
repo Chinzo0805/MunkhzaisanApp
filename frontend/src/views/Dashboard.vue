@@ -222,7 +222,7 @@
             <div v-if="!myInfoEdit.editing" class="my-info-bank-view">
               <div class="my-info-row"><span class="mi-label">Банк</span><span class="mi-value">{{ myEmp.BankName || '—' }}</span></div>
               <div class="my-info-row"><span class="mi-label">IBAN Дансны дугаар</span><span class="mi-value">{{ myEmp.BankAccountNumber || '—' }}</span></div>
-              <button @click="startMyInfoEdit" class="btn-mi-edit">✏️ Банк засах</button>
+              <button @click="startMyInfoEdit" class="btn-mi-edit">✏️ Засах</button>
             </div>
             <div v-else class="my-info-bank-edit">
               <div class="mi-field">
@@ -235,6 +235,30 @@
               <div class="mi-field">
                 <label class="mi-label">IBAN Дансны дугаар</label>
                 <input v-model="myInfoEdit.BankAccountNumber" type="text" class="mi-input" placeholder="IBAN Дансны дугаар" />
+              </div>
+            </div>
+          </div>
+          <!-- Clothes sizes edit -->
+          <div class="my-info-section my-info-bank-section">
+            <div class="my-info-bank-title">👔 Хувцасны хэмжээ</div>
+            <div v-if="!myInfoEdit.editing" class="my-info-bank-view">
+              <div class="my-info-row"><span class="mi-label">Дээд хувцас</span><span class="mi-value">{{ myEmp.ClothesUpperSize || '—' }}</span></div>
+              <div class="my-info-row"><span class="mi-label">Доод хувцас</span><span class="mi-value">{{ myEmp.ClothesLowerSize || '—' }}</span></div>
+              <div class="my-info-row"><span class="mi-label">Гутлын хэмжээ</span><span class="mi-value">{{ myEmp.ClothesShoesSize || '—' }}</span></div>
+              <button @click="startMyInfoEdit" class="btn-mi-edit">✏️ Засах</button>
+            </div>
+            <div v-else class="my-info-bank-edit">
+              <div class="mi-field">
+                <label class="mi-label">👔 Дээд хувцас</label>
+                <input v-model="myInfoEdit.ClothesUpperSize" type="text" class="mi-input" placeholder="S / M / L / XL / XXL" />
+              </div>
+              <div class="mi-field">
+                <label class="mi-label">👖 Доод хувцас</label>
+                <input v-model="myInfoEdit.ClothesLowerSize" type="text" class="mi-input" placeholder="S / M / L / XL / XXL" />
+              </div>
+              <div class="mi-field">
+                <label class="mi-label">👟 Гутлын хэмжээ</label>
+                <input v-model="myInfoEdit.ClothesShoesSize" type="text" class="mi-input" placeholder="38 / 40 / 42 / 44" />
               </div>
               <div class="mi-actions">
                 <button @click="saveMyInfo" :disabled="myInfoEdit.saving" class="btn-mi-save">
@@ -314,7 +338,7 @@ const MONGOLIAN_BANKS = [
 ];
 const showMyInfo = ref(false);
 const myInfoLoading = ref(false);
-const myInfoEdit = ref({ editing: false, BankName: '', BankAccountNumber: '', saving: false, saved: false, error: '' });
+const myInfoEdit = ref({ editing: false, BankName: '', BankAccountNumber: '', ClothesUpperSize: '', ClothesLowerSize: '', ClothesShoesSize: '', saving: false, saved: false, error: '' });
 
 const myEmp = computed(() => {
   const empId = authStore.userData?.employeeId;
@@ -338,6 +362,9 @@ function startMyInfoEdit() {
     editing: true,
     BankName: emp?.BankName || '',
     BankAccountNumber: emp?.BankAccountNumber || '',
+    ClothesUpperSize: emp?.ClothesUpperSize || '',
+    ClothesLowerSize: emp?.ClothesLowerSize || '',
+    ClothesShoesSize: emp?.ClothesShoesSize || '',
     saving: false, saved: false, error: '',
   };
 }
@@ -351,6 +378,9 @@ async function saveMyInfo() {
     const patch = {
       BankName: myInfoEdit.value.BankName.trim(),
       BankAccountNumber: myInfoEdit.value.BankAccountNumber.trim(),
+      ClothesUpperSize: myInfoEdit.value.ClothesUpperSize.trim(),
+      ClothesLowerSize: myInfoEdit.value.ClothesLowerSize.trim(),
+      ClothesShoesSize: myInfoEdit.value.ClothesShoesSize.trim(),
       updatedAt: new Date().toISOString(),
     };
     await updateDoc(doc(db, 'employees', emp.id), patch);

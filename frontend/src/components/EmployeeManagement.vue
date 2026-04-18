@@ -220,6 +220,24 @@
 
           <div class="form-row">
             <div class="form-group">
+              <label>👔 Дээд хувцасны хэмжээ</label>
+              <input v-model="form.ClothesUpperSize" type="text" placeholder="S / M / L / XL / XXL" />
+            </div>
+            <div class="form-group">
+              <label>👖 Доод хувцасны хэмжээ</label>
+              <input v-model="form.ClothesLowerSize" type="text" placeholder="S / M / L / XL / XXL" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>👟 Гутлын хэмжээ</label>
+              <input v-model="form.ClothesShoesSize" type="text" placeholder="38 / 40 / 42 / 44" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
               <label>НДШ тооцох</label>
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.isNDS" />
@@ -305,6 +323,9 @@ const form = ref({
   BankName: '',
   BankAccountNumber: '',
   TIN: '',
+  ClothesUpperSize: '',
+  ClothesLowerSize: '',
+  ClothesShoesSize: '',
 });
 
 const emit = defineEmits(['saved']);
@@ -417,6 +438,9 @@ function editItem(employee) {
     BankName: employee.BankName || '',
     BankAccountNumber: employee.BankAccountNumber || '',
     TIN: employee.TIN || '',
+    ClothesUpperSize: employee.ClothesUpperSize || '',
+    ClothesLowerSize: employee.ClothesLowerSize || '',
+    ClothesShoesSize: employee.ClothesShoesSize || '',
   };
 }
 
@@ -449,6 +473,9 @@ function closeModal() {
     BankName: '',
     BankAccountNumber: '',
     TIN: '',
+    ClothesUpperSize: '',
+    ClothesLowerSize: '',
+    ClothesShoesSize: '',
   };
 }
 

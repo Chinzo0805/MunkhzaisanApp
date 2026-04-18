@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "168681350058",
+    "project_id": "munkh-zaisan",
+    "storage_bucket": "munkh-zaisan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:168681350058:android:184c9a5386baab0a2e01d3",
+        "android_client_info": {
+          "package_name": "com.munkhzaisan.munkhzaisan_mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "168681350058-khubnd03l972eqq2l4oh909ja3nia740.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMIYV4_rIN1DDowH4JFLvIzXKj1bNJTWo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "168681350058-khubnd03l972eqq2l4oh909ja3nia740.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
