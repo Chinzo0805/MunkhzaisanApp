@@ -1,6 +1,8 @@
 <template>
   <nav class="sup-nav">
-    <router-link to="/dashboard" class="sup-nav-home" title="Нүүр хуудас">🏠</router-link>
+    <router-link to="/dashboard" class="sup-nav-home" title="Нүүр хуудас">
+      <img src="/logo-icon.png" alt="MZ" class="nav-logo" />
+    </router-link>
     <div class="sup-nav-links">
       <router-link to="/supervisor-ta-summary"  class="sup-nav-link" active-class="active-link">📊 Ирц</router-link>
       <router-link to="/project-summary"        class="sup-nav-link" active-class="active-link">📋 Төсөл</router-link>
@@ -40,13 +42,22 @@
 .sup-nav-home {
   font-size: 18px;
   text-decoration: none;
-  padding: 5px 9px;
+  padding: 3px 6px;
   border-radius: 5px;
   color: #cbd5e1;
   transition: background 0.15s;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 .sup-nav-home:hover { background: #334155; }
+
+.nav-logo {
+  height: 36px;
+  width: auto;
+  display: block;
+  border-radius: 4px;
+}
 
 .sup-nav-links {
   display: flex;

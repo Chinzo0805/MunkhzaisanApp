@@ -1,8 +1,9 @@
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1>MunkhZaisan</h1>
-      <h2>Attendance Management System</h2>
+      <div class="login-logo">
+        <img src="/logo.jpg" alt="Мөнх-Зайсан" class="login-logo-img" />
+      </div>
       
       <div class="login-content">
         <div class="login-section">
@@ -111,17 +112,16 @@ async function handleMicrosoftSignIn() {
   text-align: center;
 }
 
-h1 {
-  color: #333;
-  margin-bottom: 10px;
-  font-size: 32px;
+.login-logo {
+  margin-bottom: 24px;
 }
 
-h2 {
-  color: #666;
-  font-size: 18px;
-  font-weight: normal;
-  margin-bottom: 30px;
+.login-logo-img {
+  max-width: 220px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
 }
 
 .login-section {
