@@ -42,7 +42,7 @@ class _WarehouseRequestScreenState extends State<WarehouseRequestScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final appState = context.read<AppState>();
-    final empId = appState.employeeId;
+    final empId = appState.effectiveEmployeeId;
 
     try {
       final results = await Future.wait([
@@ -120,10 +120,8 @@ class _WarehouseRequestScreenState extends State<WarehouseRequestScreen> {
     }
 
     final appState = context.read<AppState>();
-    final empId = appState.employeeId;
-    final empFirst = appState.userData?['firstName'] ?? '';
-    final empLast = appState.userData?['lastName'] ?? '';
-    final empName = '$empFirst $empLast'.trim();
+    final empId = appState.effectiveEmployeeId;
+    final empName = appState.effectiveFullName;
 
     setState(() => _submitting = true);
     try {

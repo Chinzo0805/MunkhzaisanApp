@@ -28,22 +28,20 @@
           class="search-input"
         />
         <select v-model="filterPurpose" class="filter-select">
-          <option value="">All Purposes</option>
-          <option value="Төсөлд">Төсөлд</option>
-          <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-          <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-          <option value="хувийн зарлага">хувийн зарлага</option>
-          <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
-          <option value="Хоол/томилолт">Хоол/томилолт</option>
+          <option value="">Бүх ангилал</option>
+          <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+          <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+          <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+          <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+          <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+          <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+          <option value="Бусад зардал">Бусад зардал</option>
         </select>
         <select v-model="filterType" class="filter-select">
-          <option value="">All Types</option>
-          <option value="Бараа материал">Бараа материал</option>
-          <option value="Түлш">Түлш</option>
-          <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
-          <option value="Хоолны мөнгө">Хоолны мөнгө</option>
-          <option value="Томилолт">Томилолт</option>
-          <option value="Машин засварын зардал">Машин засварын зардал</option>
+          <option value="">Бүх дэд төрөл</option>
+          <optgroup v-for="(subs, cat) in CATEGORY_SUBTYPES" :key="cat" :label="cat">
+            <option v-for="sub in subs" :key="sub" :value="sub">{{ sub }}</option>
+          </optgroup>
         </select>
         <div class="sum-display">
           <strong>Total:</strong> {{ formatNumber(totalAmount) }}₮
@@ -138,25 +136,25 @@
             <div class="form-group">
               <label>Purpose *</label>
               <select v-model="formData.purpose" required class="form-input" @change="onPurposeChange">
-                <option value="">Select Purpose</option>
-                <option value="Төсөлд">Төсөлд</option>
-                <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-                <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-                <option value="хувийн зарлага">хувийн зарлага</option>
-                <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
+                <option value="">Ангилал сонгох</option>
+                <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+                <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+                <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+                <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+                <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+                <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+                <option value="Бусад зардал">Бусад зардал</option>
               </select>
             </div>
             
             <div class="form-group">
-              <label>Project {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <label>Төсөл</label>
               <select 
                 v-model="formData.projectID" 
-                :required="formData.purpose === 'Төсөлд'" 
                 class="form-input" 
                 @change="onProjectChange"
-                :disabled="formData.purpose !== 'Төсөлд'"
               >
-                <option value="">Select Project</option>
+                <option value="">Төсөл сонгох (заавал биш)</option>
                 <option v-for="project in activeProjects" :key="project.id" :value="project.id">
                   {{ project.id }} - {{ project.siteLocation }}
                 </option>
@@ -177,18 +175,14 @@
             </div>
             
             <div class="form-group">
-              <label>Type {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <label>Дэд төрөл</label>
               <select 
                 v-model="formData.type" 
-                :required="formData.purpose === 'Төсөлд'" 
                 class="form-input"
-                :disabled="formData.purpose !== 'Төсөлд'"
+                :disabled="!formData.purpose"
               >
-                <option value="">Select Type</option>
-                <option value="Бараа материал">Бараа материал</option>
-                <option value="Түлш">Түлш</option>
-                <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
-                <option value="Машин засварын зардал">Машин засварын зардал</option>
+                <option value="">Дэд төрөл сонгох</option>
+                <option v-for="sub in availableSubTypes" :key="sub" :value="sub">{{ sub }}</option>
               </select>
             </div>
           </div>
@@ -417,7 +411,7 @@ const displayAmount = ref('0');
 
 const bulkFormData = ref({
   date: new Date().toISOString().split('T')[0],
-  type: 'Хоолны мөнгө',
+  type: 'Ажилтны хангамж (ажлын хувцас, хоол, унаа)',
   projectID: '',
   projectLocation: '',
   selectedEmployees: [],
@@ -445,9 +439,57 @@ const formData = ref({
   isNOATinSystem: false,
 });
 
+const CATEGORY_SUBTYPES = {
+  'Хүний нөөцтэй холбоотой зардал': [
+    'Цалин, нэмэгдэл, урамшуулал',
+    'Нийгмийн даатгал, эрүүл мэндийн даатгал',
+    'Сургалт, хөгжлийн зардал',
+    'Ажилд авах (сонгон шалгаруулалт, зар)',
+    'Ажилтны хангамж (ажлын хувцас, хоол, унаа)',
+  ],
+  'Үйл ажиллагааны зардал': [
+    'Түрээс (оффис, агуулах, талбай)',
+    'Цахилгаан, дулаан, ус, интернет, холбоо',
+    'Аж ахуй болон бичиг хэргийн хэрэгсэл',
+    'Тээвэр, шатахуун',
+    'Засвар үйлчилгээ',
+  ],
+  'Захиргаа, удирдлагын зардал': [
+    'Менежментийн цалин',
+    'Хууль, аудит, зөвлөх үйлчилгээ',
+    'Банкны шимтгэл, санхүүгийн үйлчилгээ',
+    'Лиценз, зөвшөөрөл',
+  ],
+  'Борлуулалт, маркетингийн зардал': [
+    'Зар сурталчилгаа (онлайн/оффлайн)',
+    'Борлуулалтын урамшуулал',
+    'Үзэсгэлэн, арга хэмжээ',
+  ],
+  'Мэдээллийн технологийн зардал': [
+    'Програм хангамжийн лиценз',
+    'Сервер, cloud үйлчилгээ',
+    'Тоног төхөөрөмж (компьютер, принтер)',
+  ],
+  'Санхүү, татварын зардал': [
+    'Татвар, НӨАТ',
+    'Торгууль, алданги',
+    'Валютын ханшийн зөрүү',
+  ],
+  'Бусад зардал': [
+    'Даатгал',
+    'Хандив, нийгмийн хариуцлага',
+    'Гэнэтийн/нөөц зардал',
+  ],
+};
+
+const availableSubTypes = computed(() => {
+  return CATEGORY_SUBTYPES[formData.value.purpose] || [];
+});
+
 const activeProjects = computed(() => {
+  const activeStatuses = ['Төлөвлсөн', 'Ажиллаж байгаа', 'Ажил хүлээлгэн өгөх', 'Нэхэмжлэх өгөх ба Шалгах', 'Урамшуулал олгох', 'Дууссан'];
   return projectsStore.projects
-    .filter(p => p.Status === 'Ажиллаж байгаа')
+    .filter(p => activeStatuses.includes(p.Status))
     .sort((a, b) => {
       const idA = parseInt(a.id) || 0;
       const idB = parseInt(b.id) || 0;
@@ -642,12 +684,8 @@ function onEmployeeChange() {
 }
 
 function onPurposeChange() {
-  // Clear project and type if purpose is not "Төсөлд"
-  if (formData.value.purpose !== 'Төсөлд') {
-    formData.value.projectID = '';
-    formData.value.projectLocation = '';
-    formData.value.type = '';
-  }
+  // Clear sub-type when category changes
+  formData.value.type = '';
 }
 
 function handleAddItem() {
@@ -818,7 +856,7 @@ async function handleBulkSubmit() {
         employeeFirstName: employee.FirstName || '',
         amount: amount,
         type: bulkFormData.value.type,
-        purpose: 'Хоол/томилолт',
+        purpose: 'Хүний нөөцтэй холбоотой зардал',
         ebarimt: false,
         НӨАТ: false,
         comment: '',

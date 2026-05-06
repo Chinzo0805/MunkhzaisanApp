@@ -1,7 +1,7 @@
 <template>
   <div class="attendance-approval">
     <div class="approval-header">
-      <h3>Ажиллах цагийн хүсэлтүүд</h3>
+      <h3>Ирцний хүсэлтүүд</h3>
       <button @click="refreshRequests" class="btn-refresh" :disabled="loading">
         🔄 Шинэчлэх
       </button>
@@ -9,6 +9,10 @@
 
     <div v-if="syncMessage" :class="['sync-message', syncMessageType]">
       {{ syncMessage }}
+    </div>
+
+    <div v-if="isEngineerMode" class="engineer-mode-banner">
+      📋 Миний ажлын ирцний хүсэлт
     </div>
 
     <div class="tabs">
@@ -19,39 +23,63 @@
         Хүлээгдэж буй ({{ pendingRequests.length }})
       </button>
       <button 
+        v-if="!isEngineerMode"
         :class="['tab', { active: activeTab === 'approved' }]"
         @click="activeTab = 'approved'"
       >
         Зөвшөөрсөн ({{ approvedCount }})
       </button>
       <button 
+        v-if="!isEngineerMode"
         :class="['tab', { active: activeTab === 'notSynced' }]"
         @click="activeTab = 'notSynced'"
       >
         Excel -руу бичигдээгүй ({{ notSyncedCount }})
       </button>
       <button 
+        v-if="!isEngineerMode"
         :class="['tab', { active: activeTab === 'invalid' }]"
         @click="activeTab = 'invalid'"
       >
         Буруу өгөгдөл ({{ invalidCount }})
       </button>
       <button 
+        v-if="!isEngineerMode"
         :class="['tab', { active: activeTab === 'rejected' }]"
         @click="activeTab = 'rejected'"
       >
         Татгалзсан ({{ rejectedRequests.length }})
       </button>
+      <button 
+        v-if="!isEngineerMode"
+        :class="['tab', { active: activeTab === 'engineerApproved' }]"
+        @click="activeTab = 'engineerApproved'"
+      >
+        Инженер зөвшөөрсөн ({{ engineerApprovedCount }})
+      </button>
     </div>
 
-    <div v-if="activeTab === 'approved'" class="edit-mode-section">
+    <div v-if="activeTab === 'approved' && !isEngineerMode" class="edit-mode-section">
       <button @click="editMode = !editMode" class="btn-toggle-edit" :class="{ active: editMode }">
         {{ editMode ? '🔒 Харах горим' : '✏️ Засах горим' }}
       </button>
       <span v-if="editMode" class="edit-warning">⚠️ Засах горим идэвхтэй</span>
     </div>
 
-    <div v-if="activeTab === 'pending' || activeTab === 'approved' || activeTab === 'notSynced'" class="filters-section">
+    <!-- Engineer mode: project filter only (1 project at a time, no Бүгд) -->
+    <div v-if="isEngineerMode && activeTab === 'pending'" class="filters-section eng-filter">
+      <div class="filter-group">
+        <label>Төсөл:</label>
+        <select v-model="filters.project" class="filter-input">
+          <option value="" disabled>— Төсөл сонгох —</option>
+          <option v-for="proj in uniqueProjects" :key="proj.id" :value="proj.id">{{ proj.name }}</option>
+        </select>
+      </div>
+      <div v-if="!filters.project" class="eng-select-hint">👆 Төсөл сонгоно уу</div>
+    </div>
+
+    <!-- Supervisor/full mode: all filters -->
+    <div v-if="!isEngineerMode && (activeTab === 'pending' || activeTab === 'approved' || activeTab === 'notSynced')" class="filters-section">
       <div class="filter-group">
         <label>Сар:</label>
         <input type="month" v-model="filters.month" class="filter-input" />
@@ -96,6 +124,36 @@
       <button @click="clearFilters" class="btn-clear-filters">Цэвэрлэх</button>
     </div>
 
+    <!-- Engineer-approved tab filters -->
+    <div v-if="activeTab === 'engineerApproved'" class="filters-section">
+      <div class="filter-group">
+        <label>Сар:</label>
+        <input type="month" v-model="filters.month" class="filter-input" />
+      </div>
+      <div class="filter-group">
+        <label>Инженер:</label>
+        <select v-model="filters.engineerName" class="filter-input">
+          <option value="">Бүгд</option>
+          <option v-for="name in uniqueEngineerNames" :key="name" :value="name">{{ name }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Ажилтан:</label>
+        <select v-model="filters.employee" class="filter-input">
+          <option value="">Бүгд</option>
+          <option v-for="emp in uniqueEmployees" :key="emp" :value="emp">{{ emp }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Төсөл:</label>
+        <select v-model="filters.project" class="filter-input">
+          <option value="">Бүгд</option>
+          <option v-for="proj in uniqueProjects" :key="proj.id" :value="proj.id">{{ proj.name }}</option>
+        </select>
+      </div>
+      <button @click="clearFilters" class="btn-clear-filters">Цэвэрлэх</button>
+    </div>
+
     <!-- Total Hours Label for Approved Tab -->
     <div v-if="activeTab === 'approved' && displayedRequests.length > 0" class="total-hours-label">
       <strong>Нийт ажилласан цаг:</strong> {{ totalWorkHours.toFixed(1) }}ц
@@ -119,6 +177,10 @@
       Татгалзсан хүсэлт байхгүй байна
     </div>
 
+    <div v-else-if="displayedRequests.length === 0 && activeTab === 'engineerApproved'" class="empty-state">
+      Инженер зөвшөөрсөн хүсэлт байхгүй байна
+    </div>
+
     <div v-else class="requests-table-wrapper">
       <div v-if="activeTab === 'pending'" class="bulk-actions">
         <button @click="toggleSelectAll" class="btn-select-all">
@@ -130,15 +192,91 @@
         <button @click="bulkReject" class="btn-bulk-reject" :disabled="selectedRequests.length === 0 || processing">
           ✗ Сонгосныг татгалзах ({{ selectedRequests.length }})
         </button>
+        <span v-if="isEngineerMode" class="engineer-bulk-note">⚠ Зөвхөн Техникч үүрэгтэй хүсэлтийг зөвшөөрөх боломжтой</span>
       </div>
       <div v-if="activeTab === 'approved' && editMode" class="info-message">
         ⚠️ Зөвшөөрсөн өгөгдлийг засах боломжтой. Зассаны дараа "Хадгалах" дарна уу.
       </div>
+
+      <!-- Mobile card view: engineer mode pending only -->
+      <div v-if="isEngineerMode && activeTab === 'pending'" class="engineer-card-list">
+        <div v-if="!filters.project" class="ec-no-project">
+          <span>👆 Дээрх жагсаалтаас төсөлөө сонгоно уу</span>
+        </div>
+        <template v-else>
+          <div v-for="request in displayedRequests" :key="request.docId + '_card'" class="engineer-card">
+            <!-- Card header with checkbox + date + status badge -->
+            <div class="ec-header">
+              <div class="ec-header-left">
+                <input type="checkbox" :value="request.docId" v-model="selectedRequests" class="ec-checkbox" />
+                <span class="ec-date">{{ formatDate(request.Day) }}<small class="ec-weekday"> {{ request.WeekDay }}</small></span>
+              </div>
+              <span :class="['status-badge', getStatusClass(request.Status)]">{{ request.Status }}</span>
+            </div>
+
+            <!-- Employee (read-only) -->
+            <div class="ec-field">
+              <span class="ec-label">Ажилтан</span>
+              <span class="ec-value">{{ request.EmployeeFirstName || request.FirstName || '—' }}</span>
+            </div>
+
+            <!-- Role (read-only) -->
+            <div class="ec-field">
+              <span class="ec-label">Үүрэг</span>
+              <span class="ec-value">{{ request.Role }}</span>
+            </div>
+
+            <!-- Project (read-only) -->
+            <div class="ec-field">
+              <span class="ec-label">Төсөл</span>
+              <span class="ec-value">{{ request.ProjectID }}</span>
+            </div>
+
+            <!-- Times (editable) -->
+            <div class="ec-field">
+              <span class="ec-label">Цаг</span>
+              <div class="ec-time-row">
+                <input type="time" v-model="request.startTime" @change="recalculateHours(request)" class="ec-input ec-time-input" />
+                <span class="ec-dash">–</span>
+                <input type="time" v-model="request.endTime" @change="recalculateHours(request)" class="ec-input ec-time-input" />
+                <span class="ec-hours-badge">{{ request.WorkingHour }}ц</span>
+              </div>
+            </div>
+
+            <!-- Status (read-only) -->
+            <div class="ec-field">
+              <span class="ec-label">Статус</span>
+              <span :class="['status-badge', getStatusClass(request.Status)]">{{ request.Status }}</span>
+            </div>
+
+            <!-- Comment (read-only) -->
+            <div v-if="request.comment" class="ec-field">
+              <span class="ec-label">Тэмдэглэл</span>
+              <span class="ec-value ec-comment">{{ request.comment }}</span>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="ec-actions">
+              <template v-if="request.Role === 'Техникч'">
+                <button @click="approveRequest(request.docId)" class="btn-ec-approve" :disabled="processing">
+                  ✓ Зөвшөөрөх
+                </button>
+                <button @click="rejectRequest(request.docId)" class="btn-ec-reject" :disabled="processing">
+                  ✗ Татгалзах
+                </button>
+              </template>
+              <span v-else class="supervisor-required-badge">👤 Захирал шаардлагатай</span>
+            </div>
+          </div>
+          <div v-if="displayedRequests.length === 0" class="ec-empty">Хүсэлт байхгүй байна</div>
+        </template>
+      </div>
+
       <table class="requests-table">
         <thead>
           <tr>
             <th v-if="activeTab === 'pending'" class="checkbox-col">
-              <input type="checkbox" v-model="allSelected" @change="toggleSelectAll" />
+              <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
             </th>
             <th>Огноо</th>
             <th>Гараг</th>
@@ -153,6 +291,7 @@
             <th>Статус</th>
             <th>Хувийн машин</th>
             <th v-if="activeTab === 'invalid' || activeTab === 'notSynced'">Өгөгдөл</th>
+            <th v-if="activeTab === 'engineerApproved'">Зөвшөөрсөн инженер</th>
             <th>Тэмдэглэл</th>
             <th v-if="activeTab === 'pending'">Үйлдэл</th>
           </tr>
@@ -223,25 +362,38 @@
               </span>
               <small v-if="request.validationIssues" class="validation-issues">{{ request.validationIssues }}</small>
             </td>
+            <td v-if="activeTab === 'engineerApproved'">
+              <span class="engineer-badge">👷 {{ request.approvedByEngineerName || '—' }}</span>
+            </td>
             <td>
               <textarea v-model="request.comment" class="edit-textarea" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" rows="2"></textarea>
               <span v-else>{{ request.comment }}</span>
             </td>
             <td v-if="activeTab === 'pending'" class="action-buttons">
-              <button 
-                @click="approveRequest(request.docId)" 
-                class="btn-approve"
-                :disabled="processing"
-              >
-                ✓
-              </button>
-              <button 
-                @click="rejectRequest(request.docId)" 
-                class="btn-reject"
-                :disabled="processing"
-              >
-                ✗
-              </button>
+              <!-- Engineer mode: only approve Техникч, others need supervisor -->
+              <template v-if="isEngineerMode">
+                <template v-if="request.Role === 'Техникч'">
+                  <button @click="approveRequest(request.docId)" class="btn-approve" :disabled="processing">✓</button>
+                  <button @click="rejectRequest(request.docId)" class="btn-reject" :disabled="processing">✗</button>
+                </template>
+                <span v-else class="supervisor-required-badge">👤 Захирал</span>
+              </template>
+              <template v-else>
+                <button 
+                  @click="approveRequest(request.docId)" 
+                  class="btn-approve"
+                  :disabled="processing"
+                >
+                  ✓
+                </button>
+                <button 
+                  @click="rejectRequest(request.docId)" 
+                  class="btn-reject"
+                  :disabled="processing"
+                >
+                  ✗
+                </button>
+              </template>
             </td>
             <td v-if="activeTab === 'approved' && editMode" class="action-buttons">
               <button 
@@ -257,13 +409,13 @@
       </table>
     </div>
 
-    <div v-if="activeTab === 'notSynced' && notSyncedCount > 0" class="sync-section">
+    <div v-if="activeTab === 'notSynced' && notSyncedCount > 0 && !isEngineerMode" class="sync-section">
       <button @click="syncToExcel" class="btn-sync" :disabled="syncing">
         {{ syncing ? 'Синхрон хийж байна...' : '📤 Excel-рүү синхрон хийх' }}
       </button>
     </div>
     
-    <div v-if="activeTab === 'notSynced'" class="sync-section">
+    <div v-if="activeTab === 'notSynced' && !isEngineerMode" class="sync-section">
       <button @click="fullSyncFromExcel" class="btn-sync" :disabled="syncing" style="background: #ff9800;">
         {{ syncing ? 'Шалгаж байна...' : '🔄 Excel-с бүрэн синхрон (Dry Run)' }}
       </button>
@@ -283,6 +435,14 @@ import { useProjectsStore } from '../stores/projects';
 import { approveTimeAttendanceRequest, manageTimeAttendanceRequest, syncTimeAttendanceToExcel, syncFromExcelToTimeAttendance, updateProjectRealHours } from '../services/api';
 import { db } from '../config/firebase';
 import { doc, updateDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
+
+const props = defineProps({
+  // When non-empty, only show TA for these project IDs (engineer mode)
+  engineerProjectIds: { type: Array, default: () => [] },
+});
+
+// True when a responsible engineer (non-supervisor) is viewing
+const isEngineerMode = computed(() => props.engineerProjectIds.length > 0);
 
 const requestsStore = useTimeAttendanceRequestsStore();
 const attendanceStore = useTimeAttendanceStore();
@@ -308,29 +468,38 @@ const filters = ref({
   date: '',
   employee: '',
   project: '',
-  status: ''
+  status: '',
+  engineerName: '',
 });
 const sortBy = ref('date-asc');
 
+// Helper: check if a record belongs to the engineer's projects
+function inEngineerProjects(record) {
+  if (!isEngineerMode.value) return true;
+  return props.engineerProjectIds.some(id => id == record.ProjectID);
+}
+
 const pendingRequests = computed(() => {
-  return requestsStore.requests.filter(r => r.status === 'pending');
+  return requestsStore.requests.filter(r => r.status === 'pending' && inEngineerProjects(r));
 });
 
 const approvedRequests = computed(() => {
-  return requestsStore.requests.filter(r => r.status === 'approved');
+  return requestsStore.requests.filter(r => r.status === 'approved' && inEngineerProjects(r));
 });
 
 const rejectedRequests = computed(() => {
-  return requestsStore.requests.filter(r => r.status === 'rejected');
+  return requestsStore.requests.filter(r => r.status === 'rejected' && inEngineerProjects(r));
 });
 
 const approvedCount = computed(() => {
-  return attendanceStore.records.filter(r => !r.dataStatus || r.dataStatus === 'valid').length;
+  return attendanceStore.records.filter(r =>
+    (!r.dataStatus || r.dataStatus === 'valid') && inEngineerProjects(r)
+  ).length;
 });
 
 const notSyncedRecords = computed(() => {
   return attendanceStore.allRecords.filter(r => 
-    (!r.dataStatus || r.dataStatus === 'valid') && r.syncedToExcel === false
+    (!r.dataStatus || r.dataStatus === 'valid') && r.syncedToExcel === false && inEngineerProjects(r)
   );
 });
 
@@ -340,12 +509,26 @@ const notSyncedCount = computed(() => {
 
 const invalidRecords = computed(() => {
   return attendanceStore.allRecords.filter(r => 
-    r.dataStatus === 'invalid' || r.dataStatus === 'retired'
+    (r.dataStatus === 'invalid' || r.dataStatus === 'retired') && inEngineerProjects(r)
   );
 });
 
 const invalidCount = computed(() => {
   return invalidRecords.value.length;
+});
+
+// Engineer-approved records (for supervisor view)
+const engineerApprovedRecords = computed(() => {
+  return attendanceStore.allRecords.filter(r => r.approvedByEngineer === true);
+});
+
+const engineerApprovedCount = computed(() => engineerApprovedRecords.value.length);
+
+const uniqueEngineerNames = computed(() => {
+  const names = engineerApprovedRecords.value
+    .map(r => r.approvedByEngineerName)
+    .filter(Boolean);
+  return [...new Set(names)].sort();
 });
 
 // Get unique employees and projects from all displayed records
@@ -411,9 +594,13 @@ const filteredRequests = computed(() => {
   if (activeTab.value === 'pending') {
     results = [...pendingRequests.value];
   } else if (activeTab.value === 'approved') {
-    results = [...attendanceStore.records];
+    results = attendanceStore.records.filter(r =>
+      (!r.dataStatus || r.dataStatus === 'valid') && inEngineerProjects(r)
+    );
   } else if (activeTab.value === 'notSynced') {
     results = [...notSyncedRecords.value];
+  } else if (activeTab.value === 'engineerApproved') {
+    results = [...engineerApprovedRecords.value];
   } else {
     return [];
   }
@@ -447,6 +634,11 @@ const filteredRequests = computed(() => {
   // Apply status filter (for approved tab)
   if (filters.value.status) {
     results = results.filter(r => r.Status === filters.value.status);
+  }
+
+  // Apply engineer name filter (for engineerApproved tab)
+  if (filters.value.engineerName) {
+    results = results.filter(r => r.approvedByEngineerName === filters.value.engineerName);
   }
   
   // Apply sorting
@@ -493,7 +685,7 @@ const totalWorkHours = computed(() => {
 });
 
 const displayedRequests = computed(() => {
-  if (activeTab.value === 'pending' || activeTab.value === 'approved' || activeTab.value === 'notSynced') {
+  if (activeTab.value === 'pending' || activeTab.value === 'approved' || activeTab.value === 'notSynced' || activeTab.value === 'engineerApproved') {
     return filteredRequests.value;
   } else if (activeTab.value === 'invalid') {
     return invalidRecords.value;
@@ -506,6 +698,13 @@ const displayedRequests = computed(() => {
 onMounted(async () => {
   await refreshRequests();
 });
+
+// Auto-select first project when in engineer mode
+watch(uniqueProjects, (newProjects) => {
+  if (isEngineerMode.value && !filters.value.project && newProjects.length > 0) {
+    filters.value.project = newProjects[0].id;
+  }
+}, { immediate: true });
 
 // Set default status filter to "Ирсэн" when switching to approved tab
 watch(activeTab, (newTab) => {
@@ -534,10 +733,14 @@ async function refreshRequests() {
 }
 
 function toggleSelectAll() {
-  if (allSelected.value) {
-    selectedRequests.value = filteredRequests.value.map(r => r.docId);
-  } else {
+  const allIds = displayedRequests.value.map(r => r.docId);
+  const allAreSelected = selectedRequests.value.length === allIds.length && allIds.length > 0;
+  if (allAreSelected) {
     selectedRequests.value = [];
+    allSelected.value = false;
+  } else {
+    selectedRequests.value = allIds;
+    allSelected.value = true;
   }
 }
 
@@ -546,6 +749,7 @@ function clearFilters() {
   filters.value.date = '';
   filters.value.employee = '';
   filters.value.project = '';
+  filters.value.engineerName = '';
   sortBy.value = 'date-asc';
 }
 
@@ -578,22 +782,38 @@ function parseTime(timeString) {
 
 async function bulkApprove() {
   if (selectedRequests.value.length === 0) return;
-  
-  if (!confirm(`${selectedRequests.value.length} хүсэлтийг зөвшөөрөх үү?`)) return;
+
+  // In engineer mode, filter out non-Техникч requests
+  let toApprove = selectedRequests.value;
+  if (isEngineerMode.value) {
+    toApprove = toApprove.filter(id => {
+      const req = displayedRequests.value.find(r => r.docId === id);
+      return req && req.Role === 'Техникч';
+    });
+    if (toApprove.length === 0) {
+      alert('Сонгосон хүсэлтүүд дотор Техникч үүрэгтэй хүсэлт байхгүй байна.');
+      return;
+    }
+  }
+
+  if (!confirm(`${toApprove.length} хүсэлтийг зөвшөөрөх үү?`)) return;
   
   processing.value = true;
   try {
     let successCount = 0;
-    for (const requestId of selectedRequests.value) {
-      // Find the request to get its data
-      const request = displayedRequests.value.find(r => r.docId === requestId);
-      if (request) {
-        // Update the request first with any edited fields
-        await manageTimeAttendanceRequest('update', request, requestId);
+    for (const requestId of toApprove) {
+      if (!isEngineerMode.value) {
+        // Supervisor: update any edited fields before approving
+        const request = displayedRequests.value.find(r => r.docId === requestId);
+        if (request) {
+          await manageTimeAttendanceRequest('update', request, requestId);
+        }
       }
-      
-      // Then approve it
-      await approveTimeAttendanceRequest(requestId, 'approve');
+      await approveTimeAttendanceRequest(
+        requestId,
+        'approve',
+        isEngineerMode.value ? { name: authStore.userData?.employeeFirstName, uid: authStore.user?.uid } : null
+      );
       successCount++;
     }
     showSyncMessage(`${successCount} хүсэлт амжилттай зөвшөөрөгдлөө`, 'success');
@@ -632,15 +852,18 @@ async function approveRequest(requestId) {
   
   processing.value = true;
   try {
-    // Find the request to get its data
-    const request = displayedRequests.value.find(r => r.docId === requestId);
-    if (request) {
-      // Update the request first with any edited fields
-      await manageTimeAttendanceRequest('update', request, requestId);
+    if (!isEngineerMode.value) {
+      // Supervisor: update any edited fields before approving
+      const request = displayedRequests.value.find(r => r.docId === requestId);
+      if (request) {
+        await manageTimeAttendanceRequest('update', request, requestId);
+      }
     }
-    
-    // Then approve it
-    await approveTimeAttendanceRequest(requestId, 'approve');
+    await approveTimeAttendanceRequest(
+      requestId,
+      'approve',
+      isEngineerMode.value ? { name: authStore.userData?.employeeFirstName, uid: authStore.user?.uid } : null
+    );
     showSyncMessage('Хүсэлт амжилттай зөвшөөрөгдлөө', 'success');
     await refreshRequests();
   } catch (error) {
@@ -968,6 +1191,17 @@ function showSyncMessage(text, type) {
 </script>
 
 <style scoped>
+.engineer-mode-banner {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .attendance-approval {
   margin-top: 30px;
   padding: 20px;
@@ -1322,10 +1556,34 @@ function showSyncMessage(text, type) {
   justify-content: center;
 }
 
+.supervisor-required-badge {
+  font-size: 0.72rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.engineer-badge {
+  font-size: 0.78rem;
+  color: #1e40af;
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.engineer-bulk-note {
+  font-size: 0.75rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
 .btn-approve {
-  width: 32px;
-  height: 32px;
-  background: #28a745;
   color: white;
   border: none;
   border-radius: 4px;
@@ -1544,5 +1802,262 @@ function showSyncMessage(text, type) {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+/* ===== Engineer filter hint ===== */
+.eng-filter {
+  align-items: flex-start;
+  gap: 10px;
+}
+.eng-select-hint {
+  font-size: 13px;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 6px 12px;
+  align-self: flex-end;
+}
+
+/* ===== Mobile: Engineer mode card layout ===== */
+.engineer-card-list {
+  display: none; /* hidden by default; shown only on mobile via @media below */
+}
+
+/* No-project placeholder */
+.ec-no-project {
+  text-align: center;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 24px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.ec-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px;
+  font-style: italic;
+}
+.ec-comment {
+  font-style: italic;
+  color: #475569;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .filters-section {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-group {
+    min-width: unset;
+    width: 100%;
+  }
+
+  .filter-input {
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Mobile bulk-actions: full width, wrap nicely */
+  .bulk-actions {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+  }
+  .btn-select-all,
+  .btn-bulk-approve,
+  .btn-bulk-reject {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 15px;
+    border-radius: 8px;
+    margin: 0;
+  }
+  .engineer-bulk-note {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Hide table when mobile card list is present (engineer mode) */
+  .requests-table-wrapper:has(.engineer-card-list) .requests-table {
+    display: none;
+  }
+
+  /* Show mobile cards */
+  .engineer-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .engineer-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  }
+
+  /* Card header */
+  .ec-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+    gap: 8px;
+  }
+  .ec-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+  .ec-checkbox {
+    width: 20px;
+    height: 20px;
+    accent-color: #2563eb;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .ec-date {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .ec-weekday {
+    font-size: 12px;
+    font-weight: 400;
+    color: #64748b;
+  }
+
+  /* Card field rows */
+  .ec-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .ec-label {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ec-value {
+    color: #1e293b;
+    font-weight: 500;
+    font-size: 14px;
+  }
+
+  /* Inputs inside cards */
+  .ec-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 14px;
+    background: #f8fafc;
+    color: #1e293b;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .ec-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+  }
+  .ec-textarea {
+    resize: vertical;
+    min-height: 58px;
+    font-family: inherit;
+  }
+
+  /* Time row */
+  .ec-time-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ec-time-input {
+    flex: 1;
+  }
+  .ec-dash {
+    color: #94a3b8;
+    font-size: 16px;
+  }
+  .ec-hours-badge {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Action buttons */
+  .ec-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 2px solid #f1f5f9;
+  }
+  .btn-ec-approve {
+    flex: 1;
+    padding: 13px 8px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    border: none;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(22,163,74,0.3);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .btn-ec-approve:active:not(:disabled) {
+    transform: scale(0.97);
+    box-shadow: none;
+  }
+  .btn-ec-reject {
+    flex: 1;
+    padding: 13px 8px;
+    background: linear-gradient(135deg, #f87171, #dc2626);
+    color: white;
+    border: none;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(220,38,38,0.3);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .btn-ec-reject:active:not(:disabled) {
+    transform: scale(0.97);
+    box-shadow: none;
+  }
+  .btn-ec-approve:disabled,
+  .btn-ec-reject:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .supervisor-required-badge {
+    width: 100%;
+    text-align: center;
+    padding: 10px;
+  }
 }
 </style>

@@ -225,11 +225,12 @@ export async function manageTimeAttendanceRequest(action, requestData, requestId
   }
 }
 
-export async function approveTimeAttendanceRequest(requestId, action) {
+export async function approveTimeAttendanceRequest(requestId, action, engineerInfo = null) {
   try {
     const response = await api.post('/approveTimeAttendanceRequest', {
       requestId,
       action,
+      ...(engineerInfo ? { approvedByEngineer: true, approvedByEngineerName: engineerInfo.name, approvedByEngineerId: engineerInfo.uid } : {}),
     });
     return response.data;
   } catch (error) {

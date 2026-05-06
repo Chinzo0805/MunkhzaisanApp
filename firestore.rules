@@ -125,7 +125,8 @@ service cloud.firestore {
       allow create: if request.auth != null && isSupervisorOrAccountant();
       allow update: if request.auth != null && isSupervisorOrAccountant()
                     && resource.data.fullyConfirmed == false;
-      allow delete: if false;
+      allow delete: if request.auth != null && isSupervisorOrAccountant()
+                    && resource.data.fullyConfirmed == false;
     }
 
     // Bounty calculations — supervisors/accountants write; all auth users read (employee page access)
@@ -159,6 +160,24 @@ service cloud.firestore {
 
     // Management Goals — supervisors and accountants can read/write
     match /managementGoals/{goalId} {
+      allow read: if request.auth != null && isSupervisorOrAccountant();
+      allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
+    }
+
+    // Financial Planning (budget) — supervisors and accountants can read/write
+    match /financialPlanning/{docId} {
+      allow read: if request.auth != null && isSupervisorOrAccountant();
+      allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
+    }
+
+    // Financial Income — supervisors and accountants can read/write
+    match /financialIncome/{docId} {
+      allow read: if request.auth != null && isSupervisorOrAccountant();
+      allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
+    }
+
+    // Financial Outcome (expenses) — supervisors and accountants can read/write
+    match /financialOutcome/{docId} {
       allow read: if request.auth != null && isSupervisorOrAccountant();
       allow create, update, delete: if request.auth != null && isSupervisorOrAccountant();
     }

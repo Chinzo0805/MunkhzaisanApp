@@ -102,7 +102,22 @@ exports.manageEmployee = functions.region('asia-east2').https.onRequest(async (r
       }
 
       console.log(`Updated employee with ID: ${employeeId}`);
-      
+
+      // Cascade position update to the linked users doc (if any)
+      if (employeeData.Position !== undefined) {
+        const empNumId = employeeData.Id !== undefined ? employeeData.Id : (oldData.Id !== undefined ? oldData.Id : null);
+        if (empNumId !== null) {
+          const usersSnap = await db.collection('users')
+            .where('employeeId', '==', empNumId)
+            .limit(1)
+            .get();
+          if (!usersSnap.empty) {
+            await usersSnap.docs[0].ref.update({ position: employeeData.Position, updatedAt: new Date().toISOString() });
+            console.log(`Cascaded position "${employeeData.Position}" to users/${usersSnap.docs[0].id}`);
+          }
+        }
+      }
+
       res.status(200).send({
         success: true,
         message: 'Employee updated successfully',

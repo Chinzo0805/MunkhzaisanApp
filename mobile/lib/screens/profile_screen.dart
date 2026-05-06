@@ -42,10 +42,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ];
   String _selectedBank = '';
 
+  String? _lastLoadedEmpId;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadEmployeeDoc());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final currentId = context.read<AppState>().effectiveEmployeeId;
+    if (_lastLoadedEmpId != null && _lastLoadedEmpId != currentId) {
+      _loadEmployeeDoc();
+    }
   }
 
   @override
@@ -60,8 +71,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadEmployeeDoc() async {
     final appState = context.read<AppState>();
-    final empIdRaw = appState.employeeId;
+    final empIdRaw = appState.effectiveEmployeeId;
     if (empIdRaw.isEmpty) return;
+    _lastLoadedEmpId = empIdRaw;
     setState(() => _empLoading = true);
     try {
       final intId = int.tryParse(empIdRaw);
@@ -175,7 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final department = userData['department'] ?? '';
     final email = userData['email'] ?? '';
     final phone = userData['phone'] ?? '';
-    final empId = userData['employeeId'] ?? appState.employeeId ?? '';
+    final empId = appState.effectiveEmployeeId.isNotEmpty ? appState.effectiveEmployeeId : (userData['employeeId'] ?? '');
     final isSupervisor = appState.isSupervisor;
 
     // Prefer employee doc data (Firestore employees collection)

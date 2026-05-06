@@ -99,7 +99,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
@@ -149,14 +149,14 @@ export default {
 
     const loadMyRequests = async () => {
       try {
-        if (!authStore.userData?.employeeId) {
+        if (!authStore.effectiveEmployeeId) {
           console.log('No employee ID found');
           return;
         }
 
         const q = query(
           collection(db, 'warehouseRequests'),
-          where('requestedEmpID', '==', authStore.userData.employeeId)
+          where('requestedEmpID', '==', authStore.effectiveEmployeeId)
         );
         
         const querySnapshot = await getDocs(q);
@@ -202,8 +202,8 @@ export default {
             WarehouseID: formData.value.WarehouseID,
             WarehouseName: formData.value.WarehouseName,
             quantity: formData.value.quantity,
-            requestedEmpID: authStore.userData.employeeId,
-            requestedEmpName: `${authStore.userData.employeeFirstName} ${authStore.userData.employeeLastName}`,
+            requestedEmpID: authStore.effectiveEmployeeId,
+            requestedEmpName: `${authStore.effectiveFirstName} ${authStore.effectiveLastName}`.trim(),
             projectID: formData.value.projectID,
             ProjectName: formData.value.ProjectName,
             purpose: formData.value.purpose,
@@ -280,6 +280,9 @@ export default {
         loadMyRequests(),
       ]);
     });
+
+    // Reload requests when supervisor switches view-as employee
+    watch(() => authStore.effectiveEmployeeId, () => loadMyRequests());
 
     return {
       formData,

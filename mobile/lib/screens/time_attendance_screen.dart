@@ -54,7 +54,7 @@ class _TimeAttendanceScreenState extends State<TimeAttendanceScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final appState = context.read<AppState>();
-    final empId = appState.employeeId;
+    final empId = appState.effectiveEmployeeId;
 
     try {
       // Load TA records for this employee
@@ -155,8 +155,7 @@ class _TimeAttendanceScreenState extends State<TimeAttendanceScreen> {
     setState(() => _submitting = true);
 
     try {
-      final empId = appState.employeeId ?? 0;
-      final userData = appState.userData!;
+      final empId = int.tryParse(appState.effectiveEmployeeId) ?? 0;
 
       int? projId;
       String projName = '';
@@ -170,8 +169,8 @@ class _TimeAttendanceScreenState extends State<TimeAttendanceScreen> {
 
       final payload = {
         'EmployeeID': empId,
-        'EmployeeFirstName': userData['firstName'] ?? '',
-        'EmployeePosition': userData['position'] ?? '',
+        'EmployeeFirstName': appState.effectiveFirstName,
+        'EmployeePosition': appState.effectivePosition,
         'Day': _formDay,
         'WeekDay': _formWeekDay,
         'Status': _formStatus,

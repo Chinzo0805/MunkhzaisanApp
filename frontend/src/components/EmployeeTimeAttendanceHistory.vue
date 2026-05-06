@@ -107,36 +107,28 @@
         <div class="modal-body">
           <div v-if="loadingProjectTA" class="loading">Уншиж байна...</div>
           <div v-else-if="projectTARecords.length > 0">
-            <!-- Mobile: cards -->
-            <div v-if="isMobile" class="ta-cards">
-              <div v-for="record in projectTARecords" :key="record.docId" class="ta-card">
-                <div class="ta-card-top">
-                  <span class="ta-card-date">📅 {{ record.Day }}</span>
-                  <span class="ta-card-hours">{{ record.WorkingHour }} ц</span>
+            <!-- Grouped by day, collapsible -->
+            <div class="ta-cards">
+              <div v-for="group in projectTAByDay" :key="group.day" class="ta-day-group">
+                <div class="ta-day-header" @click="toggleDay(group.day)">
+                  <div class="ta-day-header-left">
+                    <span class="ta-day-arrow">{{ collapsedDays.has(group.day) ? '▶' : '▼' }}</span>
+                    <span class="ta-day-date">📅 {{ group.day }}</span>
+                    <span class="ta-day-count">{{ group.records.length }} хүн</span>
+                  </div>
+                  <span class="ta-day-total">{{ group.totalHours }} ц</span>
                 </div>
-                <div class="ta-card-name">👤 {{ record.EmployeeFirstName }} {{ record.EmployeeLastName }}</div>
-                <div v-if="record.comment" class="ta-card-comment">💬 {{ record.comment }}</div>
+                <div v-if="!collapsedDays.has(group.day)" class="ta-day-records">
+                  <div v-for="record in group.records" :key="record.docId" class="ta-card">
+                    <div class="ta-card-top">
+                      <span class="ta-card-name">👤 {{ record.EmployeeFirstName }} {{ record.EmployeeLastName }}</span>
+                      <span class="ta-card-hours">{{ record.WorkingHour }} ц</span>
+                    </div>
+                    <div v-if="record.comment" class="ta-card-comment">💬 {{ record.comment }}</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <!-- Desktop: table -->
-            <table v-else class="ta-table">
-              <thead>
-                <tr>
-                  <th>Огноо</th>
-                  <th>Ажилтан</th>
-                  <th>Ажилласан цаг</th>
-                  <th>Тайлбар</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="record in projectTARecords" :key="record.docId">
-                  <td>{{ record.Day }}</td>
-                  <td>{{ record.EmployeeFirstName }}</td>
-                  <td>{{ record.WorkingHour }} ц</td>
-                  <td>{{ record.comment || '-' }}</td>
-                </tr>
-              </tbody>
-            </table>
             <!-- Stats summary -->
             <div class="ta-summary">
               <div class="ta-stat-grid">
@@ -283,7 +275,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
@@ -298,10 +290,11 @@ const loading = ref(false);
 const selectedMonth = ref(getCurrentMonth());
 const activeTab = ref('approved');
 const loadingProjects = ref(false);
-const statusFilter = ref('');
+const statusFilter = ref('Ажиллаж байгаа');
 const selectedProject = ref(null);
 const loadingProjectTA = ref(false);
 const projectTARecords = ref([]);
+const collapsedDays = ref(new Set());
 
 const approvedRecords = ref([]);
 const rejectedRecords = ref([]);
@@ -452,6 +445,29 @@ const bagHours = computed(() => {
   return Math.round(val * 10) / 10;
 });
 
+const projectTAByDay = computed(() => {
+  const grouped = {};
+  for (const record of projectTARecords.value) {
+    const day = record.Day || '';
+    if (!grouped[day]) grouped[day] = [];
+    grouped[day].push(record);
+  }
+  return Object.entries(grouped)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([day, records]) => ({
+      day,
+      records,
+      totalHours: Math.round(records.reduce((s, r) => s + (parseFloat(r.WorkingHour) || 0), 0) * 10) / 10
+    }));
+});
+
+function toggleDay(day) {
+  const next = new Set(collapsedDays.value);
+  if (next.has(day)) next.delete(day);
+  else next.add(day);
+  collapsedDays.value = next;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -471,8 +487,8 @@ function getStatusClass(status) {
 async function loadMonthData() {
   loading.value = true;
   try {
-    const employeeLastName = authStore.userData?.LastName || authStore.userData?.employeeLastName;
-    const employeeFirstName = authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
+    const employeeLastName = authStore.effectiveLastName || authStore.userData?.LastName || authStore.userData?.employeeLastName;
+    const employeeFirstName = authStore.effectiveFirstName || authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
     
     if (!employeeLastName) {
       console.error('Employee LastName not found');
@@ -663,6 +679,7 @@ async function viewProjectDetails(project) {
   selectedProject.value = project;
   loadingProjectTA.value = true;
   projectTARecords.value = [];
+  collapsedDays.value = new Set();
   
   try {
     const taQuery = query(
@@ -678,6 +695,9 @@ async function viewProjectDetails(project) {
       // Sort by date descending
       return (b.Day || '').localeCompare(a.Day || '');
     });
+    // Collapse all days by default
+    const allDays = [...new Set(projectTARecords.value.map(r => r.Day || '').filter(Boolean))];
+    collapsedDays.value = new Set(allDays);
   } catch (error) {
     console.error('Error loading project TA records:', error);
   } finally {
@@ -693,7 +713,7 @@ function closeProjectDetails() {
 async function loadProjectSummary() {
   loadingProjects.value = true;
   try {
-    const employeeFirstName = authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
+    const employeeFirstName = authStore.effectiveFirstName || authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
     
     if (!employeeFirstName) {
       console.error('Employee FirstName not found');
@@ -813,6 +833,12 @@ function calculateMonthStats_old(year, month, lastDay) {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
+  loadMonthData();
+  loadProjectSummary();
+});
+
+// Reload when supervisor switches view-as employee
+watch(() => authStore.effectiveEmployeeId, () => {
   loadMonthData();
   loadProjectSummary();
 });
@@ -1446,6 +1472,72 @@ h3 {
   font-size: 13px;
   font-weight: 400;
   color: #9ca3af;
+}
+
+/* Day-grouped collapsible rows */
+.ta-day-group {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.ta-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #eff6ff;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.ta-day-header:hover { background: #dbeafe; }
+
+.ta-day-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ta-day-arrow {
+  font-size: 11px;
+  color: #3b82f6;
+  width: 12px;
+  text-align: center;
+}
+
+.ta-day-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.ta-day-count {
+  font-size: 12px;
+  color: #6b7280;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 1px 8px;
+}
+
+.ta-day-total {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: white;
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 1px solid #bfdbfe;
+}
+
+.ta-day-records {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fafafa;
 }
 
 /* Mobile record cards */

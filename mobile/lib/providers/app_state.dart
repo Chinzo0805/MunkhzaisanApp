@@ -64,4 +64,43 @@ class AppState extends ChangeNotifier {
   String get lastName => userData?['employeeLastName'] ?? '';
   String get fullName => '$lastName $firstName'.trim();
   String get position => userData?['position'] ?? '';
+
+  // --- View-as (supervisor on behalf of employee) ---
+  Map<String, dynamic>? viewAsData;
+
+  bool get isViewingAs => viewAsData != null;
+
+  String get effectiveEmployeeId {
+    if (viewAsData != null) return viewAsData!['employeeId']?.toString() ?? '';
+    return employeeId;
+  }
+
+  String get effectiveFirstName {
+    if (viewAsData != null) return viewAsData!['firstName'] ?? '';
+    return firstName;
+  }
+
+  String get effectiveFullName {
+    if (viewAsData != null) {
+      final ln = viewAsData!['lastName'] ?? '';
+      final fn = viewAsData!['firstName'] ?? '';
+      return '$ln $fn'.trim();
+    }
+    return fullName;
+  }
+
+  String get effectivePosition {
+    if (viewAsData != null) return viewAsData!['position'] ?? '';
+    return position;
+  }
+
+  void setViewAs(Map<String, dynamic> data) {
+    viewAsData = data;
+    notifyListeners();
+  }
+
+  void clearViewAs() {
+    viewAsData = null;
+    notifyListeners();
+  }
 }

@@ -130,15 +130,15 @@
             @click="confirmAdvance" :disabled="confirmingAdvance" class="btn-confirm">
             {{ confirmingAdvance ? 'Түтнүүлж...' : (confirmedAdvanceInfo ? '✅ Миний батласан оруулах' : '✅ Урьдчилгаа батлах') }}
           </button>
-          <button v-if="!isAdvanceLocked" @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc">
-            {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+          <button @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc" :title="isAdvanceLocked ? 'Батлалт цуцлагдаж, дахин тооцоолно' : ''">
+            {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔄 Дахин тооцоолох' }}
           </button>
         </div>
       </div>
       <div v-if="advanceData.length === 0" class="no-data">
         <p>1-15-н цагийн бүртгэл байхгүй байна</p>
-        <button v-if="!isAdvanceLocked" @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc-big">
-          {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔢 Тооцоолох' }}
+        <button @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc-big">
+          {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔄 Тооцоолох' }}
         </button>
       </div>
       <table v-else class="salary-table">
@@ -168,7 +168,7 @@
             <td class="tc-r advance-pay-col">
               <div class="advance-pay-cell">
                 <!-- Editable input shown when forceAdvance is on -->
-                <template v-if="emp.forceAdvance && !isAdvanceLocked">
+                <template v-if="emp.forceAdvance">
                   <input
                     type="number" min="0" step="10000"
                     v-model.number="emp.advancePay"
@@ -179,7 +179,7 @@
                 <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
                   {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : `— (${emp.effectiveHours ?? 0}ц < 80)` }}
                 </span>
-                <label v-if="!isAdvanceLocked && (emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance)" class="force-check"
+                <label v-if="emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance" class="force-check"
                   :title="emp.forceAdvance ? 'Урамшуулал олгохоос татгалзах' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох'">
                   <input type="checkbox" v-model="emp.forceAdvance" @change="onForceAdvanceChange(emp)" />
                   <span>{{ emp.forceAdvance ? 'Урамшуулал олгосон' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох' }}</span>
@@ -766,8 +766,14 @@ const totalAdvancePay = computed(() =>
 );
 
 async function onForceAdvanceChange(emp) {
-  if (isAdvanceLocked.value) return;
   const prev = !emp.forceAdvance; // current value already toggled by v-model
+  if (isAdvanceLocked.value) {
+    const ok = confirm('Урьдчилгаа аль хэдийн батлагдсан байна.\nӨөрчлөлт хийвэл батлалт цуцлагдана.\nҮргэлжлүүлэх үү?');
+    if (!ok) {
+      emp.forceAdvance = prev;
+      return;
+    }
+  }
   // When first checking, default to ADVANCE_AMOUNT; when unchecking, zero it out.
   // When the amount input fires this handler, forceAdvance is already true — keep the entered value.
   if (emp.forceAdvance && emp.advancePay === 0) {
@@ -792,6 +798,10 @@ async function onForceAdvanceChange(emp) {
 }
 
 async function calculateAdvance() {
+  if (isAdvanceLocked.value) {
+    const ok = confirm('Урьдчилгаа аль хэдийн батлагдсан байна.\nДахин тооцоолбол батлалт цуцлагдана.\nҮргэлжлүүлэх үү?');
+    if (!ok) return;
+  }
   calculatingAdvance.value = true;
   try {
     const [y, m] = selectedMonth.value.split('-');

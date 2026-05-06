@@ -82,9 +82,6 @@
               <th class="th-invoice-date">Нэхэмжлэх огноо</th>
               <th class="th-income-date">Орлогын огноо</th>
               <th class="th-ebarimt">E-баримт</th>
-              <th @click="toggleListSort('income')" class="sortable th-income">
-                Нийт орлого {{ listSortField === 'income' ? (listSortAsc ? '↑' : '↓') : '' }}
-              </th>
               <th @click="toggleListSort('profit')" class="sortable th-profit">
                 Ашиг {{ listSortField === 'profit' ? (listSortAsc ? '↑' : '↓') : '' }}
               </th>
@@ -138,9 +135,6 @@
               </td>
               <td class="td-ebarimt" @click.stop>
                 <input type="checkbox" :checked="project.isEbarimtSent" @change="saveInlineField(project, 'isEbarimtSent', $event.target.checked)" style="width:16px;height:16px;cursor:pointer;" />
-              </td>
-              <td class="td-income">
-                {{ project.IncomeHR ? formatNumber(project.IncomeHR) + '₮' : '—' }}
               </td>
               <td class="td-profit" :class="{ 'profit-pos': (project.TotalProfit||0) > 0, 'profit-neg': (project.TotalProfit||0) < 0 }">
                 {{ (project.TotalProfit || project.TotalProfit === 0) ? formatNumber(project.TotalProfit) + '₮' : '—' }}
@@ -464,6 +458,12 @@
                   <small class="hint" v-else>Төлбөргүй төсөл</small>
                 </div>
                 <div class="form-group">
+                  <label>Үлдэх хувь (%)</label>
+                  <input v-model.number="form.RemainPercent" type="number" min="0" max="100" step="0.1" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onRemainPctChange" />
+                  <small class="hint" v-if="form.RemainPercent != null && form.RemainPercent < 100" style="color:#ef4444;">{{ (100 - form.RemainPercent).toFixed(1) }}% хасагдана</small>
+                  <small class="hint" v-else>Хасалтгүй (100%)</small>
+                </div>
+                <div class="form-group">
                   <label>HR зардал</label>
                   <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
@@ -595,9 +595,16 @@
                   <input v-model.number="form.ExpenceHSE" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
                 </div>
                 <div class="form-group">
-                  <label>Нийт орлого</label>
+                  <label>Нийт орлого (гэрээний)</label>
                   <input :value="formatNumber((form.IncomeHR||0) + (form.IncomeCar||0) + (form.IncomeMaterial||0))" type="text" readonly style="background-color: #dcfce7; font-weight: 700; color: #16a34a;" />
                 </div>
+                <div class="form-group">
+                  <label>Хүлээн авах орлого <small style="color:#6b7280;">({{ form.RemainPercent ?? 100 }}%)</small></label>
+                  <input :value="formatNumber(form.ReceivingIncome || 0)" type="text" readonly :style="(form.RemainPercent != null && form.RemainPercent < 100) ? 'background-color: #fef9c3; font-weight: 700; color: #b45309;' : 'background-color: #dcfce7; font-weight: 700; color: #16a34a;'" />
+                  <small v-if="form.RemainPercent != null && form.RemainPercent < 100" style="color:#ef4444;">{{ (100 - form.RemainPercent).toFixed(1) }}% хасалттай</small>
+                </div>
+              </div>
+              <div class="form-grid-1">
                 <div class="form-group profit-field" :class="(form.TotalProfit||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
                   <label>Нийт ашиг</label>
                   <input :value="formatNumber(form.TotalProfit)" type="text" readonly style="font-weight: 800; font-size: 17px;" />
@@ -928,6 +935,8 @@ async function onDrop(status, event) {
       TotalProfit: project.TotalProfit,
       InvoiceDate: project.InvoiceDate || '', isInvoiceSent: project.isInvoiceSent || false,
       isEbarimtSent: project.isEbarimtSent || false, IncomeDate: project.IncomeDate || '',
+      RemainPercent: project.RemainPercent != null ? project.RemainPercent : 100,
+      ReceivingIncome: project.ReceivingIncome || 0,
     };
     await manageProject('update', updatedData, project.docId);
     // onSnapshot auto-updates the store
@@ -979,6 +988,8 @@ const form = ref({
   ProfitCar: 0,
   ProfitMaterial: 0,
   TotalProfit: 0,
+  RemainPercent: 100,
+  ReceivingIncome: 0,
   InvoiceDate: '',
   isInvoiceSent: false,
   isEbarimtSent: false,
@@ -1158,6 +1169,11 @@ function onIncomeHRChange() {
   calculateFinancials();
 }
 
+function onRemainPctChange() {
+  // RemainPercent applies to TotalIncome → recalc ReceivingIncome
+  calculateFinancials();
+}
+
 function onAdditionalHourChange() {
   // When additionalHour changes, calculate additionalValue and update IncomeHR (paid only)
   form.value.additionalValue = Math.round((form.value.additionalHour || 0) * 65000);
@@ -1186,6 +1202,7 @@ function calculateFinancials() {
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
     form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+    form.value.ReceivingIncome = 0;
     return;
   }
 
@@ -1208,6 +1225,9 @@ function calculateFinancials() {
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
     form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+    const totalIncomeOT = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
+    const remainPctOT = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
+    form.value.ReceivingIncome = Math.round(totalIncomeOT * remainPctOT);
     return;
   }
 
@@ -1234,6 +1254,10 @@ function calculateFinancials() {
   form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
   // TotalProfit = ProfitHR + ProfitCar + ProfitMaterial - ExpenceHSE
   form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+  // ReceivingIncome = TotalIncome × RemainPercent / 100
+  const totalIncome = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
+  const remainPct = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
+  form.value.ReceivingIncome = Math.round(totalIncome * remainPct);
 }
 
 function handleAddItem() {
@@ -1306,6 +1330,8 @@ function editItem(project) {
     ProfitCar: project.ProfitCar || 0,
     ProfitMaterial: project.ProfitMaterial || 0,
     TotalProfit: project.TotalProfit || 0,
+    RemainPercent: project.RemainPercent != null ? project.RemainPercent : 100,
+    ReceivingIncome: project.ReceivingIncome || 0,
   };
 }
 
@@ -1369,6 +1395,8 @@ function closeModal() {
     ProfitCar: 0,
     ProfitMaterial: 0,
     TotalProfit: 0,
+    RemainPercent: 100,
+    ReceivingIncome: 0,
     InvoiceDate: '',
     isInvoiceSent: false,
     isEbarimtSent: false,

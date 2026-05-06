@@ -25,6 +25,8 @@ import TomdProjects from '../views/TomdProjects.vue';
 import HseConfirmation from '../views/HseConfirmation.vue';
 import HseInstructionManagement from '../views/HseInstructionManagement.vue';
 import TransactionCheckView from '../views/TransactionCheckView.vue';
+import FinancialPlanningView from '../views/FinancialPlanningView.vue';
+import ViewAsSelector from '../views/ViewAsSelector.vue';
 
 
 const routes = [
@@ -146,6 +148,12 @@ const routes = [
     meta: { requiresAuth: true, requiresRegistration: true },
   },
   {
+    path: '/financial-planning',
+    name: 'FinancialPlanning',
+    component: FinancialPlanningView,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
     path: '/public-bounty',
     name: 'PublicBountyReport',
     component: PublicBountyReport,
@@ -173,6 +181,12 @@ const routes = [
     path: '/tomd-projects',
     name: 'TomdProjects',
     component: TomdProjects,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/view-as',
+    name: 'ViewAsSelector',
+    component: ViewAsSelector,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
   {

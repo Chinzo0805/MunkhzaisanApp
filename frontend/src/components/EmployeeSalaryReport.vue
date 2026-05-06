@@ -219,7 +219,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -280,7 +280,7 @@ function salaryMonth() {
 }
 
 async function loadSalary() {
-  const employeeId = authStore.userData?.employeeId;
+  const employeeId = authStore.effectiveEmployeeId;
   if (!employeeId || !selectedMonth.value) return;
   salaryLoading.value = true;
   salaryRow.value = null;
@@ -316,7 +316,7 @@ async function loadSalary() {
 
 // ── Bounty data ──────────────────────────────────────────────────────────
 async function loadBounty() {
-  const employeeId = authStore.userData?.employeeId;
+  const employeeId = authStore.effectiveEmployeeId;
   if (!employeeId || !selectedMonth.value) return;
 
   bountyLoading.value  = true;
@@ -374,6 +374,11 @@ function loadAll() {
 }
 
 onMounted(() => {
+  loadAll();
+});
+
+// Reload when supervisor switches view-as employee
+watch(() => authStore.effectiveEmployeeId, () => {
   loadAll();
 });
 </script>

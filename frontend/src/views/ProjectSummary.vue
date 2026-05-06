@@ -126,7 +126,6 @@
             <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
               Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
-            <th @click="sortBy('IncomeHR')" class="sortable" style="color:#0369a1;">Нийт орлого {{ sortColumn === 'IncomeHR' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             
             <template v-if="viewMode === 'default'">
               <th @click="sortBy('HourPerformance')" class="sortable">
@@ -136,6 +135,7 @@
               <th @click="sortBy('InvoiceDate')" class="sortable th-date-col">Нэхэмжлэх огноо {{ sortColumn === 'InvoiceDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
               <th @click="sortBy('IncomeDate')" class="sortable th-date-col">Орлогын огноо {{ sortColumn === 'IncomeDate' ? (sortAsc ? '↑' : '↓') : '' }}</th>
               <th @click="sortBy('isEbarimtSent')" class="sortable th-invoice-col">E-баримт {{ sortColumn === 'isEbarimtSent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
+              <th @click="sortBy('RemainPercent')" class="sortable th-remain-col" style="color:#b45309;">Хасалт % {{ sortColumn === 'RemainPercent' ? (sortAsc ? '↑' : '↓') : '' }}</th>
             </template>
             
             <template v-else-if="viewMode === 'financial'">
@@ -256,7 +256,6 @@
               />
               <span v-else class="ref-id-cell">{{ project.referenceIdfromCustomer || '-' }}</span>
             </td>
-            <td class="number-cell" style="color:#0369a1;font-weight:600;">{{ project.IncomeHR ? project.IncomeHR.toLocaleString() : '-' }}</td>
             
             <template v-if="viewMode === 'default'">
               <td class="number-cell">
@@ -266,32 +265,32 @@
                 <template v-if="tableEditMode && rowForms[project.id]">
                   <input type="checkbox" v-model="rowForms[project.id].isInvoiceSent" @change="onInvoiceSentChange(project.id)" class="inline-check" />
                 </template>
-                <template v-else>
-                  <span>{{ project.isInvoiceSent ? '✅' : '☐' }}</span>
-                </template>
+                <template v-else><span>{{ project.isInvoiceSent ? '✅' : '☐' }}</span></template>
               </td>
               <td class="date-cell">
                 <template v-if="tableEditMode && rowForms[project.id]">
                   <input type="date" v-model="rowForms[project.id].InvoiceDate" class="inline-date-input" />
                 </template>
-                <template v-else>
-                  <span>{{ project.InvoiceDate || '-' }}</span>
-                </template>
+                <template v-else><span>{{ project.InvoiceDate || '-' }}</span></template>
               </td>
               <td class="date-cell">
                 <template v-if="tableEditMode && rowForms[project.id]">
                   <input type="date" v-model="rowForms[project.id].IncomeDate" class="inline-date-input" />
                 </template>
-                <template v-else>
-                  <span>{{ project.IncomeDate || '-' }}</span>
-                </template>
+                <template v-else><span>{{ project.IncomeDate || '-' }}</span></template>
               </td>
               <td class="invoice-cell">
                 <template v-if="tableEditMode && rowForms[project.id]">
                   <input type="checkbox" v-model="rowForms[project.id].isEbarimtSent" class="inline-check" />
                 </template>
+                <template v-else><span>{{ project.isEbarimtSent ? '✅' : '☐' }}</span></template>
+              </td>
+              <td class="remain-cell" style="text-align:center;">
+                <template v-if="tableEditMode && rowForms[project.id]">
+                  <input type="number" min="0" max="100" step="0.1" v-model.number="rowForms[project.id].RemainPercent" class="inline-remain-input" :style="rowForms[project.id].RemainPercent < 100 ? 'color:#b45309;font-weight:700;' : 'color:#6b7280;'" />
+                </template>
                 <template v-else>
-                  <span>{{ project.isEbarimtSent ? '✅' : '☐' }}</span>
+                  <span :style="(project.RemainPercent != null && project.RemainPercent < 100) ? 'color:#b45309;font-weight:700;' : 'color:#6b7280;'">{{ project.RemainPercent != null ? project.RemainPercent : 100 }}%</span>
                 </template>
               </td>
             </template>
@@ -423,8 +422,7 @@
         </tbody>
         <tfoot v-if="viewMode === 'financial'">
           <tr class="totals-row">
-            <td colspan="5" class="totals-label">Нийт дүн:</td>
-            <td class="number-cell" style="color:#0369a1;font-weight:700;">{{ totalIncomeHR.toLocaleString() }}</td>
+            <td colspan="6" class="totals-label">Нийт дүн:</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalEmployeeLaborCost.toLocaleString() }}</td>
@@ -462,8 +460,7 @@
         </tfoot>
         <tfoot v-else-if="viewMode === 'summary'">
           <tr class="totals-row">
-            <td colspan="5" class="totals-label">Нийт дүн:</td>
-            <td class="number-cell" style="color:#0369a1;font-weight:700;">{{ totalIncomeHR.toLocaleString() }}</td>
+            <td colspan="6" class="totals-label">Нийт дүн:</td>
             <td class="number-cell summary-main">
               <span style="color: #10b981; font-weight: 700;">{{ sumTotalIncome.toLocaleString() }}</span>
             </td>
@@ -785,6 +782,7 @@ function enterEditMode() {
       InvoiceDate: p.InvoiceDate || '',
       IncomeDate: p.IncomeDate || '',
       isEbarimtSent: p.isEbarimtSent || false,
+      RemainPercent: p.RemainPercent != null ? p.RemainPercent : 100,
     };
   });
   tableEditMode.value = true;
@@ -808,6 +806,9 @@ async function saveAllEdits() {
     await Promise.all(updates.map(async ([projectId, form]) => {
       const project = projectsStore.projects.find(p => String(p.id) === String(projectId));
       if (!project?.docId) return;
+      const clampedPct = Math.min(100, Math.max(0, form.RemainPercent != null ? form.RemainPercent : 100));
+      const totalIncome = (project.IncomeHR || 0) + (project.IncomeCar || 0) + (project.IncomeMaterial || 0);
+      const receivingIncome = Math.round(totalIncome * clampedPct / 100);
       await updateDoc(doc(db, 'projects', project.docId), {
         ResponsibleEmp: form.ResponsibleEmp,
         referenceIdfromCustomer: form.referenceIdfromCustomer,
@@ -815,11 +816,13 @@ async function saveAllEdits() {
         InvoiceDate: form.InvoiceDate,
         IncomeDate: form.IncomeDate,
         isEbarimtSent: form.isEbarimtSent,
+        RemainPercent: clampedPct,
+        ReceivingIncome: receivingIncome,
         updatedAt: new Date().toISOString(),
       });
       const idx = projectsStore.projects.findIndex(p => String(p.id) === String(projectId));
       if (idx !== -1) {
-        projectsStore.projects[idx] = { ...projectsStore.projects[idx], ...form };
+        projectsStore.projects[idx] = { ...projectsStore.projects[idx], ...form, RemainPercent: clampedPct, ReceivingIncome: receivingIncome };
       }
     }));
     cancelTableEdit();
@@ -1434,6 +1437,10 @@ onUnmounted(() => {
   background: #fff;
   color: #374151;
 }
+
+.th-remain-col { width: 70px; text-align: center; }
+.remain-cell { width: 70px; text-align: center; }
+.inline-remain-input { width: 54px; font-size: 0.8rem; border: 1px solid #d1d5db; border-radius: 4px; padding: 2px 4px; background: #fff; text-align: center; }
 
 .date-cell .inline-date-input:focus {
   outline: none;

@@ -92,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useProjectsStore } from '../stores/projects';
 import { manageHseInstruction } from '../services/api';
@@ -130,12 +130,12 @@ onMounted(async () => {
   await Promise.all([loadData(), projectsStore.fetchProjects()]);
 });
 
+watch(() => authStore.effectiveEmployeeId, () => loadData());
+
 async function loadData() {
   loading.value = true;
   try {
-    const employeeId = String(authStore.userData?.employeeId || '');
-
-    // Fetch active instruction and today's status in parallel
+    const employeeId = String(authStore.effectiveEmployeeId || '');
     const [activeRes, statusRes] = await Promise.all([
       manageHseInstruction({ action: 'getActive' }),
       employeeId
@@ -159,9 +159,9 @@ async function confirmInstruction() {
   confirmError.value = '';
   confirming.value = true;
   try {
-    const employeeId = String(authStore.userData?.employeeId || '');
-    const firstName = authStore.userData?.employeeFirstName || '';
-    const lastName = authStore.userData?.employeeLastName || '';
+    const employeeId = String(authStore.effectiveEmployeeId || '');
+    const firstName = authStore.effectiveFirstName || '';
+    const lastName = authStore.effectiveLastName || '';
     const employeeName = `${lastName} ${firstName}`.trim();
 
     const res = await manageHseInstruction({

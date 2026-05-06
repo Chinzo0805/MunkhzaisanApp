@@ -22,7 +22,7 @@ exports.approveTimeAttendanceRequest = functions.region('asia-east2').https.onRe
   }
   
   try {
-    const { requestId, action } = req.body;
+    const { requestId, action, approvedByEngineer, approvedByEngineerName, approvedByEngineerId } = req.body;
     
     if (!requestId || !action) {
       return res.status(400).send({ error: 'Missing requestId or action' });
@@ -41,18 +41,24 @@ exports.approveTimeAttendanceRequest = functions.region('asia-east2').https.onRe
       // Generate unique ID for the approved record if not present
       const recordId = requestData.ID || `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
+      const engineerMeta = approvedByEngineer
+        ? { approvedByEngineer: true, approvedByEngineerName: approvedByEngineerName || '', approvedByEngineerId: approvedByEngineerId || '' }
+        : {};
+
       // Copy to timeAttendance collection with syncedToExcel flag
       await db.collection('timeAttendance').add({
         ...requestData,
         ID: recordId, // Ensure ID exists for Excel sync
         approvedAt: new Date().toISOString(),
         syncedToExcel: false, // Mark as not synced yet
+        ...engineerMeta,
       });
       
       // Update request status
       await requestRef.update({
         status: 'approved',
         approvedAt: new Date().toISOString(),
+        ...engineerMeta,
       });
       
       console.log(`Approved time attendance request: ${requestId}`);

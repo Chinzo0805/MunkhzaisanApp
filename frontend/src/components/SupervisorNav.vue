@@ -10,6 +10,7 @@
       <router-link to="/confirmed-salary"       class="sup-nav-link" active-class="active-link">✅ Батлагдсан</router-link>
       <router-link to="/supervisor-bounty"      class="sup-nav-link" active-class="active-link">🏆 Урамшуулал</router-link>
       <router-link to="/transaction-report"     class="sup-nav-link" active-class="active-link">💵 Гүйлгээ</router-link>
+      <router-link to="/financial-planning"     class="sup-nav-link" active-class="active-link">💰 Санхүү</router-link>
       <router-link to="/transaction-check"      class="sup-nav-link" active-class="active-link">🧾 eBarimt/НӨАТ</router-link>
       <router-link to="/employee-table"         class="sup-nav-link" active-class="active-link">👥 Ажилтан</router-link>
       <router-link to="/management-goals"       class="sup-nav-link" active-class="active-link">🎯 Зорилго</router-link>

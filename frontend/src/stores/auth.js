@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { 
   signInWithPopup, 
   signInAnonymously,
@@ -16,6 +16,36 @@ export const useAuthStore = defineStore('auth', () => {
   const msalAccount = ref(null);
   const msalAccessToken = ref(null);
   const loading = ref(true);
+
+  // ── View-as (supervisor viewing on behalf of an employee) ──────────────────
+  const _savedViewAs = (() => { try { const s = sessionStorage.getItem('viewAsEmployee'); return s ? JSON.parse(s) : null; } catch { return null; } })();
+  const viewAsEmployee = ref(_savedViewAs); // { employeeId, employeeFirstName, employeeLastName, position, department }
+
+  const isViewingAs = computed(() => !!viewAsEmployee.value);
+
+  const effectiveEmployeeId = computed(() =>
+    viewAsEmployee.value?.employeeId ?? userData.value?.employeeId
+  );
+  const effectiveFirstName = computed(() =>
+    viewAsEmployee.value?.employeeFirstName ?? userData.value?.employeeFirstName
+  );
+  const effectiveLastName = computed(() =>
+    viewAsEmployee.value?.employeeLastName ?? userData.value?.employeeLastName
+  );
+  const effectiveFullName = computed(() => {
+    const ln = viewAsEmployee.value?.employeeLastName ?? userData.value?.employeeLastName ?? '';
+    const fn = viewAsEmployee.value?.employeeFirstName ?? userData.value?.employeeFirstName ?? '';
+    return `${ln} ${fn}`.trim();
+  });
+
+  function setViewAs(emp) {
+    viewAsEmployee.value = emp;
+    try { sessionStorage.setItem('viewAsEmployee', JSON.stringify(emp)); } catch {}
+  }
+  function clearViewAs() {
+    viewAsEmployee.value = null;
+    try { sessionStorage.removeItem('viewAsEmployee'); } catch {}
+  }
 
   // Initialize auth state listener
   function initAuthListener() {
@@ -145,7 +175,13 @@ export const useAuthStore = defineStore('auth', () => {
       const empRole = validRoles.includes(emp.Role) ? emp.Role : 'Employee';
       const isSupervisor = empRole === 'Supervisor';
       const isAccountant = empRole === 'Accountant';
-      const updates = { role: empRole, isSupervisor, isAccountant, updatedAt: new Date().toISOString() };
+      const updates = {
+        role: empRole,
+        isSupervisor,
+        isAccountant,
+        position: emp.Position || userData.value?.position,
+        updatedAt: new Date().toISOString(),
+      };
       await setDoc(doc(db, 'users', user.value.uid), { ...userData.value, ...updates });
       userData.value = { ...userData.value, ...updates };
       return { success: true, role: empRole };
@@ -288,6 +324,14 @@ export const useAuthStore = defineStore('auth', () => {
     msalAccessToken,
     msalInstance, // Expose for direct access
     loading,
+    viewAsEmployee,
+    isViewingAs,
+    effectiveEmployeeId,
+    effectiveFirstName,
+    effectiveLastName,
+    effectiveFullName,
+    setViewAs,
+    clearViewAs,
     initAuthListener,
     signInWithGoogle,
     signInWithMicrosoft,

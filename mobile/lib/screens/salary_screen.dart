@@ -64,8 +64,8 @@ class _SalaryScreenState extends State<SalaryScreen>
   }
 
   Future<void> _loadSalary() async {
-    final empId = context.read<AppState>().employeeId;
-    if (empId == null) return;
+    final empId = context.read<AppState>().effectiveEmployeeId;
+    if (empId.isEmpty) return;
     setState(() {
       _salaryLoading = true;
       _salaryRow = null;
@@ -130,8 +130,8 @@ class _SalaryScreenState extends State<SalaryScreen>
   }
 
   Future<void> _loadBounty() async {
-    final empId = context.read<AppState>().employeeId;
-    if (empId == null) return;
+    final empId = context.read<AppState>().effectiveEmployeeId;
+    if (empId.isEmpty) return;
     setState(() {
       _bountyLoading = true;
       _bountyProjects = [];

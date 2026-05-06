@@ -27,6 +27,16 @@
       </div>
     </div>
 
+    <div v-if="authStore.isViewingAs" class="view-as-banner">
+      <span class="view-as-icon">👁</span>
+      <span class="view-as-text">
+        <strong>{{ authStore.effectiveFullName }}</strong>
+        <span v-if="authStore.viewAsEmployee?.position"> · {{ authStore.viewAsEmployee.position }}</span>
+        &nbsp;-аар харж байна
+      </span>
+      <button class="view-as-clear" @click="authStore.clearViewAs()">✕ Болих</button>
+    </div>
+
     <router-view />
   </div>
 </template>
@@ -143,6 +153,11 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent background scroll when any modal-overlay is open */
+body:has(.modal-overlay) {
+  overflow: hidden;
 }
 
 #app {
@@ -382,5 +397,45 @@ body {
     padding: 10px;
     font-size: 13px;
   }
+}
+
+/* View-as banner */
+.view-as-banner {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 14px;
+}
+
+.view-as-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.view-as-text {
+  flex: 1;
+}
+
+.view-as-clear {
+  background: rgba(255,255,255,0.25);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.view-as-clear:hover {
+  background: rgba(255,255,255,0.4);
 }
 </style>

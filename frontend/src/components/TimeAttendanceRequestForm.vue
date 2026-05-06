@@ -253,7 +253,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '../stores/projects';
 import { useAuthStore } from '../stores/auth';
@@ -323,15 +323,15 @@ onMounted(async () => {
   
   const user = auth.currentUser;
   if (user) {
-    // Primary: match by employeeId from users collection (immune to email changes)
-    const employeeId = authStore.userData?.employeeId;
+    // Primary: match by effectiveEmployeeId (supports view-as mode for supervisors)
+    const employeeId = authStore.effectiveEmployeeId ?? authStore.userData?.employeeId;
     if (employeeId != null) {
       currentEmployee.value = employeesStore.employees.find(
         emp => emp.Id == employeeId || emp.NumID == employeeId
       );
     }
-    // Fallback: match by email
-    if (!currentEmployee.value) {
+    // Fallback: match by email (only when not viewing as someone else)
+    if (!currentEmployee.value && !authStore.isViewingAs) {
       currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email);
       // If found via email fallback, also sync the email into the employees record
       if (currentEmployee.value && currentEmployee.value.Email !== user.email) {
@@ -347,6 +347,15 @@ onMounted(async () => {
 });
 
 onUnmounted(() => { window.removeEventListener('resize', handleResize); });
+
+// Reload when supervisor switches view-as employee
+watch(() => authStore.effectiveEmployeeId, async (newId) => {
+  if (!newId) return;
+  currentEmployee.value = employeesStore.employees.find(
+    emp => emp.Id == newId || emp.NumID == newId
+  ) || null;
+  await loadMyPendingRequests();
+});
 
 function addRow() {
   // Generate a unique ID using timestamp and random string

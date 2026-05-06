@@ -11,18 +11,23 @@
 
     <main class="dashboard-content">
       <div class="welcome-card">
-        <h2>Welcome, {{ authStore.userData?.employeeFirstName }}!</h2>
-        <p><strong>Position:</strong> {{ authStore.userData?.position || 'N/A' }}</p>
-        <p>
-          <strong>Role:</strong> {{ authStore.userData?.role || 'Employee' }}
-          <button @click="handleRefreshRole" :disabled="refreshingRole" style="margin-left:10px;padding:2px 10px;font-size:0.78rem;background:#6366f1;color:#fff;border:none;border-radius:4px;cursor:pointer;">
-            {{ refreshingRole ? '...' : '🔄 Дүр шинэчлэх' }}
-          </button>
-          <span v-if="refreshRoleMsg" style="margin-left:8px;font-size:0.8rem;color:#166534;">{{ refreshRoleMsg }}</span>
-        </p>
-        <p v-if="authStore.userData?.isSupervisor" class="supervisor-badge">
-          ✓ Supervisor Account
-        </p>
+        <div class="wc-header">
+          <div class="wc-info">
+            <span class="wc-name">{{ authStore.userData?.employeeFirstName }}</span>
+            <span class="wc-meta">
+              <span v-if="authStore.userData?.position">{{ authStore.userData.position }}</span>
+              <span v-if="authStore.userData?.position && authStore.userData?.role" class="wc-sep">·</span>
+              <span>{{ authStore.userData?.role || 'Employee' }}</span>
+            </span>
+          </div>
+          <div class="wc-actions-right">
+            <button @click="handleRefreshRole" :disabled="refreshingRole" class="wc-refresh-btn" title="Дүр шинэчлэх">
+              {{ refreshingRole ? '⟳' : '🔄' }}
+            </button>
+            <span v-if="refreshRoleMsg" class="wc-refresh-msg">{{ refreshRoleMsg }}</span>
+          </div>
+        </div>
+        <p v-if="authStore.userData?.isSupervisor" class="supervisor-badge">✓ Supervisor Account</p>
         
         <!-- Time Attendance Request Button for all users -->
         <div class="quick-actions">
@@ -30,7 +35,7 @@
             👤 Миний мэдээлэл
           </button>
           <button @click="$router.push('/time-attendance-request')" class="btn-action">
-            📋 Ажиллах цагийн хүсэлт
+            📋 Ирцний хүсэлт
           </button>
           <button @click="$router.push('/warehouse-requests')" class="btn-action warehouse-request">
             📦 Агуулахын хүсэлт
@@ -44,14 +49,26 @@
           <button v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
           </button>
-          <button v-if="authStore.userData?.isSupervisor || authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
+          <button v-if="(authStore.userData?.isSupervisor || authStore.userData?.isAccountant) && !authStore.isViewingAs" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Миний цалин
+          </button>
+          <button v-if="(authStore.userData?.isSupervisor || authStore.userData?.isAccountant) && authStore.isViewingAs" @click="$router.push('/salary-report')" class="btn-action salary">
+            💰 Цалингийн мэдээлэл
           </button>
         </div>
 
+        <!-- Supervisor: View As Employee -->
+        <div v-if="authStore.userData?.isSupervisor && !authStore.isViewingAs" class="quick-actions-sup view-as-section">
+          <div class="section-label">👁 Ажилтанаар харах</div>
+          <button class="btn-view-as-open" @click="showViewAsModal = true">👤 Ажилтанаар харах</button>
+        </div>
+
         <!-- Supervisor: Management buttons -->
-        <div v-if="authStore.userData?.isSupervisor" class="quick-actions" style="margin-top:12px;">
+        <div v-if="authStore.userData?.isSupervisor && !authStore.isViewingAs" class="quick-actions-sup">
           <div class="section-label">⚙️ Удирдлага</div>
+          <button @click="$router.push('/financial-planning')" class="btn-action fin-planning">
+            💰 Санхүү бүртгэл, төлөвлөлт
+          </button>
           <button @click="$router.push('/financial-transactions')" class="btn-action finance">
             💵 Санхүүгийн гүйлгээ
           </button>
@@ -67,7 +84,7 @@
         </div>
 
         <!-- Supervisor: Report buttons -->
-        <div v-if="authStore.userData?.isSupervisor" class="quick-actions" style="margin-top:12px;">
+        <div v-if="authStore.userData?.isSupervisor && !authStore.isViewingAs" class="quick-actions-sup">
           <div class="section-label">📊 Тайлангууд</div>
           <button @click="$router.push('/supervisor-ta-summary')" class="btn-action summary">
             📊 Ирцийн нэгтгэл
@@ -91,7 +108,7 @@
             👥 Ажилтны жагсаалт
           </button>
         </div>
-        <div v-if="authStore.userData?.isAccountant" class="quick-actions" style="margin-top:12px;">
+        <div v-if="authStore.userData?.isAccountant && !authStore.isViewingAs" class="quick-actions-sup">
           <div class="section-label">📊 Тайлангууд</div>
           <button @click="$router.push('/project-summary?kanban=1')" class="btn-action project">
             ⊞ Канбан
@@ -117,13 +134,24 @@
         </div>
       </div>
 
-      <!-- Employee sections (for non-supervisors) -->
-      <div v-if="!authStore.userData?.isSupervisor">
+      <!-- Employee sections (for non-supervisors OR when viewAs is active) -->
+      <div v-if="!authStore.userData?.isSupervisor || authStore.isViewingAs">
         <EmployeeTimeAttendanceHistory />
+
+        <!-- TA Approval for responsible engineers (non-supervisors who manage projects) -->
+        <div v-if="isResponsibleEngineer" class="time-attendance-section" style="margin-top:16px;">
+          <button @click="showTimeAttendance = !showTimeAttendance" class="expand-btn">
+            {{ showTimeAttendance ? '▼' : '▶' }} Миний ажлын ирцний хүсэлт
+          </button>
+          <TimeAttendanceApproval
+            v-if="showTimeAttendance"
+            :engineer-project-ids="myProjectIds"
+          />
+        </div>
       </div>
 
       <!-- Supervisor features -->
-      <div v-if="authStore.userData?.isSupervisor" class="supervisor-section">
+      <div v-if="authStore.userData?.isSupervisor && !authStore.isViewingAs" class="supervisor-section">
         <h3>Supervisor Actions</h3>
         
         <!-- Microsoft sign-in required -->
@@ -180,12 +208,15 @@
         <CustomerManagement @saved="handleSaved" />
         <ProjectManagement @saved="handleSaved" />
         
-        <!-- Time Attendance Approval (Supervisor only) - Collapsed by default -->
-        <div v-if="authStore.userData?.isSupervisor" class="time-attendance-section">
+        <!-- Time Attendance Approval (Supervisor + Responsible Engineers) - Collapsed by default -->
+        <div v-if="authStore.userData?.isSupervisor || isResponsibleEngineer" class="time-attendance-section">
           <button @click="showTimeAttendance = !showTimeAttendance" class="expand-btn">
-            {{ showTimeAttendance ? '▼' : '▶' }} Ажиллах цагийн хүсэлтүүд
+            {{ showTimeAttendance ? '▼' : '▶' }} Ирцний хүсэлтүүд
           </button>
-          <TimeAttendanceApproval v-if="showTimeAttendance" />
+          <TimeAttendanceApproval
+            v-if="showTimeAttendance"
+            :engineer-project-ids="isResponsibleEngineer ? myProjectIds : []"
+          />
         </div>
         
         <!-- Warehouse Request Approval (Supervisor only) - Collapsed by default -->
@@ -272,6 +303,39 @@
           </div>
         </div>
         <div v-else class="my-info-loading">Мэдээлэл олдсонгүй. Бүртгэлтэй ажилтан биш байж болно.</div>
+      </div>
+    </div>
+
+    <!-- View As Employee Modal -->
+    <div v-if="showViewAsModal" class="modal-overlay" @click.self="showViewAsModal = false">
+      <div class="modal-content va-modal">
+        <div class="va-modal-header">
+          <h3>👤 Ажилтанаар харах</h3>
+          <button @click="showViewAsModal = false" class="modal-close">✕</button>
+        </div>
+        <input
+          v-model="viewAsSearch"
+          class="va-modal-search"
+          placeholder="Нэр, албан тушаал, хэлтэс хайх..."
+          autocomplete="off"
+          autofocus
+        />
+        <div class="va-modal-list">
+          <div
+            v-for="emp in viewAsFiltered"
+            :key="emp.docId"
+            class="va-modal-row"
+            @click="pickViewAs(emp)"
+          >
+            <span class="va-avatar">{{ (emp.FirstName || '?')[0].toUpperCase() }}</span>
+            <div class="va-info">
+              <strong>{{ emp.LastName }} {{ emp.FirstName }}</strong>
+              <span>{{ [emp.Position, emp.Department].filter(Boolean).join(' · ') }}</span>
+            </div>
+            <span class="va-arrow">›</span>
+          </div>
+          <div v-if="viewAsFiltered.length === 0" class="va-empty">Ажилтан олдсонгүй</div>
+        </div>
       </div>
     </div>
 
@@ -395,6 +459,50 @@ async function saveMyInfo() {
   }
 }
 
+// Projects where the logged-in employee is the responsible engineer
+const myProjectIds = computed(() => {
+  const firstName = authStore.userData?.employeeFirstName;
+  if (!firstName) return [];
+  return projectsStore.projects
+    .filter(p => p.ResponsibleEmp === firstName)
+    .map(p => p.id);
+});
+
+// True if a non-supervisor employee is responsible for at least one project
+const isResponsibleEngineer = computed(() => {
+  return !authStore.userData?.isSupervisor && myProjectIds.value.length > 0;
+});
+
+// ── View-as: inline modal ────────────────────────────────────────────────────
+const showViewAsModal = ref(false);
+const viewAsSearch = ref('');
+
+const viewAsFiltered = computed(() => {
+  const q = viewAsSearch.value.toLowerCase().trim();
+  return employeesStore.employees
+    .filter(e => {
+      if (e.State && e.State !== 'Ажиллаж байгаа') return false;
+      if (!q) return true;
+      const name = `${e.LastName || ''} ${e.FirstName || ''}`.toLowerCase();
+      const pos = (e.Position || '').toLowerCase();
+      const dept = (e.Department || '').toLowerCase();
+      return name.includes(q) || pos.includes(q) || dept.includes(q);
+    })
+    .sort((a, b) => `${a.LastName}${a.FirstName}`.localeCompare(`${b.LastName}${b.FirstName}`, 'mn'));
+});
+
+function pickViewAs(emp) {
+  authStore.setViewAs({
+    employeeId: String(emp.Id ?? ''),
+    employeeFirstName: emp.FirstName || '',
+    employeeLastName: emp.LastName || '',
+    position: emp.Position || '',
+    department: emp.Department || '',
+  });
+  showViewAsModal.value = false;
+  viewAsSearch.value = '';
+}
+
 const syncing = ref(false);
 const syncResult = ref(null);
 const loading = ref(false);
@@ -465,6 +573,9 @@ onMounted(async () => {
       customersStore.fetchCustomers(),
       projectsStore.fetchProjects()
     ]);
+  } else {
+    // Fetch projects for engineers so we can determine which projects they manage
+    await projectsStore.fetchProjects();
   }
 });
 
@@ -750,10 +861,69 @@ function handleSaved(event) {
 
 .welcome-card {
   background: white;
-  padding: 30px;
+  padding: 14px 16px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin-bottom: 30px;
+  margin-bottom: 16px;
+}
+
+.wc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wc-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.wc-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wc-sep {
+  color: #cbd5e1;
+}
+
+.wc-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.wc-refresh-btn {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.wc-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wc-refresh-msg {
+  font-size: 0.72rem;
+  color: #166534;
 }
 
 .supervisor-badge {
@@ -762,25 +932,46 @@ function handleSaved(event) {
 }
 
 .quick-actions {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.quick-actions .section-label {
+  grid-column: 1 / -1;
+}
+.quick-actions-sup {
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid #e5e7eb;
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
 }
+.quick-actions-sup .btn-action {
+  flex: 0 1 auto;
+  min-width: 130px;
+  width: auto;
+}
 .btn-action {
-  padding: 12px 24px;
+  padding: 7px 8px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 500;
   transition: all 0.3s;
   box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-action.salary {
@@ -846,6 +1037,10 @@ function handleSaved(event) {
 .btn-action.my-info {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+.btn-action.fin-planning {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 
 /* My Info Modal */
@@ -1291,4 +1486,111 @@ function handleSaved(event) {
 .time-attendance-section {
   margin-top: 30px;
 }
+
+/* ── View-As Employee Section ───────────────────────────────────── */
+.view-as-section {
+  border: 2px solid #f59e0b !important;
+  background: #fffbeb;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.view-as-active {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.view-as-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #fef3c7;
+  border-radius: 6px;
+  border: 1px solid #fcd34d;
+}
+
+.view-as-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.view-as-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.view-as-info strong {
+  font-size: 14px;
+  color: #92400e;
+}
+
+.view-as-info span {
+  font-size: 12px;
+  color: #b45309;
+}
+
+.btn-clear-view-as {
+  padding: 5px 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-clear-view-as:hover {
+  background: #dc2626;
+}
+
+.view-as-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-view-as-open {
+  width: 100%;
+  padding: 9px 14px;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-view-as-open:hover { background: #d97706; }
+
+/* View As Modal */
+.va-modal { max-width: 480px; width: 100%; padding: 0; border-radius: 12px; overflow: hidden; }
+.va-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #fef3c7; border-bottom: 1px solid #fde68a; }
+.va-modal-header h3 { margin: 0; font-size: 1rem; font-weight: 600; color: #92400e; }
+.va-modal-search { display: block; width: 100%; box-sizing: border-box; padding: 12px 16px; border: none; border-bottom: 1px solid #e5e7eb; font-size: 0.95rem; outline: none; }
+.va-modal-search:focus { background: #fffbeb; }
+.va-modal-list { max-height: 360px; overflow-y: auto; }
+.va-modal-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: background 0.15s; }
+.va-modal-row:hover { background: #fffbeb; }
+.va-avatar { width: 36px; height: 36px; border-radius: 50%; background: #f59e0b; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; }
+.va-info { flex: 1; display: flex; flex-direction: column; }
+.va-info strong { font-size: 0.9rem; color: #111827; }
+.va-info span { font-size: 0.78rem; color: #6b7280; margin-top: 1px; }
+.va-arrow { color: #9ca3af; font-size: 1.2rem; }
+.va-empty { padding: 24px; text-align: center; color: #9ca3af; font-size: 0.9rem; }
 </style>

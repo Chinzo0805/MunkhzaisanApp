@@ -12,6 +12,7 @@ import 'screens/salary_screen.dart';
 import 'screens/hse_screen.dart';
 import 'screens/warehouse_request_screen.dart';
 import 'screens/profile_screen.dart';
+import 'widgets/view_as_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +70,15 @@ class MunkhZaisanApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
+      builder: (context, child) {
+        final appState = context.watch<AppState>();
+        return Column(
+          children: [
+            ViewAsBanner(appState: appState),
+            Expanded(child: child!),
+          ],
+        );
+      },
       routerConfig: router,
     );
   }
