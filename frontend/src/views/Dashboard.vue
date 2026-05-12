@@ -46,7 +46,7 @@
           <button @click="$router.push('/tomd-projects')" class="btn-action tomd">
             ⏱️ TOMD ажлууд
           </button>
-          <button v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
+          <button v-if="false && !authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" @click="$router.push('/salary-report')" class="btn-action salary">
             💰 Цалингийн мэдээлэл
           </button>
           <button v-if="(authStore.userData?.isSupervisor || authStore.userData?.isAccountant) && !authStore.isViewingAs" @click="$router.push('/salary-report')" class="btn-action salary">

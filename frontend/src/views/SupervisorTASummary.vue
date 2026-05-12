@@ -320,15 +320,25 @@ async function loadSummary() {
     
     console.log('Loading summary for range:', startDate, 'to', endDate);
     
-    const taQuery = query(
-      collection(db, 'timeAttendance'),
-      where('Day', '>=', startDate),
-      where('Day', '<=', endDate)
-    );
-    
-    const snapshot = await getDocs(taQuery);
+    const [snapshot, projSnapshot] = await Promise.all([
+      getDocs(query(
+        collection(db, 'timeAttendance'),
+        where('Day', '>=', startDate),
+        where('Day', '<=', endDate)
+      )),
+      getDocs(collection(db, 'projects')),
+    ]);
+
     const records = snapshot.docs.map(doc => doc.data());
-    
+
+    // Build projectType map: project numeric id (string) → projectType
+    const projectTypeMap = new Map();
+    projSnapshot.docs.forEach(doc => {
+      const p = doc.data();
+      const pid = String(p.id || '').trim();
+      if (pid) projectTypeMap.set(pid, p.projectType || '');
+    });
+
     console.log(`Loaded ${records.length} records`);
     
     // Group by employee — key on EmployeeID first (most stable), then composite name
@@ -364,13 +374,19 @@ async function loadSummary() {
       const hours = parseFloat(record.WorkingHour) || 0;
       // Normalize status: lowercase + trim + replace Ukrainian і (U+0456) with Russian и (U+0438)
       const status = (record.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
+      // Include overtimeHour in workedHours only for non-overtime-type projects.
+      // Overtime-type projects use overtimeHour for bounty only.
+      const overtimeHour = parseFloat(record.overtimeHour) || 0;
+      const projId = String(record.ProjectID || '').trim();
+      const projType = projectTypeMap.get(projId) || '';
+      const includedOvertime = projType !== 'overtime' ? overtimeHour : 0;
 
       // Categorize by status
       if (status === 'томилолт') {
-        employee.workedHours += hours;
+        employee.workedHours += hours + includedOvertime;
         if (hours > 0) { employee.workedDays++; employee.businessTripDays++; }
       } else if (status === 'ирсэн' || status === 'ажилласан') {
-        employee.workedHours += hours;
+        employee.workedHours += hours + includedOvertime;
         if (hours > 0) employee.workedDays++;
       } else if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
         employee.restHours += hours;
@@ -380,7 +396,7 @@ async function loadSummary() {
         if (hours > 0) employee.missedDays++;
       }
 
-      employee.totalHours += hours;
+      employee.totalHours += hours + includedOvertime;
     });
     
     summaryData.value = Array.from(employeeMap.values());

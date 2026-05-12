@@ -9,7 +9,11 @@
       <h1>💰 Цалингийн мэдээлэл</h1>
     </header>
 
-    <EmployeeSalaryReport />
+    <!-- Employee view: temporarily disabled -->
+    <div v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" class="disabled-notice">
+      ⚠️ Цалингийн мэдээлэл түр хугацаар боломжгүй байна.
+    </div>
+    <EmployeeSalaryReport v-else />
   </div>
 </template>
 
@@ -50,6 +54,18 @@ const authStore = useAuthStore();
 .back-btn:hover {
   background: #f9fafb;
   border-color: #9ca3af;
+}
+
+.disabled-notice {
+  max-width: 600px;
+  margin: 60px auto;
+  padding: 24px 32px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 10px;
+  font-size: 16px;
+  color: #856404;
+  text-align: center;
 }
 
 .page-header h1 {

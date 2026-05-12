@@ -195,7 +195,7 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
 
   // Fetch employees, time attendance, recurring deductions, and (for full range)
   // monthly salary adjustments + confirmed advance for auto-deduction.
-  const [taSnap, empSnap, dedSnap, adjSnap, confirmedAdvSnap] = await Promise.all([
+  const [taSnap, empSnap, dedSnap, adjSnap, confirmedAdvSnap, projSnap] = await Promise.all([
     db.collection('timeAttendance')
       .where('Day', '>=', startDate)
       .where('Day', '<=', endDate)
@@ -215,6 +215,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     range === 'full'
       ? db.collection('confirmedSalaries').doc(`${yearMonth}_advance`).get()
       : Promise.resolve({ exists: false }),
+    // projects — needed to filter overtimeHour by project type
+    db.collection('projects').get(),
   ]);
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
@@ -293,9 +295,18 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     });
   }
 
+  // Build projectType map: project numeric id (string) → projectType
+  const projectTypeMap = new Map();
+  projSnap.docs.forEach(d => {
+    const p = d.data();
+    const pid = String(p.id || '').trim();
+    if (pid) projectTypeMap.set(pid, p.projectType || '');
+  });
+
   // Group time attendance by employee
   // workedDays   = count of qualifying days (ірсэн/ажилласан/томилолт) for salary formula
   // normalHours  = sum of hours for ірсэн + томилолт (used in labour cost)
+  //               + overtimeHour for non-overtime-type projects
   // absentHours  = sum of hours for тасалсан (penalty ×2 subtracted from normalHours)
   // Чөлөөтэй    = not counted in either
   const empTA = new Map();
@@ -308,9 +319,15 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
     const entry = empTA.get(empId);
     const workingHour = parseFloat(r.WorkingHour) || 0;
+    const overtimeHour = parseFloat(r.overtimeHour) || 0;
+    // Include overtimeHour in normalHours only for non-overtime-type projects.
+    // Overtime-type projects use overtimeHour for bounty only (15,000₮/h).
+    const projId = String(r.ProjectID || '').trim();
+    const projType = projectTypeMap.get(projId) || '';
+    const includedOvertime = projType !== 'overtime' ? overtimeHour : 0;
     if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
       entry.workedDays++;
-      entry.normalHours += workingHour; // overtimeHour excluded — bounty calculation only
+      entry.normalHours += workingHour + includedOvertime;
     } else if (status === 'тасалсан') {
       entry.absentHours += workingHour;
     }

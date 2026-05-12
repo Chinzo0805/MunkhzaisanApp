@@ -36,6 +36,9 @@
               <span class="project-id">#{{ project.projectId }}</span>
               <span class="project-status" :class="'status-' + project.status">{{ project.status }}</span>
             </div>
+            <span v-if="project.projectType" :class="['proj-type-badge', 'ptype-' + project.projectType]">
+              {{ project.projectType === 'paid' ? 'Угсралтын' : project.projectType === 'overtime' ? 'Ашиглалт' : project.projectType === 'unpaid' ? 'Суурь цалин' : project.projectType }}
+            </span>
           </div>
 
           <!-- Location prominent -->
@@ -175,6 +178,7 @@
           :title="day.tooltip"
         >
           <span v-if="day.date" class="cal-day-num">{{ day.date }}</span>
+          <span v-if="day.hours != null && day.hours > 0" class="cal-day-hours">{{ day.hours }}ц</span>
           <span v-if="day.isPending" class="cal-pending-dot">·</span>
         </div>
       </div>
@@ -356,25 +360,33 @@ const calendarDays = computed(() => {
     const isWeekend = dow === 0 || dow === 6;
     const approved = approvedRecords.value.find(r => (r.Day || r.Date) === dateStr);
     const pending  = pendingRecords.value.find(r => (r.Day || r.Date) === dateStr);
-    let cls, isPending, tooltip;
+    let cls, isPending, tooltip, hours;
     if (approved) {
       cls = calStatusClass(approved.Status);
       isPending = false;
-      tooltip = `${approved.Status} (зөвшөөрөгдсөн)`;
+      const wh = parseFloat(approved.WorkingHour) || 0;
+      const oh = parseFloat(approved.overtimeHour) || 0;
+      hours = wh + oh;
+      tooltip = `${approved.Status} (зөвшөөрөгдсөн) — ${hours}ц`;
     } else if (pending) {
       cls = 'cal-pending-req';
       isPending = true;
-      tooltip = `${pending.Status} (хүлээгдэж буй)`;
+      const wh = parseFloat(pending.WorkingHour) || 0;
+      const oh = parseFloat(pending.overtimeHour) || 0;
+      hours = wh + oh;
+      tooltip = `${pending.Status} (хүлээгдэж буй) — ${hours}ц`;
     } else if (isWeekend) {
       cls = 'cal-weekend';
       isPending = false;
+      hours = null;
       tooltip = 'Амралтын өдөр';
     } else {
       cls = 'cal-no-req';
       isPending = false;
+      hours = null;
       tooltip = 'Хүсэлт илгээгдүйгүй';
     }
-    days.push({ key: dateStr, date: d, cls, isPending, tooltip });
+    days.push({ key: dateStr, date: d, cls, isPending, tooltip, hours });
   }
   return days;
 });
@@ -768,6 +780,7 @@ async function loadProjectSummary() {
         projectDetails.push({
           projectId: projectData.id,
           status: projectData.Status || 'N/A',
+          projectType: projectData.projectType || '',
           siteLocation: projectData.siteLocation || projectData.SiteLocation || 'N/A',
           referenceId: projectData.referenceIdfromCustomer || '',
           startDate: projectData.StartDate || '',
@@ -1217,7 +1230,13 @@ h3 {
 }
 
 /* Header */
-.project-header { margin: 0; }
+.project-header {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
 
 .project-id-wrap {
   display: flex;
@@ -1226,6 +1245,17 @@ h3 {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.proj-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.ptype-paid    { background: #d1fae5; color: #065f46; }
+.ptype-overtime { background: #fef3c7; color: #92400e; }
+.ptype-unpaid  { background: #fee2e2; color: #991b1b; }
 
 .project-id {
   font-size: 18px;
@@ -1654,6 +1684,12 @@ h3 {
 }
 .cal-day:not(.cal-empty):hover { filter: brightness(0.88); }
 .cal-day-num { line-height: 1; }
+.cal-day-hours {
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.9;
+  margin-top: 1px;
+}
 
 .cal-worked    { background: #28a745; color: #fff; }
 .cal-missed    { background: #222;    color: #fff; }

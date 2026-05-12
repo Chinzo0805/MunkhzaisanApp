@@ -23,15 +23,26 @@ exports.getPublicTASummary = onCall(async (request) => {
     const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
     const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
 
-    // Query time attendance records
-    const snapshot = await db.collection('timeAttendance')
-      .where('Day', '>=', startDate)
-      .where('Day', '<=', endDate)
-      .get();
+    // Query time attendance records and projects in parallel
+    const [snapshot, projSnapshot] = await Promise.all([
+      db.collection('timeAttendance')
+        .where('Day', '>=', startDate)
+        .where('Day', '<=', endDate)
+        .get(),
+      db.collection('projects').get(),
+    ]);
 
     const records = [];
     snapshot.forEach(doc => {
       records.push(doc.data());
+    });
+
+    // Build projectType map: project numeric id (string) → projectType
+    const projectTypeMap = new Map();
+    projSnapshot.forEach(doc => {
+      const p = doc.data();
+      const pid = String(p.id || '').trim();
+      if (pid) projectTypeMap.set(pid, p.projectType || '');
     });
 
     // Aggregate data by employee — stable key prevents split rows
@@ -62,6 +73,12 @@ exports.getPublicTASummary = onCall(async (request) => {
       const empData = employeeMap.get(empKey);
       const hours = parseFloat(record.WorkingHour) || 0;
       const status = (record.Status || '').toLowerCase().trim();
+      // Include overtimeHour in workedHours only for non-overtime-type projects.
+      // Overtime-type projects use overtimeHour for bounty only.
+      const overtimeHour = parseFloat(record.overtimeHour) || 0;
+      const projId = String(record.ProjectID || '').trim();
+      const projType = projectTypeMap.get(projId) || '';
+      const includedOvertime = projType !== 'overtime' ? overtimeHour : 0;
 
       if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
         empData.restHours += hours;
@@ -70,14 +87,14 @@ exports.getPublicTASummary = onCall(async (request) => {
         empData.missedHours += hours;
         if (hours > 0) empData.missedDays++;
       } else if (status === 'томилолт') {
-        empData.workedHours += hours;
+        empData.workedHours += hours + includedOvertime;
         if (hours > 0) { empData.workedDays++; empData.businessTripDays++; }
       } else if (status === 'ирсэн' || status === 'ажилласан') {
-        empData.workedHours += hours;
+        empData.workedHours += hours + includedOvertime;
         if (hours > 0) empData.workedDays++;
       }
 
-      empData.totalHours += hours;
+      empData.totalHours += hours + includedOvertime;
     });
 
     // Convert map to array

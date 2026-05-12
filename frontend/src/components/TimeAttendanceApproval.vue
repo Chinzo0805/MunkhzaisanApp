@@ -113,6 +113,14 @@
         </select>
       </div>
       <div class="filter-group">
+        <label>Илүү цаг:</label>
+        <select v-model="filters.overtime" class="filter-input">
+          <option value="">Бүгд</option>
+          <option value="yes">Илүү цагтай</option>
+          <option value="no">Илүү цаггүй</option>
+        </select>
+      </div>
+      <div class="filter-group">
         <label>Эрэмбэлэх:</label>
         <select v-model="sortBy" class="filter-input">
           <option value="date-asc">Огноо (өсөх)</option>
@@ -469,6 +477,7 @@ const filters = ref({
   employee: '',
   project: '',
   status: '',
+  overtime: '',
   engineerName: '',
 });
 const sortBy = ref('date-asc');
@@ -636,6 +645,13 @@ const filteredRequests = computed(() => {
     results = results.filter(r => r.Status === filters.value.status);
   }
 
+  // Apply overtime filter
+  if (filters.value.overtime === 'yes') {
+    results = results.filter(r => (parseFloat(r.overtimeHour) || 0) > 0);
+  } else if (filters.value.overtime === 'no') {
+    results = results.filter(r => (parseFloat(r.overtimeHour) || 0) === 0);
+  }
+
   // Apply engineer name filter (for engineerApproved tab)
   if (filters.value.engineerName) {
     results = results.filter(r => r.approvedByEngineerName === filters.value.engineerName);
@@ -749,6 +765,8 @@ function clearFilters() {
   filters.value.date = '';
   filters.value.employee = '';
   filters.value.project = '';
+  filters.value.status = '';
+  filters.value.overtime = '';
   filters.value.engineerName = '';
   sortBy.value = 'date-asc';
 }
