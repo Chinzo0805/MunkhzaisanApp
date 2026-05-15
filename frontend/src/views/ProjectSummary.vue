@@ -126,6 +126,9 @@
             <th @click="sortBy('referenceIdfromCustomer')" class="sortable">
               Лавлах дугаар {{ sortColumn === 'referenceIdfromCustomer' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
+            <th @click="sortBy('bountyPayDate')" class="sortable th-date-col">
+              Урамшуулал огноо {{ sortColumn === 'bountyPayDate' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
             
             <template v-if="viewMode === 'default'">
               <th @click="sortBy('HourPerformance')" class="sortable">
@@ -255,6 +258,14 @@
                 placeholder="Ref ID..."
               />
               <span v-else class="ref-id-cell">{{ project.referenceIdfromCustomer || '-' }}</span>
+            </td>
+            <td class="date-cell" style="background-color: #fefce8;">
+              <template v-if="tableEditMode && rowForms[project.id]">
+                <input type="date" v-model="rowForms[project.id].bountyPayDate" class="inline-date-input" style="background-color: #fef3c7;" />
+              </template>
+              <template v-else>
+                <span style="color: #92400e; font-weight: 600;">{{ project.bountyPayDate || '-' }}</span>
+              </template>
             </td>
             
             <template v-if="viewMode === 'default'">
@@ -422,7 +433,7 @@
         </tbody>
         <tfoot v-if="viewMode === 'financial'">
           <tr class="totals-row">
-            <td colspan="6" class="totals-label">Нийт дүн:</td>
+            <td colspan="7" class="totals-label">Нийт дүн:</td>
             <td class="number-cell financial-hr">{{ totalIncomeHR.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalExpenceHRBonus.toLocaleString() }}</td>
             <td class="number-cell financial-hr">{{ totalEmployeeLaborCost.toLocaleString() }}</td>
@@ -460,7 +471,7 @@
         </tfoot>
         <tfoot v-else-if="viewMode === 'summary'">
           <tr class="totals-row">
-            <td colspan="6" class="totals-label">Нийт дүн:</td>
+            <td colspan="7" class="totals-label">Нийт дүн:</td>
             <td class="number-cell summary-main">
               <span style="color: #10b981; font-weight: 700;">{{ sumTotalIncome.toLocaleString() }}</span>
             </td>
@@ -778,6 +789,7 @@ function enterEditMode() {
     rowForms.value[p.id] = {
       ResponsibleEmp: p.ResponsibleEmp || '',
       referenceIdfromCustomer: p.referenceIdfromCustomer || '',
+      bountyPayDate: p.bountyPayDate || '',
       isInvoiceSent: p.isInvoiceSent || false,
       InvoiceDate: p.InvoiceDate || '',
       IncomeDate: p.IncomeDate || '',
@@ -812,6 +824,7 @@ async function saveAllEdits() {
       await updateDoc(doc(db, 'projects', project.docId), {
         ResponsibleEmp: form.ResponsibleEmp,
         referenceIdfromCustomer: form.referenceIdfromCustomer,
+        bountyPayDate: form.bountyPayDate,
         isInvoiceSent: form.isInvoiceSent,
         InvoiceDate: form.InvoiceDate,
         IncomeDate: form.IncomeDate,

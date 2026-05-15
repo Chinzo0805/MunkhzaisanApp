@@ -8,6 +8,24 @@ try {
 
 const db = getFirestore();
 
+// ── Policy helpers ────────────────────────────────────────────────────────────
+function parseTimeDecimal(t) {
+  if (!t) return NaN;
+  const [h, m] = t.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+function isWeekday(dayStr) {
+  const [y, mo, d] = dayStr.split('-').map(Number);
+  const dow = new Date(y, mo - 1, d).getDay();
+  return dow >= 1 && dow <= 5;
+}
+function overlapsWorkingHours(startTime, endTime) {
+  const start = parseTimeDecimal(startTime);
+  const end   = parseTimeDecimal(endTime);
+  const endAdj = end < start ? end + 24 : end;
+  return start < 18 && endAdj > 9;
+}
+
 exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onRequest(async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -238,6 +256,16 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
       }
       
+      // Overtime project policy: weekday time must be outside 09:00–18:00
+      if (requestData.projectType === 'overtime' && requestData.startTime && requestData.endTime && isWeekday(requestData.Day)) {
+        if (overlapsWorkingHours(requestData.startTime, requestData.endTime)) {
+          return res.status(400).send({
+            error: 'Overtime working hours policy violation',
+            message: `${requestData.Day}: Илүү цагын ажил ажлын цагтай(09:00–18:00) давхцаж байна. Ажлын цагаас гадна цаг оруулна уу`,
+          });
+        }
+      }
+
       // Add new request with pending status
       const docRef = await db.collection('timeAttendanceRequests').add({
         ...requestData,

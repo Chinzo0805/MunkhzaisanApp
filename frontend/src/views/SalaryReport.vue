@@ -9,11 +9,7 @@
       <h1>💰 Цалингийн мэдээлэл</h1>
     </header>
 
-    <!-- Employee view: temporarily disabled -->
-    <div v-if="!authStore.userData?.isSupervisor && !authStore.userData?.isAccountant" class="disabled-notice">
-      ⚠️ Цалингийн мэдээлэл түр хугацаар боломжгүй байна.
-    </div>
-    <EmployeeSalaryReport v-else />
+    <EmployeeSalaryReport />
   </div>
 </template>
 

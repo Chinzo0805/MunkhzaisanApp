@@ -70,7 +70,10 @@ exports.testScheduledTACheck = require("./testScheduledTACheck").testScheduledTA
 // HSE (Health, Safety, Environment) Instructions
 exports.manageHseInstruction = require("./manageHseInstruction").manageHseInstruction;
 
+// Time Attendance Summary — single source of truth for employee hours
+exports.manageTASummary = require('./manageTASummary').manageTASummary;
+
 // Public data access functions (password-protected)
-exports.getPublicTASummary = require("./getPublicTASummary").getPublicTASummary;
-exports.getPublicProjects = require("./getPublicProjects").getPublicProjects;
-exports.getPublicBountyReport = require("./getPublicBountyReport").getPublicBountyReport;
+// getPublicTASummary removed — all TA summaries now served from taSummaries collection via manageTASummary
+exports.getPublicProjects = require('./getPublicProjects').getPublicProjects;
+exports.getPublicBountyReport = require('./getPublicBountyReport').getPublicBountyReport;

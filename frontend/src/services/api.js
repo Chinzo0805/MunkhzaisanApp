@@ -210,6 +210,29 @@ export async function updateSalaryRow(yearMonth, range, employeeId) {
   }
 }
 
+// TA Summary — single source of truth for "how many hours did each employee work?"
+// get: read saved taSummaries/{yearMonth_range} (returns { success, data })
+export async function manageTASummary(action, yearMonth, range) {
+  try {
+    const response = await api.post('/manageTASummary', { action, yearMonth, range });
+    return response.data;
+  } catch (error) {
+    console.error('Error managing TA summary:', error);
+    throw error;
+  }
+}
+
+// calculateTASummary: recalculate from raw TA records and save to taSummaries
+export async function calculateTASummary(yearMonth, range) {
+  try {
+    const response = await api.post('/manageTASummary', { action: 'calculate', yearMonth, range });
+    return response.data;
+  } catch (error) {
+    console.error('Error calculating TA summary:', error);
+    throw error;
+  }
+}
+
 // Time Attendance Request functions
 export async function manageTimeAttendanceRequest(action, requestData, requestId = null) {
   try {

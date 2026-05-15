@@ -12,6 +12,40 @@
       </select>
     </div>
 
+    <!-- ===== TA Summary Section ===== -->
+    <div class="section-card">
+      <div class="section-header-row">
+        <div class="section-title">📋 Ирцийн нэгтгэл</div>
+      </div>
+
+      <div class="period-tabs">
+        <button @click="taSummaryRange = 'full'" :class="['ptab', taSummaryRange === 'full' ? 'active' : '']">Бүтэн сар</button>
+        <button @click="taSummaryRange = '1-15'"  :class="['ptab', taSummaryRange === '1-15'  ? 'active' : '']">1–15</button>
+        <button @click="taSummaryRange = '16-31'" :class="['ptab', taSummaryRange === '16-31' ? 'active' : '']">16–сарын эцэс</button>
+      </div>
+
+      <div v-if="taLoading" class="loading-spin-sm">
+        <div class="spinner"></div>
+        <span>Уншиж байна...</span>
+      </div>
+      <div v-else-if="!taRow" class="no-data-sm">
+        Энэ хугацааны ирцийн нэгтгэл байхгүй байна
+      </div>
+      <template v-else>
+        <div class="dg ta-summary-grid">
+          <span>Ажилласан цаг</span><span class="val-green">{{ taRow.workedHours ?? 0 }}ц</span>
+          <span v-if="(taRow.unpaidOvertimeHours ?? 0) > 0">Илүү цаг ×1.5</span>
+          <span v-if="(taRow.unpaidOvertimeHours ?? 0) > 0" class="val-trip">{{ taRow.unpaidOvertimeHours }}ц</span>
+          <span>Амарсан / Чөлөөтэй</span><span>{{ taRow.restHours ?? 0 }}ц</span>
+          <span>Тасалсан цаг</span><span :class="(taRow.missedHours ?? 0) > 0 ? 'val-red' : ''">{{ taRow.missedHours ?? 0 }}ц</span>
+          <span>Нийт цаг</span><strong>{{ taRow.totalHours ?? 0 }}ц</strong>
+          <span>Ажилласан өдөр</span><span>{{ taRow.workedDays ?? 0 }} өдөр</span>
+          <span v-if="(taRow.businessTripDays ?? 0) > 0">Томилолт</span>
+          <span v-if="(taRow.businessTripDays ?? 0) > 0" class="val-trip">{{ taRow.businessTripDays }} өдөр</span>
+        </div>
+      </template>
+    </div>
+
     <!-- ===== Bounty Section ===== -->
     <div class="section-card">
       <div class="section-header-row">
@@ -223,22 +257,24 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { manageTASummary } from '../services/api';
 
 const authStore = useAuthStore();
 
 // ── State ──────────────────────────────────────────────────────────────
 const now = new Date();
-// Default to current month — salaryMonth() offsets back when day=10
 const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-const selectedMonth = ref(defaultMonth); // single shared month picker
+const selectedMonth = ref(defaultMonth);
 const bountyDay     = ref('10');
 const salaryTab     = ref('full');
+const taSummaryRange = ref('full');
 
 const salaryLoading = ref(false);
 const bountyLoading    = ref(false);
+const taLoading        = ref(false);
 const bountyConfirmed  = ref(null);
-const bountyCalculated = ref(false); // true when bountyCalculations doc exists
+const bountyCalculated = ref(false);
 
 const salaryRow        = ref(null);
 const salaryConfirmed  = ref(null);
@@ -246,6 +282,7 @@ const advanceRow       = ref(null);
 const advanceConfirmed = ref(null);
 const bountyProjects   = ref([]);
 const salaryAdj        = ref([]);
+const taRow            = ref(null); // employee's own row from taSummaries
 
 // ── Computed ────────────────────────────────────────────────────────────
 const currentRow = computed(() =>
@@ -365,13 +402,35 @@ async function loadBounty() {
   }
 }
 
+// ── TA Summary ──────────────────────────────────────────────────────────
+async function loadTASummary() {
+  const employeeId = authStore.effectiveEmployeeId;
+  if (!employeeId || !selectedMonth.value) return;
+  taLoading.value = true;
+  taRow.value = null;
+  const sm = salaryMonth(); // use the same month offset as salary
+  try {
+    const result = await manageTASummary('get', sm, taSummaryRange.value);
+    if (result.success && result.data) {
+      const empIdStr = String(employeeId).trim();
+      taRow.value = (result.data.employees || []).find(e =>
+        String(e.employeeId || '').trim() === empIdStr
+      ) || null;
+    }
+  } catch (err) {
+    console.error('TA summary load error:', err);
+  } finally {
+    taLoading.value = false;
+  }
+}
+
 function loadAll() {
-  // 10th payout → completed previous month → show full salary
-  // 25th payout → mid-month advance for current month → show advance salary
   salaryTab.value = bountyDay.value === '25' ? 'advance' : 'full';
   loadSalary();
   loadBounty();
+  loadTASummary();
 }
+
 
 onMounted(() => {
   loadAll();
@@ -380,6 +439,11 @@ onMounted(() => {
 // Reload when supervisor switches view-as employee
 watch(() => authStore.effectiveEmployeeId, () => {
   loadAll();
+});
+
+// Reload TA summary when its range tab changes
+watch(taSummaryRange, () => {
+  loadTASummary();
 });
 </script>
 
@@ -678,6 +742,8 @@ watch(() => authStore.effectiveEmployeeId, () => {
 
 /* Value colors */
 .val-green { color: #16a34a; font-weight: 600; }
+.val-trip  { color: #7c3aed; font-weight: 600; }
+.ta-summary-grid { margin-top: 8px; }
 .val-blue  { color: #2563eb; font-weight: 600; }
 .val-red   { color: #dc2626; font-weight: 600; }
 .val-amber { color: #d97706; font-weight: 700; }

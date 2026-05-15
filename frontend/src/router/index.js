@@ -8,12 +8,6 @@ import TimeAttendanceRequestForm from '../components/TimeAttendanceRequestForm.v
 import SalaryReport from '../views/SalaryReport.vue';
 import SupervisorTASummary from '../views/SupervisorTASummary.vue';
 import ProjectSummary from '../views/ProjectSummary.vue';
-import FinancialTransactionManagement from '../components/FinancialTransactionManagement.vue';
-import WarehouseManagement from '../components/WarehouseManagement.vue';
-import WarehouseTransactionManagement from '../components/WarehouseTransactionManagement.vue';
-import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
-import PublicProjects from '../views/PublicProjects.vue';
-import PublicTASummary from '../views/PublicTASummary.vue';
 import SupervisorSalaryReport from '../views/SupervisorSalaryReport.vue';
 import SupervisorBountyReport from '../views/SupervisorBountyReport.vue';
 import PublicBountyReport from '../views/PublicBountyReport.vue';
@@ -27,6 +21,11 @@ import HseInstructionManagement from '../views/HseInstructionManagement.vue';
 import TransactionCheckView from '../views/TransactionCheckView.vue';
 import FinancialPlanningView from '../views/FinancialPlanningView.vue';
 import ViewAsSelector from '../views/ViewAsSelector.vue';
+import FinancialTransactionManagement from '../components/FinancialTransactionManagement.vue';
+import WarehouseManagement from '../components/WarehouseManagement.vue';
+import WarehouseTransactionManagement from '../components/WarehouseTransactionManagement.vue';
+import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
+import PublicProjects from '../views/PublicProjects.vue';
 
 
 const routes = [
@@ -39,13 +38,7 @@ const routes = [
     name: 'PublicProjects',
     component: PublicProjects,
     meta: { public: true },
-  },
-  {
-    path: '/public-ta-summary',
-    name: 'PublicTASummary',
-    component: PublicTASummary,
-    meta: { public: true },
-  },
+  },,
   {
     path: '/login',
     name: 'Login',

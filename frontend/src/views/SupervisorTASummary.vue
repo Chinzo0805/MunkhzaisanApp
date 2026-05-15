@@ -6,18 +6,21 @@
     <div class="filters-section">
       <div class="filter-group">
         <label>Он сар:</label>
-        <input type="month" v-model="selectedMonth" @change="loadSummary" />
+        <input type="month" v-model="selectedMonth" />
       </div>
       
       <div class="filter-group">
         <label>Хугацаа:</label>
-        <select v-model="selectedRange" @change="loadSummary">
+        <select v-model="selectedRange">
           <option value="full">Бүтэн сар</option>
           <option value="1-15">1-15</option>
           <option value="16-31">16-31</option>
         </select>
       </div>
       
+      <button @click="calculateSummary" class="btn-calculate" :disabled="loading">
+        {{ loading ? 'Тооцоолж байна...' : '📊 Тооцоолох' }}
+      </button>
       <button @click="loadSummary" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
@@ -72,6 +75,7 @@
     <div v-else-if="summaryData.length > 0" class="table-container">
       <div class="table-header">
         <span>{{ getDateRangeText() }}</span>
+        <span v-if="calculatedAt" class="calc-timestamp">Тооцоолсон: {{ fmtDate(calculatedAt) }}</span>
         <button @click="exportToExcel" class="btn-export">📥 Excel татах</button>
       </div>
       
@@ -83,6 +87,12 @@
             </th>
             <th @click="sortBy('workedHours')" class="sortable hours-col">
               Ажилласан цаг {{ sortColumn === 'workedHours' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th @click="sortBy('unpaidOvertimeHours')" class="sortable hours-col">
+              Илүү цаг ×1.5 {{ sortColumn === 'unpaidOvertimeHours' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th @click="sortBy('separateOvertimeHours')" class="sortable hours-col">
+              WOS-илүү цаг {{ sortColumn === 'separateOvertimeHours' ? (sortAsc ? '↑' : '↓') : '' }}
             </th>
             <th @click="sortBy('restHours')" class="sortable hours-col">
               Амарсан/Чөлөөтэй {{ sortColumn === 'restHours' ? (sortAsc ? '↑' : '↓') : '' }}
@@ -100,12 +110,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="employee in sortedData" :key="employee.employeeName">
+          <tr v-for="employee in sortedData" :key="employee.employeeId">
             <td class="employee-cell">
               <div class="employee-name">{{ employee.employeeName }}</div>
               <div class="employee-id">ID: {{ employee.employeeId }}</div>
             </td>
             <td class="hours-cell worked">{{ employee.workedHours.toFixed(2) }}ц</td>
+            <td class="hours-cell overtime">{{ (employee.unpaidOvertimeHours || 0).toFixed(2) }}ц</td>
+            <td class="hours-cell overtime">{{ (employee.separateOvertimeHours || 0).toFixed(2) }}ц</td>
             <td class="hours-cell rest">{{ employee.restHours.toFixed(2) }}ц</td>
             <td class="hours-cell missed">{{ employee.missedHours.toFixed(2) }}ц</td>
             <td class="hours-cell total">{{ employee.totalHours.toFixed(2) }}ц</td>
@@ -125,6 +137,8 @@
           <tr class="total-row">
             <td><strong>НИЙТ:</strong></td>
             <td class="hours-cell worked"><strong>{{ totalWorkedHours.toFixed(2) }}ц</strong></td>
+            <td class="hours-cell overtime"><strong>{{ totalUnpaidOvertimeHours.toFixed(2) }}ц</strong></td>
+            <td class="hours-cell overtime"><strong>{{ totalSeparateOvertimeHours.toFixed(2) }}ц</strong></td>
             <td class="hours-cell rest"><strong>{{ totalRestHours.toFixed(2) }}ц</strong></td>
             <td class="hours-cell missed"><strong>{{ totalMissedHours.toFixed(2) }}ц</strong></td>
             <td class="hours-cell total"><strong>{{ grandTotalHours.toFixed(2) }}ц</strong></td>
@@ -137,20 +151,21 @@
 
     <!-- No Data State -->
     <div v-else-if="!loading" class="no-data">
-      Сонгосон хугацаанд бүртгэл олдсонгүй
+      Тооцоолол байхгүй байна — "📊 Тооцоолох" товч дарна уу
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { ref, computed, onMounted, watch } from 'vue';
 import SupervisorNav from '../components/SupervisorNav.vue';
-import { db } from '../config/firebase';
+import { manageTASummary, calculateTASummary } from '../services/api';
 import * as XLSX from 'xlsx';
 
 const loading = ref(false);
 const summaryData = ref([]);
+const calculatedAt = ref(null);
+let loadToken = 0; // incremented on each load; stale responses are discarded
 
 // Date filters
 const today = new Date();
@@ -164,248 +179,113 @@ const sortAsc = ref(true);
 
 // Mongolian Public Holidays (2024-2027)
 const mongolianHolidays = [
-  // 2024
-  '2024-01-01', // New Year's Day
-  '2024-02-12', // Lunar New Year (Tsagaan Sar) - Day 1
-  '2024-02-13', // Lunar New Year (Tsagaan Sar) - Day 2
-  '2024-02-14', // Lunar New Year (Tsagaan Sar) - Day 3
-  '2024-03-08', // International Women's Day
-  '2024-06-01', // Mother and Children's Day
-  '2024-07-11', // Naadam Festival - Day 1
-  '2024-07-12', // Naadam Festival - Day 2
-  '2024-07-13', // Naadam Festival - Day 3
-  '2024-11-26', // Independence Day
-  
-  // 2025
-  '2025-01-01', // New Year's Day
-  '2025-01-29', // Lunar New Year (Tsagaan Sar) - Day 1
-  '2025-01-30', // Lunar New Year (Tsagaan Sar) - Day 2
-  '2025-01-31', // Lunar New Year (Tsagaan Sar) - Day 3
-  '2025-03-08', // International Women's Day
-  '2025-06-01', // Mother and Children's Day
-  '2025-07-11', // Naadam Festival - Day 1
-  '2025-07-12', // Naadam Festival - Day 2
-  '2025-07-13', // Naadam Festival - Day 3
-  '2025-11-26', // Independence Day
-  
-  // 2026
-  '2026-01-01', // New Year's Day
-  '2026-02-17', // Lunar New Year (Tsagaan Sar) - Day 1
-  '2026-02-18', // Lunar New Year (Tsagaan Sar) - Day 2
-  '2026-02-19', // Lunar New Year (Tsagaan Sar) - Day 3
-  '2026-03-08', // International Women's Day
-  '2026-06-01', // Mother and Children's Day
-  '2026-07-11', // Naadam Festival - Day 1
-  '2026-07-12', // Naadam Festival - Day 2
-  '2026-07-13', // Naadam Festival - Day 3
-  '2026-11-26', // Independence Day
-  
-  // 2027
-  '2027-01-01', // New Year's Day
-  '2027-02-06', // Lunar New Year (Tsagaan Sar) - Day 1
-  '2027-02-07', // Lunar New Year (Tsagaan Sar) - Day 2
-  '2027-02-08', // Lunar New Year (Tsagaan Sar) - Day 3
-  '2027-03-08', // International Women's Day
-  '2027-06-01', // Mother and Children's Day
-  '2027-07-11', // Naadam Festival - Day 1
-  '2027-07-12', // Naadam Festival - Day 2
-  '2027-07-13', // Naadam Festival - Day 3
-  '2027-11-26', // Independence Day
+  '2024-01-01', '2024-02-12', '2024-02-13', '2024-02-14', '2024-03-08', '2024-06-01',
+  '2024-07-11', '2024-07-12', '2024-07-13', '2024-11-26',
+  '2025-01-01', '2025-01-29', '2025-01-30', '2025-01-31', '2025-03-08', '2025-06-01',
+  '2025-07-11', '2025-07-12', '2025-07-13', '2025-11-26',
+  '2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-03-08', '2026-06-01',
+  '2026-07-11', '2026-07-12', '2026-07-13', '2026-11-26',
+  '2027-01-01', '2027-02-06', '2027-02-07', '2027-02-08', '2027-03-08', '2027-06-01',
+  '2027-07-11', '2027-07-12', '2027-07-13', '2027-11-26',
 ];
 
-// Calculate working days in range
+// Calculate working days in range (local computation, no Firestore needed)
 const workingDaysInRange = computed(() => {
   const [year, month] = selectedMonth.value.split('-');
   const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
-  let startDay, endDay;
-
-  if (selectedRange.value === 'full') {
-    startDay = 1;
-    endDay = lastDayOfMonth;
-  } else if (selectedRange.value === '1-15') {
-    startDay = 1;
-    endDay = 15;
-  } else {
-    startDay = 16;
-    endDay = lastDayOfMonth;
-  }
-  
-  let workingDays = 0;
-  
+  let startDay = 1, endDay = lastDayOfMonth;
+  if (selectedRange.value === '1-15')  { startDay = 1;  endDay = 15; }
+  if (selectedRange.value === '16-31') { startDay = 16; endDay = lastDayOfMonth; }
+  let count = 0;
   for (let day = startDay; day <= endDay; day++) {
     const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
-    const date = new Date(dateStr);
-    const dayOfWeek = date.getDay();
-    
-    // Skip weekends (0 = Sunday, 6 = Saturday)
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      continue;
-    }
-    
-    // Skip public holidays
-    if (mongolianHolidays.includes(dateStr)) {
-      continue;
-    }
-    
-    workingDays++;
+    const dow = new Date(dateStr).getDay();
+    if (dow !== 0 && dow !== 6 && !mongolianHolidays.includes(dateStr)) count++;
   }
-  
-  return workingDays;
+  return count;
 });
 
-// Expected working hours (working days * 8 hours)
-const expectedWorkingHours = computed(() => {
-  return workingDaysInRange.value * 8;
-});
+const expectedWorkingHours = computed(() => workingDaysInRange.value * 8);
 
-// Computed sorted data
 const sortedData = computed(() => {
   const data = [...summaryData.value];
-  
   data.sort((a, b) => {
     const aVal = a[sortColumn.value];
     const bVal = b[sortColumn.value];
-    
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortAsc.value ? aVal - bVal : bVal - aVal;
     }
-    
-    return sortAsc.value ? 
-      String(aVal).localeCompare(String(bVal), 'mn') : 
-      String(bVal).localeCompare(String(aVal), 'mn');
+    return sortAsc.value
+      ? String(aVal).localeCompare(String(bVal), 'mn')
+      : String(bVal).localeCompare(String(aVal), 'mn');
   });
-  
   return data;
 });
 
-// Summary totals
-const totalWorkedHours = computed(() => {
-  return summaryData.value.reduce((sum, emp) => sum + emp.workedHours, 0);
-});
+const totalWorkedHours          = computed(() => summaryData.value.reduce((s, e) => s + (e.workedHours  || 0), 0));
+const totalUnpaidOvertimeHours  = computed(() => summaryData.value.reduce((s, e) => s + (e.unpaidOvertimeHours || 0), 0));
+const totalSeparateOvertimeHours = computed(() => summaryData.value.reduce((s, e) => s + (e.separateOvertimeHours || 0), 0));
+const totalRestHours            = computed(() => summaryData.value.reduce((s, e) => s + (e.restHours    || 0), 0));
+const totalMissedHours          = computed(() => summaryData.value.reduce((s, e) => s + (e.missedHours  || 0), 0));
+const grandTotalHours           = computed(() => summaryData.value.reduce((s, e) => s + (e.totalHours   || 0), 0));
 
-const totalRestHours = computed(() => {
-  return summaryData.value.reduce((sum, emp) => sum + emp.restHours, 0);
-});
+function fmtDate(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString('mn-MN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+  catch { return iso.slice(0, 16).replace('T', ' '); }
+}
 
-const totalMissedHours = computed(() => {
-  return summaryData.value.reduce((sum, emp) => sum + emp.missedHours, 0);
-});
-
-const grandTotalHours = computed(() => {
-  return summaryData.value.reduce((sum, emp) => sum + emp.totalHours, 0);
-});
-
+// Load saved summary from taSummaries collection (via CF)
 async function loadSummary() {
+  const token = ++loadToken;
   loading.value = true;
+  summaryData.value = [];
+  calculatedAt.value = null;
   try {
-    const [year, month] = selectedMonth.value.split('-');
-    let startDay, endDay;
-
-    const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
-
-    if (selectedRange.value === 'full') {
-      startDay = 1;
-      endDay = lastDayOfMonth;
-    } else if (selectedRange.value === '1-15') {
-      startDay = 1;
-      endDay = 15;
-    } else {
-      // '16-31' → use actual last day so Feb/30-day months are correct
-      startDay = 16;
-      endDay = lastDayOfMonth;
+    const result = await manageTASummary('get', selectedMonth.value, selectedRange.value);
+    if (token !== loadToken) return; // discard stale response
+    if (result.success && result.data) {
+      const seen = new Set();
+      summaryData.value = (result.data.employees || []).filter(e => {
+        const k = String(e.employeeId || e.employeeName || '');
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      calculatedAt.value = result.data.calculatedAt || null;
     }
-    
-    const startDate = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
-    const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
-    
-    console.log('Loading summary for range:', startDate, 'to', endDate);
-    
-    const [snapshot, projSnapshot] = await Promise.all([
-      getDocs(query(
-        collection(db, 'timeAttendance'),
-        where('Day', '>=', startDate),
-        where('Day', '<=', endDate)
-      )),
-      getDocs(collection(db, 'projects')),
-    ]);
-
-    const records = snapshot.docs.map(doc => doc.data());
-
-    // Build projectType map: project numeric id (string) → projectType
-    const projectTypeMap = new Map();
-    projSnapshot.docs.forEach(doc => {
-      const p = doc.data();
-      const pid = String(p.id || '').trim();
-      if (pid) projectTypeMap.set(pid, p.projectType || '');
-    });
-
-    console.log(`Loaded ${records.length} records`);
-    
-    // Group by employee — key on EmployeeID first (most stable), then composite name
-    const employeeMap = new Map();
-
-    records.forEach(record => {
-      const empId   = String(record.EmployeeID || '').trim();
-      const lastName  = String(record.EmployeeLastName  || record.LastName  || '').trim();
-      const firstName = String(record.EmployeeFirstName || record.FirstName || '').trim();
-
-      // Stable grouping key: prefer numeric ID, fall back to LastName|FirstName composite
-      const empKey = empId || `${lastName}|${firstName}` || 'Unknown';
-
-      // Display name: first name only
-      const displayName = firstName || lastName || 'Unknown';
-
-      if (!employeeMap.has(empKey)) {
-        employeeMap.set(empKey, {
-          employeeName: displayName,
-          employeeId: empId,
-          workedHours: 0,
-          restHours: 0,
-          missedHours: 0,
-          totalHours: 0,
-          workedDays: 0,
-          restDays: 0,
-          missedDays: 0,
-          businessTripDays: 0
-        });
-      }
-
-      const employee = employeeMap.get(empKey);
-      const hours = parseFloat(record.WorkingHour) || 0;
-      // Normalize status: lowercase + trim + replace Ukrainian і (U+0456) with Russian и (U+0438)
-      const status = (record.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
-      // Include overtimeHour in workedHours only for non-overtime-type projects.
-      // Overtime-type projects use overtimeHour for bounty only.
-      const overtimeHour = parseFloat(record.overtimeHour) || 0;
-      const projId = String(record.ProjectID || '').trim();
-      const projType = projectTypeMap.get(projId) || '';
-      const includedOvertime = projType !== 'overtime' ? overtimeHour : 0;
-
-      // Categorize by status
-      if (status === 'томилолт') {
-        employee.workedHours += hours + includedOvertime;
-        if (hours > 0) { employee.workedDays++; employee.businessTripDays++; }
-      } else if (status === 'ирсэн' || status === 'ажилласан') {
-        employee.workedHours += hours + includedOvertime;
-        if (hours > 0) employee.workedDays++;
-      } else if (status === 'чөлөөтэй/амралт' || status.includes('амарсан') || status.includes('чөлөөтэй')) {
-        employee.restHours += hours;
-        if (hours > 0) employee.restDays++;
-      } else if (status === 'тасалсан') {
-        employee.missedHours += hours;
-        if (hours > 0) employee.missedDays++;
-      }
-
-      employee.totalHours += hours + includedOvertime;
-    });
-    
-    summaryData.value = Array.from(employeeMap.values());
-    console.log(`Processed ${summaryData.value.length} employees`);
-    
   } catch (error) {
-    console.error('Error loading summary:', error);
+    if (token !== loadToken) return;
+    console.error('Error loading TA summary:', error);
   } finally {
-    loading.value = false;
+    if (token === loadToken) loading.value = false;
+  }
+}
+
+// Recalculate from raw TA records and save to taSummaries
+async function calculateSummary() {
+  const token = ++loadToken;
+  loading.value = true;
+  summaryData.value = [];
+  calculatedAt.value = null;
+  try {
+    const result = await calculateTASummary(selectedMonth.value, selectedRange.value);
+    if (token !== loadToken) return;
+    if (result.success && result.data) {
+      const seen = new Set();
+      summaryData.value = (result.data.employees || []).filter(e => {
+        const k = String(e.employeeId || e.employeeName || '');
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      calculatedAt.value = result.data.calculatedAt || null;
+    }
+  } catch (error) {
+    if (token !== loadToken) return;
+    console.error('Error calculating TA summary:', error);
+  } finally {
+    if (token === loadToken) loading.value = false;
   }
 }
 
@@ -414,88 +294,43 @@ function sortBy(column) {
     sortAsc.value = !sortAsc.value;
   } else {
     sortColumn.value = column;
-    sortAsc.value = false; // Default to descending for numeric columns
+    sortAsc.value = false;
   }
 }
 
 function getDateRangeText() {
   const [year, month] = selectedMonth.value.split('-');
-  
-  if (selectedRange.value === 'full') {
-    return `${year}/${month}`;
-  }
-  
+  if (selectedRange.value === 'full') return `${year}/${month}`;
   const [start, end] = selectedRange.value.split('-');
   return `${year}/${month}/${start} - ${year}/${month}/${end}`;
 }
 
 function exportToExcel() {
-  // Create workbook and worksheet
-  const workbook = {
-    SheetNames: ['Summary'],
-    Sheets: {}
-  };
-  
-  const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Томилолт өдөр', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
-  
-  const data = [
-    headers,
-    ...sortedData.value.map(emp => [
-      emp.employeeName,
-      emp.employeeId,
-      emp.workedHours.toFixed(2),
-      emp.restHours.toFixed(2),
-      emp.missedHours.toFixed(2),
-      emp.totalHours.toFixed(2),
-      emp.businessTripDays || 0,
-      emp.workedDays,
-      emp.restDays,
-      emp.missedDays
-    ]),
-    // Add total row
-    [
-      'НИЙТ',
-      '',
-      totalWorkedHours.value.toFixed(2),
-      totalRestHours.value.toFixed(2),
-      totalMissedHours.value.toFixed(2),
-      grandTotalHours.value.toFixed(2),
-      summaryData.value.reduce((s, e) => s + (e.businessTripDays || 0), 0),
-      '',
-      '',
-      ''
-    ]
-  ];
-  
-  // Create worksheet from data
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
-  ws['!cols'] = [
-    { wch: 20 }, // Ажилтан
-    { wch: 10 }, // ID
-    { wch: 15 }, // Ажилласан цаг
-    { wch: 18 }, // Амарсан/Чөлөөтэй
-    { wch: 12 }, // Тасалсан
-    { wch: 12 }, // Нийт цаг
-    { wch: 14 }, // Томилолт өдөр
-    { wch: 15 }, // Ажилласан өдөр
-    { wch: 15 }, // Амралтын өдөр
-    { wch: 15 }  // Тасалсан өдөр
-  ];
-  
-  workbook.Sheets['Summary'] = ws;
-  
-  // Generate XLSX file and download
-  const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/octet-stream' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `TA_Summary_${getDateRangeText().replace(/\//g, '-')}.xlsx`;
-  link.click();
+  const headers = ['Ажилтан', 'ID', 'Ажилласан цаг', 'Илүү цаг ×1.5', 'WOS-илүү цаг', 'Амарсан/Чөлөөтэй', 'Тасалсан', 'Нийт цаг', 'Томилолт өдөр', 'Ажилласан өдөр', 'Амралтын өдөр', 'Тасалсан өдөр'];
+  const rows = sortedData.value.map(emp => [
+    emp.employeeName, emp.employeeId,
+    emp.workedHours.toFixed(2), (emp.unpaidOvertimeHours || 0).toFixed(2), (emp.separateOvertimeHours || 0).toFixed(2),
+    emp.restHours.toFixed(2), emp.missedHours.toFixed(2), emp.totalHours.toFixed(2),
+    emp.businessTripDays || 0, emp.workedDays, emp.restDays, emp.missedDays,
+  ]);
+  rows.push(['НИЙТ', '',
+    totalWorkedHours.value.toFixed(2), totalRestHours.value.toFixed(2),
+    totalMissedHours.value.toFixed(2), grandTotalHours.value.toFixed(2),
+    summaryData.value.reduce((s, e) => s + (e.businessTripDays || 0), 0), '', '', '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+  XLSX.writeFile(wb, `TA_Summary_${getDateRangeText().replace(/\//g, '-')}.xlsx`);
 }
 
 onMounted(() => {
+  loadSummary();
+});
+
+// Reload when month/range changes
+watch([selectedMonth, selectedRange], () => {
   loadSummary();
 });
 </script>
@@ -563,6 +398,27 @@ onMounted(() => {
   transition: background 0.2s;
 }
 .btn-bounty-nav:hover { background: #d97706; }
+
+.btn-calculate {
+  padding: 10px 20px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.2s;
+  height: 38px;
+}
+.btn-calculate:hover:not(:disabled) { background: #059669; }
+.btn-calculate:disabled { background: #9ca3af; cursor: not-allowed; }
+
+.calc-timestamp {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
 
 .btn-refresh {
   padding: 10px 20px;
@@ -758,6 +614,11 @@ onMounted(() => {
 
 .hours-cell.worked {
   color: #059669;
+}
+
+.hours-cell.overtime {
+  color: #7c3aed;
+  font-weight: 600;
 }
 
 .hours-cell.rest {

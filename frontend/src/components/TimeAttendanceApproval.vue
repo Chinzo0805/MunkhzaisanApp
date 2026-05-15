@@ -345,10 +345,7 @@
               <span v-else>{{ request.endTime }}</span>
             </td>
             <td>{{ request.WorkingHour }}ц</td>
-            <td>
-              <input type="checkbox" v-model="request.isOvertimeRequest" @change="recalculateHours(request)" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
-              {{ request.overtimeHour }}ц
-            </td>
+            <td>{{ request.overtimeHour }}ц</td>
             <td>
               <select v-model="request.Status" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)">
                 <option value="Ирсэн">Ирсэн</option>
@@ -783,10 +780,14 @@ function recalculateHours(request) {
   // Subtract 1 hour for lunch
   const totalHours = Math.max(0, Math.round((hours - 1) * 10) / 10);
   
-  // Apply the rule: if not overtime, max 8 hours
-  if (request.isOvertimeRequest) {
+  // Apply the rule based on projectType
+  if (request.projectType === 'overtime') {
     request.WorkingHour = 0;
     request.overtimeHour = totalHours;
+  } else if (request.projectType === 'unpaid') {
+    request.WorkingHour = Math.min(totalHours, 8);
+    const rawOvertime = Math.max(0, totalHours - 8);
+    request.overtimeHour = Math.round(rawOvertime * 1.5 * 10) / 10;
   } else {
     request.WorkingHour = Math.min(totalHours, 8);
     request.overtimeHour = 0;

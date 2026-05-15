@@ -148,10 +148,13 @@
             </div>
             <div class="field-group">
               <label>Илүү цаг</label>
-              <div class="overtime-row" v-if="request.projectType !== 'paid'">
-                <input type="checkbox" v-model="request.isOvertimeRequest" @change="calculateRow(index)" class="checkbox-field" />
+              <div class="overtime-row" v-if="request.projectType === 'overtime'">
                 <input type="number" v-model="request.overtimeHour" readonly class="input-field" step="0.5" />
-                <span v-if="request.projectType === 'unpaid'" class="overtime-hint">×1.5</span>
+                <span class="overtime-hint">Цагийн илүү</span>
+              </div>
+              <div class="overtime-row" v-else-if="request.projectType === 'unpaid'">
+                <input type="number" v-model="request.overtimeHour" readonly class="input-field" step="0.5" />
+                <span class="overtime-hint">×1.5 авто</span>
               </div>
               <span v-else class="overtime-disabled-note">Угсралтын төсөлд илүү цаг байхгүй</span>
             </div>
@@ -234,10 +237,13 @@
                 <input type="number" v-model="request.WorkingHour" readonly class="input-field" step="0.5" />
               </td>
               <td>
-                <template v-if="request.projectType !== 'paid'">
-                  <input type="checkbox" v-model="request.isOvertimeRequest" @change="calculateRow(index)" class="checkbox-field" />
+                <template v-if="request.projectType === 'overtime'">
                   <input type="number" v-model="request.overtimeHour" readonly class="input-field overtime-input" step="0.5" />
-                  <span v-if="request.projectType === 'unpaid'" class="overtime-hint">×1.5</span>
+                  <span class="overtime-hint">Цагийн илүү</span>
+                </template>
+                <template v-else-if="request.projectType === 'unpaid'">
+                  <input type="number" v-model="request.overtimeHour" readonly class="input-field overtime-input" step="0.5" />
+                  <span class="overtime-hint">×1.5</span>
                 </template>
                 <span v-else class="overtime-disabled-note">—</span>
               </td>
@@ -448,13 +454,19 @@ function onProjectChange(index) {
   if (project) {
     request.ProjectName = project.siteLocation || '';
     request.projectType = project.projectType || '';
-    // paid (Угсралтын) projects don't allow overtime — clear it when switching
-    if (request.projectType === 'paid') {
+    // paid/unpaid/overtime projects don't use the overtime checkbox
+    if (request.projectType !== '') {
       request.isOvertimeRequest = false;
+    }
+    if (request.projectType === 'paid') {
       request.overtimeHour = 0;
     }
+    // Recalculate so auto-overtime updates immediately when project changes
+    calculateRow(index);
   } else {
     request.projectType = '';
+    request.isOvertimeRequest = false;
+    request.overtimeHour = 0;
   }
 }
 
@@ -492,13 +504,15 @@ function calculateRow(index) {
     // Subtract 1 hour for lunch time
     const totalHours = Math.max(0, Math.round((hours - 1) * 10) / 10);
     
-    // If overtime request is checked, all hours are overtime
-    // Otherwise, cap working hours at 8 (max regular work day)
-    if (request.isOvertimeRequest) {
+    // unpaid projects: auto-split — regular capped at 8, anything beyond is overtime at 1.5×
+    // overtime projects: all hours are overtime, no regular hours
+    if (request.projectType === 'unpaid') {
+      request.WorkingHour = Math.min(totalHours, 8);
+      const rawOvertime = Math.max(0, totalHours - 8);
+      request.overtimeHour = Math.round(rawOvertime * 1.5 * 10) / 10;
+    } else if (request.projectType === 'overtime') {
       request.WorkingHour = 0;
-      // unpaid (суурь цалин) projects: overtime counts as 1.5× for salary purposes
-      const multiplier = request.projectType === 'unpaid' ? 1.5 : 1;
-      request.overtimeHour = Math.round(totalHours * multiplier * 10) / 10;
+      request.overtimeHour = Math.round(totalHours * 10) / 10;
     } else {
       request.WorkingHour = Math.min(totalHours, 8);
       request.overtimeHour = 0;
@@ -510,6 +524,19 @@ function parseTime(timeString) {
   if (!timeString) return NaN;
   const [hours, minutes] = timeString.split(':').map(Number);
   return hours + (minutes || 0) / 60;
+}
+
+function isWeekday(dayStr) {
+  const [year, month, day] = dayStr.split('-').map(Number);
+  const dow = new Date(year, month - 1, day).getDay();
+  return dow >= 1 && dow <= 5; // Mon–Fri
+}
+
+function overlapsWorkingHours(startTime, endTime) {
+  const start = parseTime(startTime);
+  const end   = parseTime(endTime);
+  const endAdj = end < start ? end + 24 : end; // handle overnight
+  return start < 18 && endAdj > 9; // overlaps 09:00–18:00
 }
 
 function getWeekNumber(date) {
@@ -593,6 +620,14 @@ async function submitAllRequests() {
     if (!request.comment || request.comment.trim() === '') {
       showMessage('Юу хийсэн талаар тэмдэглэл оруулна уу', 'error');
       return;
+    }
+
+    // Overtime project policy: on weekdays time must be outside working hours (09:00–18:00)
+    if (request.projectType === 'overtime' && request.startTime && request.endTime && isWeekday(request.Day)) {
+      if (overlapsWorkingHours(request.startTime, request.endTime)) {
+        showMessage(`${request.Day}: Илүү цагын ажил ажлын цагтай(09:00–18:00) давхцаж байна. Ажлын цагаас гадна цаг оруулна уу`, 'error');
+        return;
+      }
     }
   }
   
@@ -1026,10 +1061,12 @@ function showMessage(text, type) {
 }
 
 .message {
-  padding: 12px;
+  padding: 14px 18px;
   border-radius: 4px;
   margin-bottom: 20px;
   font-size: 14px;
+  min-width: 320px;
+  max-width: 100%;
 }
 
 .message.success {

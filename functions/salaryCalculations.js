@@ -14,6 +14,7 @@
  *   (Урамшуулал тооцохгүй — тусдаа систем)
  */
 const { FieldPath } = require('firebase-admin/firestore');
+const { aggregateTA } = require('./taAggregations');
 
 const mongolianHolidays = [
   '2024-01-01','2024-02-12','2024-02-13','2024-02-14','2024-03-08',
@@ -108,13 +109,14 @@ function recalcEmployeeRow(row, workingDays) {
 
   const additionalPay       = row.additionalPay       || 0;  // manual
   const annualLeavePay      = row.annualLeavePay      || 0;  // manual
+  const unpaidOvertimePay   = row.unpaidOvertimePay   || 0;  // auto: unpaid project overtime ×1.5
   const advance             = row.advance             || 0;  // manual
   const otherDeductions     = row.otherDeductions     || 0;  // manual
   const recurringAdditions  = row.recurringAdditions  || 0;  // auto from employeeDeductions additions
   const recurringDeductions = row.recurringDeductions || 0;  // auto from employeeDeductions
 
-  // Нийт бодогдсон цалин  (recurring additions are taxable gross)
-  const totalGross = calculatedSalary + additionalPay + annualLeavePay + recurringAdditions;
+  // Нийт бодогдсон цалин (unpaidOvertimePay and recurringAdditions are taxable gross)
+  const totalGross = calculatedSalary + additionalPay + annualLeavePay + unpaidOvertimePay + recurringAdditions;
 
   // НДШ ажилтан 11.5% — deducted from employee netPay
   // НДШ байгааллага 12.5% — reference only for managers (NOT deducted from netPay)
@@ -144,6 +146,7 @@ function recalcEmployeeRow(row, workingDays) {
     workedDays,
     workedHours: effectiveHours,
     calculatedSalary,
+    unpaidOvertimePay,
     totalGross,
     employerNDS,
     employeeNDS,
@@ -193,13 +196,9 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   }
   if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
-  // Fetch employees, time attendance, recurring deductions, and (for full range)
-  // monthly salary adjustments + confirmed advance for auto-deduction.
-  const [taSnap, empSnap, dedSnap, adjSnap, confirmedAdvSnap, projSnap] = await Promise.all([
-    db.collection('timeAttendance')
-      .where('Day', '>=', startDate)
-      .where('Day', '<=', endDate)
-      .get(),
+  // Read taSummaries (single source of truth for employee hours) + salary supporting data in parallel.
+  const [taSummarySnap, empSnap, dedSnap, adjSnap, confirmedAdvSnap] = await Promise.all([
+    db.collection('taSummaries').doc(`${yearMonth}_${range}`).get(),
     db.collection('employees').get(),
     db.collection('employeeDeductions').where('status', '==', 'active').get(),
     // salaryAdjustments are EOM-only — only fetch for full range.
@@ -215,9 +214,48 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     range === 'full'
       ? db.collection('confirmedSalaries').doc(`${yearMonth}_advance`).get()
       : Promise.resolve({ exists: false }),
-    // projects — needed to filter overtimeHour by project type
-    db.collection('projects').get(),
   ]);
+
+  // If no TA summary cached yet, calculate from raw TA records and save for future use.
+  let taSummaryEmployees = taSummarySnap.exists ? (taSummarySnap.data().employees || []) : null;
+  if (!taSummaryEmployees) {
+    console.log(`taSummaries/${yearMonth}_${range} not found — calculating from raw TA`);
+    const [taSnap, projSnap] = await Promise.all([
+      db.collection('timeAttendance')
+        .where('Day', '>=', startDate)
+        .where('Day', '<=', endDate)
+        .get(),
+      db.collection('projects').get(),
+    ]);
+    const taRecords = taSnap.docs.map(d => d.data());
+    const projectTypeMap = new Map();
+    projSnap.docs.forEach(d => {
+      const p = d.data();
+      const pid = String(p.id || '').trim();
+      if (pid) projectTypeMap.set(pid, p.projectType || '');
+    });
+    const aggMap = aggregateTA(taRecords, projectTypeMap);
+    taSummaryEmployees = Array.from(aggMap.values()).map(e => ({
+      employeeId:            e.employeeId,
+      employeeName:          e.employeeName,
+      normalHours:           Math.round(e.normalHours),
+      absentHours:           Math.round(e.absentHours),
+      workedDays:            e.workedDays,
+      unpaidOvertimeHours:   Math.round(e.unpaidOvertimeHours   * 100) / 100,
+      separateOvertimeHours: Math.round(e.separateOvertimeHours * 100) / 100,
+      workedHours:           Math.round(e.workedHours  * 100) / 100,
+      restHours:             Math.round(e.restHours    * 100) / 100,
+      missedHours:           Math.round(e.missedHours  * 100) / 100,
+      totalHours:            Math.round(e.totalHours   * 100) / 100,
+      businessTripDays:      e.businessTripDays,
+      restDays:              e.restDays,
+      missedDays:            e.missedDays,
+    }));
+    // Save for future use (non-blocking — don't let a save failure block salary calc)
+    db.collection('taSummaries').doc(`${yearMonth}_${range}`).set({
+      yearMonth, range, calculatedAt: new Date().toISOString(), employees: taSummaryEmployees,
+    }).catch(err => console.error('Failed to save taSummaries:', err));
+  }
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
   function normalizeId(v) {
@@ -295,43 +333,17 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     });
   }
 
-  // Build projectType map: project numeric id (string) → projectType
-  const projectTypeMap = new Map();
-  projSnap.docs.forEach(d => {
-    const p = d.data();
-    const pid = String(p.id || '').trim();
-    if (pid) projectTypeMap.set(pid, p.projectType || '');
-  });
-
-  // Group time attendance by employee
-  // workedDays   = count of qualifying days (ірсэн/ажилласан/томилолт) for salary formula
-  // normalHours  = sum of hours for ірсэн + томилолт (used in labour cost)
-  //               + overtimeHour for non-overtime-type projects
-  // absentHours  = sum of hours for тасалсан (penalty ×2 subtracted from normalHours)
-  // Чөлөөтэй    = not counted in either
+  // Build empTA from taSummaries — single source of truth for employee hours.
   const empTA = new Map();
-  taSnap.docs.forEach(d => {
-    const r = d.data();
-    const empId = normalizeId(r.EmployeeID);
-    // Normalize і (U+0456, Ukrainian) → и (U+0438, Russian) to handle both Excel and app records
-    const status = (r.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
-    if (!empId) return;
-    if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
-    const entry = empTA.get(empId);
-    const workingHour = parseFloat(r.WorkingHour) || 0;
-    const overtimeHour = parseFloat(r.overtimeHour) || 0;
-    // Include overtimeHour in normalHours only for non-overtime-type projects.
-    // Overtime-type projects use overtimeHour for bounty only (15,000₮/h).
-    const projId = String(r.ProjectID || '').trim();
-    const projType = projectTypeMap.get(projId) || '';
-    const includedOvertime = projType !== 'overtime' ? overtimeHour : 0;
-    if (status === 'ирсэн' || status === 'ажилласан' || status === 'томилолт') {
-      entry.workedDays++;
-      entry.normalHours += workingHour + includedOvertime;
-    } else if (status === 'тасалсан') {
-      entry.absentHours += workingHour;
-    }
-    // Чөлөөтэй — not counted in salary or labour cost
+  taSummaryEmployees.forEach(e => {
+    if (!e.employeeId) return;
+    empTA.set(e.employeeId, {
+      workedDays:            e.workedDays            || 0,
+      normalHours:           e.normalHours           || 0,
+      absentHours:           e.absentHours           || 0,
+      unpaidOvertimeHours:   e.unpaidOvertimeHours   || 0,
+      separateOvertimeHours: e.separateOvertimeHours || 0,
+    });
   });
 
   // autoTA employees: treat as worked full period regardless of TA records.
@@ -344,9 +356,11 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     if (state && state !== 'Ажиллаж байгаа') continue;
     // Full period: all working day slots, normalHours = workingDays * 8, no absences
     empTA.set(empId, {
-      workedDays:  workingDays,
-      normalHours: workingDays * 8,
-      absentHours: 0,
+      workedDays:            workingDays,
+      normalHours:           workingDays * 8,
+      absentHours:           0,
+      unpaidOvertimeHours:   0,
+      separateOvertimeHours: 0,
     });
   }
 
@@ -365,6 +379,13 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const { effectiveHours } = computeLaborCost(
       baseSalary, ta.normalHours, ta.absentHours, workingDaysMonth
     );
+    const unpaidOvertimeHours   = ta.unpaidOvertimeHours   || 0;
+    const separateOvertimeHours = ta.separateOvertimeHours || 0;
+    // unpaidOvertimePay: hourly rate × unpaidOvertimeHours (1.5× already embedded in hours by form)
+    const hourlyRate = (workingDaysMonth > 0 && baseSalary > 0)
+      ? baseSalary / (workingDaysMonth * 8)
+      : 0;
+    const unpaidOvertimePay = Math.round(hourlyRate * unpaidOvertimeHours);
 
     // Recurring deductions from employeeDeductions collection
     const empDeds = deductionsByEmp.get(empId) || [];
@@ -390,10 +411,13 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       name, position, type, baseSalary,
       isNDS,  // propagate to row so recalc after overrides stays correct
       workingDaysMonth,  // full-month denominator for salary formula
-      workedDays:     ta.workedDays,
-      normalHours:    Math.round(ta.normalHours),
-      absentHours:    Math.round(ta.absentHours),
-      effectiveHours: Math.round(effectiveHours),
+      workedDays:            ta.workedDays,
+      normalHours:           Math.round(ta.normalHours),
+      absentHours:           Math.round(ta.absentHours),
+      effectiveHours:        Math.round(effectiveHours),
+      unpaidOvertimeHours,
+      separateOvertimeHours,
+      unpaidOvertimePay,
       // One-time EOM adjustments — only for full range (salaryAdjustments are EOM-only)
       additionalPay:   (adjByEmp.get(empId) || {}).additionalPay   || 0,
       annualLeavePay:  (adjByEmp.get(empId) || {}).annualLeavePay  || 0,
@@ -417,7 +441,7 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   // Employees WITHOUT any TA records — include them with 0 worked days
   // Only include active employees (State === 'Ажиллаж байгаа').
   // Inactive/left employees are skipped unless they have actual TA records above.
-  const emptyTA = { workedDays: 0, normalHours: 0, absentHours: 0 };
+  const emptyTA = { workedDays: 0, normalHours: 0, absentHours: 0, unpaidOvertimeHours: 0, separateOvertimeHours: 0 };
   for (const [empId, emp] of empMap.entries()) {
     if (empTA.has(empId)) continue; // already processed above
     const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
