@@ -92,6 +92,14 @@
           </div>
 
           <div class="card-tap-hint">Дэлгэрэнг дарна дэдэггэер харах →</div>
+
+          <!-- WOS hours button: only for paid projects in handover status -->
+          <button
+            v-if="project.status === 'Ажил хүлээлгэн өгөх' && project.projectType === 'paid'"
+            @click.stop="openBountyModal(project, $event)"
+            class="btn-wos-assign"
+            title="Техникчийн WOS цаг оруулах"
+          >💰 Wos цаг оруулах</button>
         </div>
       </div>
       
@@ -276,6 +284,16 @@
       {{ activeTab === 'approved' ? 'Зөвшөөрөгдсөн бүртгэл байхгүй' : 'Татгалзсан бүртгэл байхгүй' }}
     </div>
   </div>
+
+  <!-- Bounty Modal for employee page -->
+  <ManualBountyModal
+    :show="showBountyModal"
+    :projectId="bountyProjectId"
+    :taRecords="bountyTaRecords"
+    :projectInfo="bountyProjectInfo"
+    :lockedWhenSaved="true"
+    @close="showBountyModal = false; bountyProjectId = null; bountyTaRecords = []; bountyProjectInfo = {}"
+  />
 </template>
 
 <script setup>
@@ -283,6 +301,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
+import { TIME_ATTENDANCE_FIELDS, COLLECTIONS } from '../constants/firestoreFields';
+import ManualBountyModal from './ManualBountyModal.vue';
 
 const authStore = useAuthStore();
 
@@ -296,6 +316,12 @@ const activeTab = ref('approved');
 const loadingProjects = ref(false);
 const statusFilter = ref('Ажиллаж байгаа');
 const selectedProject = ref(null);
+
+// Bounty modal state
+const showBountyModal   = ref(false);
+const bountyProjectId   = ref(null);
+const bountyTaRecords   = ref([]);
+const bountyProjectInfo = ref({});
 const loadingProjectTA = ref(false);
 const projectTARecords = ref([]);
 const collapsedDays = ref(new Set());
@@ -722,6 +748,26 @@ function closeProjectDetails() {
   projectTARecords.value = [];
 }
 
+async function openBountyModal(project, event) {
+  event.stopPropagation();
+  bountyProjectId.value = project.projectId;
+  bountyTaRecords.value = [];
+  bountyProjectInfo.value = {
+    location:        project.siteLocation    || '',
+    hourPerformance: project.HourPerformance ?? null,
+    baseAmount:      project.baseAmount      || null,
+    teamBounty:      project.teamBounty      || null,
+  };
+  showBountyModal.value = true;
+  const snap = await getDocs(
+    query(
+      collection(db, COLLECTIONS.TIME_ATTENDANCE),
+      where(TIME_ATTENDANCE_FIELDS.PROJECT_ID, '==', parseInt(project.projectId))
+    )
+  );
+  bountyTaRecords.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 async function loadProjectSummary() {
   loadingProjects.value = true;
   try {
@@ -787,6 +833,8 @@ async function loadProjectSummary() {
           plannedHour: Math.round(plannedHour * 10) / 10,
           realHour: Math.round(realHour * 10) / 10,
           engineerHand: projectData.EngineerHand || Math.round(engineerHand),
+          baseAmount:   projectData.BaseAmount   || null,
+          teamBounty:   projectData.TeamBounty   || null,
           progress,
           HourPerformance: projectData.HourPerformance
         });
@@ -1363,6 +1411,22 @@ h3 {
   color: #9ca3af;
   text-align: right;
   margin-top: 2px;
+}
+
+.btn-wos-assign {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: #065f46;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-wos-assign:hover {
+  background: #047857;
 }
 
 .modal-overlay {

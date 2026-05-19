@@ -177,7 +177,7 @@
                   />
                 </template>
                 <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
-                  {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : `— (${emp.effectiveHours ?? 0}ц < 80)` }}
+                  {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : `— (0 цаг)` }}
                 </span>
                 <label v-if="emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance" class="force-check"
                   :title="emp.forceAdvance ? 'Урамшуулал олгохоос татгалзах' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох'">
@@ -427,7 +427,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase
 import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as XLSX from 'xlsx';
-import { manageSalaryPeriod, calculateSalary, updateSalaryRow } from '../services/api';
+import { manageSalaryPeriod, calculateSalary, updateSalaryRow, calculateAdvanceFromBackend } from '../services/api';
 import SalaryAdjustmentsPanel from '../components/SalaryAdjustmentsPanel.vue';
 
 // ── Auth ─────────────────────────────────────────────────────────
@@ -804,137 +804,14 @@ async function calculateAdvance() {
   }
   calculatingAdvance.value = true;
   try {
-    const [y, m] = selectedMonth.value.split('-');
-    const startDate = `${y}-${m}-01`;
-    const endDate   = `${y}-${m}-15`;
-
-    // Fetch TA records for 1–15 and all employees in parallel
-    const [taSnap, empSnap] = await Promise.all([
-      getDocs(query(collection(db, 'timeAttendance'),
-        where('Day', '>=', startDate),
-        where('Day', '<=', endDate)
-      )),
-      getDocs(collection(db, 'employees')),
-    ]);
-
-    // Build employee map keyed by normalised ID
-    function normalizeId(v) {
-      if (v === null || v === undefined || v === '') return '';
-      const n = Number(v);
-      return isNaN(n) ? String(v).trim() : String(Math.round(n));
-    }
-    const empMap = new Map();
-    empSnap.docs.forEach(d => {
-      const e = d.data();
-      const key = normalizeId(e.ID ?? e.Id);
-      if (key) empMap.set(key, e);
-    });
-
-    // Aggregate TA per employee
-    const empTA = new Map();
-    taSnap.docs.forEach(d => {
-      const r = d.data();
-      const empId = normalizeId(r.EmployeeID);
-      const status = (r.Status || '').toLowerCase().trim().replace(/\u0456/g, '\u0438');
-      if (!empId) return;
-      if (!empTA.has(empId)) empTA.set(empId, { workedDays: 0, normalHours: 0, absentHours: 0 });
-      const entry = empTA.get(empId);
-      const wh = parseFloat(r.WorkingHour) || 0;
-      if (status === '\u0438\u0440\u0441\u044d\u043d' || status === '\u0430\u0436\u0438\u043b\u043b\u0430\u0441\u0430\u043d' || status === '\u0442\u043e\u043c\u0438\u043b\u043e\u043b\u0442') {
-        entry.workedDays++;
-        entry.normalHours += wh;
-      } else if (status === '\u0442\u0430\u0441\u0430\u043b\u0441\u0430\u043d') {
-        entry.absentHours += wh;
-      }
-    });
-
-    // autoTA employees: compute working days for 1-15 and override their TA entry.
-    // Count working days from 1–15 (Mon–Fri, non-holiday).
-    const mongolianHolidays = [
-      '2024-01-01','2024-02-12','2024-02-13','2024-02-14','2024-06-01','2024-07-11','2024-07-12','2024-07-13','2024-11-26',
-      '2025-01-01','2025-01-29','2025-01-30','2025-01-31','2025-06-01','2025-07-11','2025-07-12','2025-07-13','2025-11-26',
-      '2026-01-01','2026-02-17','2026-02-18','2026-02-19','2026-06-01','2026-07-11','2026-07-12','2026-07-13','2026-11-26',
-    ];
-    let advanceWorkingDays = 0;
-    for (let d = 1; d <= 15; d++) {
-      const ds = `${y}-${m}-${String(d).padStart(2,'0')}`;
-      const dow = new Date(ds).getDay();
-      if (dow !== 0 && dow !== 6 && !mongolianHolidays.includes(ds)) advanceWorkingDays++;
-    }
-    for (const [empId, emp] of empMap.entries()) {
-      if (emp.autoTA !== true) continue;
-      const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-      if (!baseSalary) continue;
-      const state = (emp?.State || '').trim();
-      if (state && state !== 'Ажиллаж байгаа') continue;
-      empTA.set(empId, {
-        workedDays:  advanceWorkingDays,
-        normalHours: advanceWorkingDays * 8,
-        absentHours: 0,
-      });
-    }
-
-    // Build result rows
-    const rows = [];
-
-    // Helper: build one advance row
-    function buildAdvanceRow(empId, ta, emp) {
-      const first = emp?.FirstName || '';
-      const last  = emp?.LastName || emp?.EmployeeLastName || '';
-      const name  = (first + ' ' + last).trim() || `ID:${empId}`;
-      const isNDS = emp?.isNDS !== false;
-      // isNDS=false employees are bounty-only — no advance pay.
-      const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
-      const effectiveHours = Math.max(0, Math.round(ta.normalHours - ta.absentHours * 2));
-      rows.push({
-        employeeId:     empId,
-        name,
-        position:       emp?.Position || '',
-        type:           emp?.Type || '',
-        baseSalary,
-        workedDays:     ta.workedDays,
-        normalHours:    Math.round(ta.normalHours),
-        absentHours:    Math.round(ta.absentHours),
-        effectiveHours,
-        advancePay:     isNDS && effectiveHours >= ADVANCE_MIN_HOURS ? ADVANCE_AMOUNT : 0,
-        forceAdvance:   false,
-        autoTA:         emp?.autoTA === true,
-      });
-    }
-
-    // Employees WITH TA records in 1–15
-    for (const [empId, ta] of empTA.entries()) {
-      buildAdvanceRow(empId, ta, empMap.get(empId));
-    }
-
-    // Active employees WITHOUT any TA records in 1–15 — include with 0 hours.
-    // Supervisors can still grant them advance via the forceAdvance toggle.
-    for (const [empId, emp] of empMap.entries()) {
-      if (empTA.has(empId)) continue; // already included above
-      const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-      const isNDS = emp?.isNDS !== false;
-      if (!baseSalary && isNDS) continue; // skip unconfigured employees
-      const state = (emp?.State || '').trim();
-      if (state && state !== 'Ажиллаж байгаа') continue; // active only
-      buildAdvanceRow(empId, { workedDays: 0, normalHours: 0, absentHours: 0 }, emp);
-    }
-
-    rows.sort((a, b) => a.name.localeCompare(b.name, 'mn'));
-
-    // Save to Firestore: salaries/{yearMonth}_advance
     const before = advanceSnapshot(advanceData.value);
-    const calculatedAt = new Date().toISOString();
-    await setDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`), {
-      yearMonth: selectedMonth.value,
-      calculatedAt,
-      employees: rows,
-    });
-    advanceData.value = rows;
-    advanceCalculatedAt.value = calculatedAt;
-    if (advanceSnapshot(rows) !== before) await resetAdvanceApprovals();
+    const result = await calculateAdvanceFromBackend(selectedMonth.value);
+    advanceData.value = result.employees || [];
+    advanceCalculatedAt.value = result.calculatedAt;
+    if (advanceSnapshot(advanceData.value) !== before) await resetAdvanceApprovals();
   } catch (err) {
     console.error('calculateAdvance error:', err);
-    alert('\u0423\u0440\u044c\u0434\u0447\u0438\u043b\u0433\u0430\u0430 \u0442\u043e\u043e\u0446\u043e\u043e\u043b\u043e\u043b\u0434 \u0430\u043b\u0434\u0430\u0430 \u0433\u0430\u0440\u043b\u0430\u0430: ' + err.message);
+    alert('Урьдчилгаа тооцоололд алдаа гарлаа: ' + err.message);
   } finally {
     calculatingAdvance.value = false;
   }

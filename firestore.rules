@@ -201,5 +201,11 @@ service cloud.firestore {
       allow read: if request.auth != null && isSupervisor();
       allow write: if false; // Only backend Cloud Function can write
     }
+
+    // Project bounty hours — project owners (responsible employees) and supervisors can manage WOS hours
+    match /projectBountyHours/{docId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
   }
 }

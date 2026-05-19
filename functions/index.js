@@ -14,6 +14,7 @@
 
 
 exports.onAttendanceApproved = require("./onAttendanceApproved").onAttendanceApproved;
+exports.onBountyHoursWritten = require("./onBountyHoursWritten").onBountyHoursWritten;
 exports.submitAttendance = require("./submitAttendance").submitAttendance;
 
 // Employee functions
@@ -77,3 +78,7 @@ exports.manageTASummary = require('./manageTASummary').manageTASummary;
 // getPublicTASummary removed — all TA summaries now served from taSummaries collection via manageTASummary
 exports.getPublicProjects = require('./getPublicProjects').getPublicProjects;
 exports.getPublicBountyReport = require('./getPublicBountyReport').getPublicBountyReport;
+
+// Bank Account Transaction functions
+exports.manageBankTransaction = require('./manageBankTransaction').manageBankTransaction;
+exports.syncBankTransactionsFromExcel = require('./syncBankTransactionsFromExcel').syncBankTransactionsFromExcel;

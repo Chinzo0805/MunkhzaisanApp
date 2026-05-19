@@ -101,8 +101,23 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   // Calculate TeamBounty - 0 for unpaid/overtime
   calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 22500);
 
+  // NonEngineerBounty — always from projectBountyHours (manually assigned by engineer).
+  // No fallback to TA hours — engineer must explicitly assign. Defaults to 0 until assigned.
+  let bountyHoursForCalc = 0;
+  if (!isUnpaid && !isOvertime) {
+    const manualBountySnap = await db.collection('projectBountyHours')
+      .where('projectID', '==', parseInt(projectId))
+      .get();
+    if (!manualBountySnap.empty) {
+      let manualTotal = 0;
+      manualBountySnap.docs.forEach(d => { manualTotal += parseFloat(d.data().bountyHours) || 0; });
+      bountyHoursForCalc = manualTotal;
+    }
+    calculations.ManualBountyHours = Math.round(bountyHoursForCalc * 10) / 10;
+  }
+
   // Calculate NonEngineerBounty - 0 for unpaid/overtime
-  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(nonEngineerHours * 5000);
+  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(bountyHoursForCalc * 5000);
 
   // Calculate OvertimeBounty (ашиглалтын илүү цаг): overtimeHours * 15,000 - only for overtime type
   calculations.OvertimeBounty = isOvertime ? Math.round(overtimeHours * 15000) : 0;
@@ -114,13 +129,9 @@ async function calculateProjectMetrics(projectId, projectData, db) {
     calculations.HourPerformance = 0;
   }
 
-  // Calculate EngineerHand (performance-adjusted bounty) - only for paid (Угсралтын урамшуулал)
-  if (!isUnpaid && !isOvertime && plannedHour > 0 && calculations.BaseAmount > 0) {
-    const bountyPercentage = 200 - calculations.HourPerformance;
-    calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
-  } else {
-    calculations.EngineerHand = 0;
-  }
+  // EngineerHand = TeamBounty − NonEngineerBounty (remainder of pool goes to engineer)
+  calculations.EngineerHand = (isUnpaid || isOvertime) ? 0
+    : Math.max(0, calculations.TeamBounty - calculations.NonEngineerBounty);
 
   // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
   calculations.IncomeHR = isUnpaid ? 0
@@ -232,8 +243,9 @@ function calculateBasicMetrics(projectData) {
   // Calculate TeamBounty - 0 for unpaid/overtime
   calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 22500);
   
-  // Calculate NonEngineerBounty - 0 for unpaid/overtime
-  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(nonEngineerHours * 5000);
+  // Calculate NonEngineerBounty — uses stored ManualBountyHours (set by full recalc via projectBountyHours)
+  const manualBountyHours = parseFloat(projectData.ManualBountyHours) || 0;
+  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(manualBountyHours * 5000);
 
   // Calculate OvertimeBounty (ашиглалтын илүү цаг): storedOvertimeHours * 15,000
   calculations.OvertimeBounty = isOvertime ? Math.round(storedOvertimeHours * 15000) : 0;
@@ -244,14 +256,10 @@ function calculateBasicMetrics(projectData) {
   } else {
     calculations.HourPerformance = 0;
   }
-  
-  // Calculate EngineerHand (performance-adjusted bounty) - only for paid (Угсралтын урамшуулал)
-  if (!isUnpaid && !isOvertime && plannedHour > 0 && calculations.BaseAmount > 0) {
-    const bountyPercentage = 200 - calculations.HourPerformance;
-    calculations.EngineerHand = Math.round((calculations.BaseAmount * bountyPercentage) / 100);
-  } else {
-    calculations.EngineerHand = 0;
-  }
+
+  // EngineerHand = TeamBounty − NonEngineerBounty (remainder of pool goes to engineer)
+  calculations.EngineerHand = (isUnpaid || isOvertime) ? 0
+    : Math.max(0, calculations.TeamBounty - calculations.NonEngineerBounty);
   
   // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
   calculations.IncomeHR = isUnpaid ? 0

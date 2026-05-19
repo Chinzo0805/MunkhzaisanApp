@@ -72,6 +72,9 @@
           <button @click="$router.push('/financial-transactions')" class="btn-action finance">
             💵 Санхүүгийн гүйлгээ
           </button>
+          <button @click="$router.push('/bank-transactions')" class="btn-action bank-txn">
+            🏦 Дансны гүйлгээ
+          </button>
           <button @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>
@@ -992,6 +995,11 @@ function handleSaved(event) {
 .btn-action.finance {
   background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
   box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
+}
+
+.btn-action.bank-txn {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 }
 
 .btn-action.ebarimt {

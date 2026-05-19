@@ -557,6 +557,47 @@ async function submitAllRequests() {
   if (submitting.value) {
     return;
   }
+
+  // Recovery: if employee lookup failed at mount time, retry now
+  if (!currentEmployee.value) {
+    const empId = authStore.effectiveEmployeeId ?? authStore.userData?.employeeId;
+    if (empId != null) {
+      currentEmployee.value = employeesStore.employees.find(emp => emp.Id == empId || emp.NumID == empId) || null;
+    }
+    if (!currentEmployee.value) {
+      const user = auth.currentUser;
+      if (user) {
+        currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email) || null;
+      }
+    }
+    // If employees store was empty, re-fetch and try again
+    if (!currentEmployee.value && employeesStore.employees.length === 0) {
+      await employeesStore.fetchEmployees();
+      const empId2 = authStore.effectiveEmployeeId ?? authStore.userData?.employeeId;
+      if (empId2 != null) {
+        currentEmployee.value = employeesStore.employees.find(emp => emp.Id == empId2 || emp.NumID == empId2) || null;
+      }
+      if (!currentEmployee.value) {
+        const user = auth.currentUser;
+        if (user) {
+          currentEmployee.value = employeesStore.employees.find(emp => emp.Email === user.email) || null;
+        }
+      }
+    }
+    if (!currentEmployee.value) {
+      showMessage('Таны ажилтны мэдээлэл олдсонгүй. Хуудсыг шинэчлэн дахин оролдоно уу.', 'error');
+      return;
+    }
+    // Patch all rows that are missing employee data
+    requests.value.forEach(r => {
+      if (!r.EmployeeID) r.EmployeeID = currentEmployee.value.Id || currentEmployee.value.NumID || null;
+      if (!r.EmployeeLastName) r.EmployeeLastName = currentEmployee.value.LastName || '';
+      if (!r.EmployeeFirstName) r.EmployeeFirstName = currentEmployee.value.FirstName || '';
+      if (!r.FirstName) r.FirstName = currentEmployee.value.FirstName || '';
+      if (!r.LastName) r.LastName = currentEmployee.value.LastName || '';
+      if (!r.Role) r.Role = currentEmployee.value.Position || '';
+    });
+  }
   
   // Check for duplicate day + project combinations
   const dayProjectPairs = requests.value.map(r => `${r.Day}-${r.ProjectID}`);
@@ -598,9 +639,22 @@ async function submitAllRequests() {
   }
   
   for (const request of requests.value) {
+    // Patch missing employee fields from currentEmployee (in case row was added while employee was null)
+    if (currentEmployee.value) {
+      if (!request.EmployeeID) request.EmployeeID = currentEmployee.value.Id || currentEmployee.value.NumID || null;
+      if (!request.EmployeeLastName) request.EmployeeLastName = currentEmployee.value.LastName || '';
+      if (!request.EmployeeFirstName) request.EmployeeFirstName = currentEmployee.value.FirstName || '';
+      if (!request.FirstName) request.FirstName = currentEmployee.value.FirstName || '';
+      if (!request.LastName) request.LastName = currentEmployee.value.LastName || '';
+    }
     // Basic required fields for all statuses
     if (!request.Day || !request.Role || !request.Status) {
       showMessage('Бүх шаардлагатай талбаруудыг бөглөнө үү', 'error');
+      return;
+    }
+    // Ensure employee identity is set
+    if (!request.EmployeeID || !request.EmployeeLastName) {
+      showMessage('Таны ажилтны мэдээлэл олдсонгүй. Хуудсыг шинэчлэн дахин оролдоно уу.', 'error');
       return;
     }
     

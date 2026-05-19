@@ -26,6 +26,7 @@ import WarehouseManagement from '../components/WarehouseManagement.vue';
 import WarehouseTransactionManagement from '../components/WarehouseTransactionManagement.vue';
 import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
 import PublicProjects from '../views/PublicProjects.vue';
+import BankTransactionsView from '../views/BankTransactionsView.vue';
 
 
 const routes = [
@@ -186,6 +187,12 @@ const routes = [
     path: '/hse-instructions',
     name: 'HseInstructionManagement',
     component: HseInstructionManagement,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/bank-transactions',
+    name: 'BankTransactions',
+    component: BankTransactionsView,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

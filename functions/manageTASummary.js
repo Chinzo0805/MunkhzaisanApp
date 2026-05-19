@@ -2,6 +2,7 @@ const functions = require('firebase-functions');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { aggregateTA } = require('./taAggregations');
+const { autoWorkingDays } = require('./salaryCalculations');
 
 try { initializeApp(); } catch (e) {}
 const db = getFirestore();
@@ -51,13 +52,21 @@ exports.manageTASummary = functions.region('asia-east2').https.onRequest(async (
     const startDate = `${yearStr}-${monthStr}-${String(startDay).padStart(2, '0')}`;
     const endDate   = `${yearStr}-${monthStr}-${String(endDay).padStart(2, '0')}`;
 
-    const [taSnap, projSnap] = await Promise.all([
+    const [taSnap, projSnap, periodSnap] = await Promise.all([
       db.collection('timeAttendance')
         .where('Day', '>=', startDate)
         .where('Day', '<=', endDate)
         .get(),
       db.collection('projects').get(),
+      db.collection('salaryPeriods').doc(yearMonth).get(),
     ]);
+
+    // Full-month working days — for salaryOvertime computation
+    let workingDaysMonth = 0;
+    if (periodSnap.exists && periodSnap.data().workingDaysTotal != null) {
+      workingDaysMonth = periodSnap.data().workingDaysTotal;
+    }
+    if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(yearStr, monthStr, 'full');
 
     const taRecords = taSnap.docs.map(d => d.data());
 
@@ -69,24 +78,29 @@ exports.manageTASummary = functions.region('asia-east2').https.onRequest(async (
       if (pid) projectTypeMap.set(pid, p.projectType || '');
     });
 
-    const aggMap = aggregateTA(taRecords, projectTypeMap);
+    const aggMap = aggregateTA(taRecords, projectTypeMap, workingDaysMonth);
 
     // Serialise: round for consistent storage
     const employees = Array.from(aggMap.values()).map(e => ({
       employeeId:            e.employeeId,
       employeeName:          e.employeeName,
+      workedDays:            e.workedDays,
       normalHours:           Math.round(e.normalHours),
       absentHours:           Math.round(e.absentHours),
-      workedDays:            e.workedDays,
-      unpaidOvertimeHours:   Math.round(e.unpaidOvertimeHours  * 100) / 100,
+      absentMinusHours:      Math.round(e.absentMinusHours),
+      effectiveHours:        Math.round(e.effectiveHours),
+      salaryOvertime:        Math.round(e.salaryOvertime * 100) / 100,
+      workingDaysMonth:      e.workingDaysMonth,
+      unpaidOvertimeHours:   Math.round(e.unpaidOvertimeHours   * 100) / 100,
       separateOvertimeHours: Math.round(e.separateOvertimeHours * 100) / 100,
-      workedHours:           Math.round(e.workedHours  * 100) / 100,
       restHours:             Math.round(e.restHours    * 100) / 100,
-      missedHours:           Math.round(e.missedHours  * 100) / 100,
-      totalHours:            Math.round(e.totalHours   * 100) / 100,
       businessTripDays:      e.businessTripDays,
       restDays:              e.restDays,
       missedDays:            e.missedDays,
+      // backward-compat aliases
+      workedHours:           Math.round(e.workedHours  * 100) / 100,
+      missedHours:           Math.round(e.missedHours  * 100) / 100,
+      totalHours:            Math.round(e.totalHours   * 100) / 100,
     }));
 
     const docData = {

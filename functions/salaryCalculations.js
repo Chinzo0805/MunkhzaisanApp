@@ -234,22 +234,27 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       const pid = String(p.id || '').trim();
       if (pid) projectTypeMap.set(pid, p.projectType || '');
     });
-    const aggMap = aggregateTA(taRecords, projectTypeMap);
+    const aggMap = aggregateTA(taRecords, projectTypeMap, workingDaysMonth);
     taSummaryEmployees = Array.from(aggMap.values()).map(e => ({
       employeeId:            e.employeeId,
       employeeName:          e.employeeName,
+      workedDays:            e.workedDays,
       normalHours:           Math.round(e.normalHours),
       absentHours:           Math.round(e.absentHours),
-      workedDays:            e.workedDays,
+      absentMinusHours:      Math.round(e.absentMinusHours),
+      effectiveHours:        Math.round(e.effectiveHours),
+      salaryOvertime:        Math.round(e.salaryOvertime * 100) / 100,
+      workingDaysMonth:      e.workingDaysMonth,
       unpaidOvertimeHours:   Math.round(e.unpaidOvertimeHours   * 100) / 100,
       separateOvertimeHours: Math.round(e.separateOvertimeHours * 100) / 100,
-      workedHours:           Math.round(e.workedHours  * 100) / 100,
       restHours:             Math.round(e.restHours    * 100) / 100,
-      missedHours:           Math.round(e.missedHours  * 100) / 100,
-      totalHours:            Math.round(e.totalHours   * 100) / 100,
       businessTripDays:      e.businessTripDays,
       restDays:              e.restDays,
       missedDays:            e.missedDays,
+      // backward-compat aliases
+      workedHours:           Math.round(e.workedHours  * 100) / 100,
+      missedHours:           Math.round(e.missedHours  * 100) / 100,
+      totalHours:            Math.round(e.totalHours   * 100) / 100,
     }));
     // Save for future use (non-blocking — don't let a save failure block salary calc)
     db.collection('taSummaries').doc(`${yearMonth}_${range}`).set({
@@ -376,9 +381,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     // isNDS=false employees are bounty-only — force baseSalary to 0 so labour cost is 0.
     // They still appear in the list so their salary adjustments (bounty) can be managed.
     const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
-    const { effectiveHours } = computeLaborCost(
-      baseSalary, ta.normalHours, ta.absentHours, workingDaysMonth
-    );
+    // effectiveHours comes from aggregateTA; fall back to inline formula for cached rows without it
+    const effectiveHours = ta.effectiveHours ?? Math.max(0, (ta.normalHours || 0) - (ta.absentHours || 0) * 2);
     const unpaidOvertimeHours   = ta.unpaidOvertimeHours   || 0;
     const separateOvertimeHours = ta.separateOvertimeHours || 0;
     // unpaidOvertimePay: hourly rate × unpaidOvertimeHours (1.5× already embedded in hours by form)
@@ -458,4 +462,4 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   return { workingDays, workingDaysSource, workingDaysMonth, employees: result };
 }
 
-module.exports = { calculateSalaryForPeriod, recalcEmployeeRow };
+module.exports = { calculateSalaryForPeriod, recalcEmployeeRow, autoWorkingDays };

@@ -197,6 +197,17 @@ export async function calculateSalary(yearMonth, range) {
   }
 }
 
+// Calculate advance (урьдчилгаа) — backend computes per-employee pay from base salary
+export async function calculateAdvanceFromBackend(yearMonth) {
+  try {
+    const response = await api.post('/calculateSalary', { action: 'calculateAdvance', yearMonth });
+    return response.data;
+  } catch (error) {
+    console.error('Error calculating advance:', error);
+    throw error;
+  }
+}
+
 // Update manual salary fields for a single employee row and recalculate
 export async function updateSalaryRow(yearMonth, range, employeeId) {
   try {
@@ -417,6 +428,29 @@ export async function manageHseInstruction(payload) {
     return response.data;
   } catch (error) {
     console.error('Error managing HSE instruction:', error);
+    throw error;
+  }
+}
+
+// Bank Account Transactions
+export async function manageBankTransaction(payload) {
+  try {
+    const response = await api.post('/manageBankTransaction', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error managing bank transaction:', error);
+    throw error;
+  }
+}
+
+export async function syncBankTransactionsFromExcel(token, folderName = 'Dansnii huulguud') {
+  try {
+    const response = await api.post('/syncBankTransactionsFromExcel', { token, folderName }, {
+      timeout: 300000, // 5 minutes – 11 files can take a while
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing bank transactions from Excel:', error);
     throw error;
   }
 }
