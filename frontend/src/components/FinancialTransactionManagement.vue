@@ -11,6 +11,9 @@
       <button @click="handleBulkFoodTrip" class="action-btn add-btn">
         + Хоол/томилолтын зардал
       </button>
+      <button @click="handleBulkFillMeta" class="action-btn settings-btn" :disabled="isBulkFilling">
+        {{ isBulkFilling ? 'Дүүрсаж байна...' : '🔄 Бүх мэтаг дүүргэх' }}
+      </button>
       <button @click="showSettings = true" class="action-btn settings-btn">
         ⚙️ Settings
       </button>
@@ -27,15 +30,11 @@
           placeholder="Search by project, employee, comment..." 
           class="search-input"
         />
+        <input type="date" v-model="filterDateFrom" class="filter-select" title="Эхлэх огноо" style="width:140px" />
+        <input type="date" v-model="filterDateTo"   class="filter-select" title="Дуусах огноо" style="width:140px" />
         <select v-model="filterPurpose" class="filter-select">
           <option value="">Бүх ангилал</option>
-          <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
-          <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
-          <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
-          <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
-          <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
-          <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
-          <option value="Бусад зардал">Бусад зардал</option>
+          <option v-for="cat in Object.keys(CATEGORY_SUBTYPES)" :key="cat" :value="cat">{{ cat }}</option>
         </select>
         <select v-model="filterType" class="filter-select">
           <option value="">Бүх дэд төрөл</option>
@@ -61,6 +60,7 @@
               <th @click="sortByColumn('employee')" class="sortable">
                 Employee {{ getSortIcon('employee') }}
               </th>
+              <th>Дансны дугаар</th>
               <th @click="sortByColumn('amount')" class="sortable">
                 Amount {{ getSortIcon('amount') }}
               </th>
@@ -70,11 +70,14 @@
               <th @click="sortByColumn('purpose')" class="sortable">
                 Purpose {{ getSortIcon('purpose') }}
               </th>
+              <th>Bank Type</th>
+              <th>Bank Sub-Type</th>
               <th>ebarimt</th>
               <th>НӨАТ</th>
               <th class="center-th">eBarimt<br/>авсан</th>
               <th class="center-th">НӨАТ<br/>системд</th>
               <th>Comment</th>
+              <th>🔗 Дансны гүйлгээ</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -85,15 +88,36 @@
             >
               <td>{{ formatDate(transaction.date) }}</td>
               <td>{{ transaction.projectID }}<br/><small>{{ transaction.projectLocation }}</small></td>
-              <td>{{ transaction.employeeID }}<br/><small>{{ transaction.employeeFirstName }}</small></td>
+              <td>
+                {{ transaction.employeeID }}<br/><small>{{ transaction.employeeFirstName }}</small>
+                <span v-if="transaction.source === 'reconcile'" class="src-badge" title="Тулгалтын хуудас үүсгэсэн">🔗R</span>
+              </td>
+              <td><small>{{ transaction.employeeBankAccount }}</small></td>
               <td class="amount">{{ formatNumber(transaction.amount) }}₮</td>
               <td>{{ transaction.type }}</td>
               <td>{{ transaction.purpose }}</td>
+              <td><small>{{ transaction.bankType }}</small></td>
+              <td><small>{{ transaction.bankSubType }}</small></td>
               <td>{{ transaction.ebarimt ? '✓' : '' }}</td>
               <td>{{ transaction.НӨАТ ? '✓' : '' }}</td>
               <td class="center-cell">{{ transaction.isEbarimtReceived ? '✓' : '–' }}</td>
               <td class="center-cell">{{ transaction.isNOATinSystem ? '✓' : '–' }}</td>
               <td><small>{{ transaction.comment }}</small></td>
+              <td>
+                <template v-if="transaction.bankTransactionId">
+                  <template v-if="bankTxnMap[transaction.bankTransactionId]">
+                    <small class="bank-link-cell">
+                      <span class="blc-date">📅 {{ fmtBankDate(bankTxnMap[transaction.bankTransactionId].documentDate || bankTxnMap[transaction.bankTransactionId].date) }}</span>
+                      <span class="blc-amt expense-col">{{ (bankTxnMap[transaction.bankTransactionId].expense || 0).toLocaleString() }}₮</span>
+                      <span class="blc-desc">{{ bankTxnMap[transaction.bankTransactionId].description }}</span>
+                    </small>
+                  </template>
+                  <template v-else>
+                    <small class="blc-id">🔗 {{ transaction.bankTransactionId.slice(-8) }}</small>
+                  </template>
+                </template>
+                <span v-else class="blc-none">—</span>
+              </td>
               <td><button @click="editItem(transaction)" class="btn-edit-small">Edit</button></td>
             </tr>
           </tbody>
@@ -130,6 +154,17 @@
                 </option>
               </select>
             </div>
+
+            <div class="form-group">
+              <label>Дансны дугаар</label>
+              <input
+                v-model="formData.employeeBankAccount"
+                type="text"
+                readonly
+                class="form-input"
+                placeholder="Ажилтан сонгоход автоматаар бөглөгдөнө"
+              />
+            </div>
           </div>
 
           <div class="form-row">
@@ -137,13 +172,7 @@
               <label>Purpose *</label>
               <select v-model="formData.purpose" required class="form-input" @change="onPurposeChange">
                 <option value="">Ангилал сонгох</option>
-                <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
-                <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
-                <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
-                <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
-                <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
-                <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
-                <option value="Бусад зардал">Бусад зардал</option>
+                <option v-for="cat in Object.keys(CATEGORY_SUBTYPES)" :key="cat" :value="cat">{{ cat }}</option>
               </select>
             </div>
             
@@ -180,9 +209,24 @@
                 v-model="formData.type" 
                 class="form-input"
                 :disabled="!formData.purpose"
+                @change="onTypeChange"
               >
                 <option value="">Дэд төрөл сонгох</option>
                 <option v-for="sub in availableSubTypes" :key="sub" :value="sub">{{ sub }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Bank Type</label>
+              <input v-model="formData.bankType" type="text" readonly class="form-input" placeholder="Purpose/Type сонгоход автоматаар бөглөгдөнө" />
+            </div>
+            <div class="form-group">
+              <label>Bank Sub-Type</label>
+              <select v-model="formData.bankSubType" class="form-input">
+                <option value="">— сонгоно уу —</option>
+                <option v-for="s in availableBankSubTypes" :key="s" :value="s">{{ s }}</option>
               </select>
             </div>
           </div>
@@ -387,11 +431,37 @@ import { db } from '../config/firebase';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
-import { manageFinancialTransaction } from '../services/api';
+import { manageFinancialTransaction, manageBankTransaction } from '../services/api';
 
 const transactionsStore = useFinancialTransactionsStore();
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
+
+const bankTxnMap = ref({}); // bankTransactionId → bank transaction object
+
+async function loadBankTxnMap() {
+  try {
+    const res = await manageBankTransaction({ action: 'list' });
+    if (res.transactions) {
+      const map = {};
+      for (const t of res.transactions) map[t.id] = t;
+      bankTxnMap.value = map;
+    }
+  } catch (e) { /* silent */ }
+}
+
+function fmtBankDate(val) {
+  if (!val) return '';
+  let d;
+  if (typeof val === 'object') {
+    const secs = val._seconds ?? val.seconds;
+    if (secs !== undefined) d = new Date(secs * 1000);
+  } else {
+    d = new Date(val.length === 10 ? val + 'T00:00:00' : val);
+  }
+  if (!d || isNaN(d.getTime())) return String(val);
+  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 const showList = ref(false);
 const showForm = ref(false);
@@ -399,10 +469,13 @@ const showBulkForm = ref(false);
 const showSettings = ref(false);
 const isEditMode = ref(false);
 const isSubmitting = ref(false);
+const isBulkFilling = ref(false);
 const searchQuery = ref('');
 const employeeSearchQuery = ref('');
 const filterType = ref('');
 const filterPurpose = ref('');
+const filterDateFrom = ref('');
+const filterDateTo   = ref('');
 const sortBy = ref('date');
 const sortOrder = ref('desc');
 const message = ref('');
@@ -429,9 +502,12 @@ const formData = ref({
   projectLocation: '',
   employeeID: '',
   employeeFirstName: '',
+  employeeBankAccount: '',
   amount: 0,
   type: '',
   purpose: '',
+  bankType: '',
+  bankSubType: '',
   ebarimt: false,
   НӨАТ: false,
   comment: '',
@@ -440,6 +516,14 @@ const formData = ref({
 });
 
 const CATEGORY_SUBTYPES = {
+  'Шууд зардал': [
+    'Хоолны мөнгө',
+    'Томилолт',
+    'Урамшуулал',
+    'Тээвэр, шатахуун',
+    'Бараа материал',
+    'Бусдад өгөх ажлын хөлс',
+  ],
   'Хүний нөөцтэй холбоотой зардал': [
     'Цалин, нэмэгдэл, урамшуулал',
     'Нийгмийн даатгал, эрүүл мэндийн даатгал',
@@ -453,6 +537,7 @@ const CATEGORY_SUBTYPES = {
     'Аж ахуй болон бичиг хэргийн хэрэгсэл',
     'Тээвэр, шатахуун',
     'Засвар үйлчилгээ',
+    'Бараа материал татах',
   ],
   'Захиргаа, удирдлагын зардал': [
     'Менежментийн цалин',
@@ -472,6 +557,7 @@ const CATEGORY_SUBTYPES = {
   ],
   'Санхүү, татварын зардал': [
     'Татвар, НӨАТ',
+    'Зээлийн төлөлт',
     'Торгууль, алданги',
     'Валютын ханшийн зөрүү',
   ],
@@ -482,8 +568,36 @@ const CATEGORY_SUBTYPES = {
   ],
 };
 
+const BANK_TYPE_MAP = {
+  'Хоол/томилолт|Хоолны мөнгө':           { bankType: 'Шууд зардал',                    bankSubType: 'Хоолны мөнгө' },
+  'Хоол/томилолт|Томилолт':               { bankType: 'Шууд зардал',                    bankSubType: 'Томилолт' },
+  'Цалингийн урьдчилгаа|':                { bankType: 'Хүний нөөцтэй холбоотой зардал', bankSubType: 'Цалин, нэмэгдэл, урамшуулал' },
+  'Төсөлд|Түлш':                           { bankType: 'Шууд зардал',                    bankSubType: 'Тээвэр, шатахуун' },
+  'Төсөлд|Бараа материал':                { bankType: 'Шууд зардал',                    bankSubType: 'Бараа материал' },
+  'Төсөлд|Бусдад өгөх ажлын хөлс':        { bankType: 'Шууд зардал',                    bankSubType: 'Бусдад өгөх ажлын хөлс' },
+  'Төсөлд|Машин засварын зардал':          { bankType: 'Үйл ажиллагааны зардал',         bankSubType: 'Засвар үйлчилгээ' },
+  'Оффис хэрэглээний зардал|':             { bankType: 'Үйл ажиллагааны зардал',         bankSubType: '' },
+  'хувийн зарлага|':                       { bankType: 'Захиргаа, удирдлагын зардал',    bankSubType: 'Менежментийн цалин' },
+  'Бараа материал/Хангамж авах|':          { bankType: 'Үйл ажиллагааны зардал',         bankSubType: 'Бараа материал татах' },
+};
+
+function extractAccDigits(s) {
+  const d = String(s || '').replace(/\D/g, '');
+  return d.length > 10 ? d.slice(-10) : d;
+}
+
+function applyBankTypeMap() {
+  // purpose = bankType, type = bankSubType (direct mapping, no lookup needed)
+  formData.value.bankType    = formData.value.purpose || '';
+  formData.value.bankSubType = formData.value.type    || '';
+}
+
 const availableSubTypes = computed(() => {
   return CATEGORY_SUBTYPES[formData.value.purpose] || [];
+});
+
+const availableBankSubTypes = computed(() => {
+  return CATEGORY_SUBTYPES[formData.value.bankType] || [];
 });
 
 const activeProjects = computed(() => {
@@ -556,6 +670,10 @@ const filteredTransactions = computed(() => {
   if (filterType.value) {
     result = result.filter(t => t.type === filterType.value);
   }
+
+  // Apply date range filter
+  if (filterDateFrom.value) result = result.filter(t => (t.date || '') >= filterDateFrom.value);
+  if (filterDateTo.value)   result = result.filter(t => (t.date || '') <= filterDateTo.value);
 
   // Apply sorting
   result.sort((a, b) => {
@@ -679,13 +797,40 @@ function onProjectChange() {
 function onEmployeeChange() {
   const employee = employeesStore.employees.find(emp => emp.Id === formData.value.employeeID);
   if (employee) {
-    formData.value.employeeFirstName = employee.FirstName || '';
+    formData.value.employeeFirstName   = employee.FirstName || '';
+    formData.value.employeeLastName    = employee.LastName  || '';
+    formData.value.employeeBankAccount = extractAccDigits(employee.BankAccountNumber);
+  } else {
+    formData.value.employeeFirstName  = '';
+    formData.value.employeeLastName   = '';
+    formData.value.employeeBankAccount = '';
   }
 }
 
 function onPurposeChange() {
-  // Clear sub-type when category changes
   formData.value.type = '';
+  applyBankTypeMap();
+}
+
+function onTypeChange() {
+  applyBankTypeMap();
+}
+
+async function handleBulkFillMeta() {
+  if (!confirm('Бүх санхүүгийн гүйлгээний bankType, bankSubType, дансны дугаар шинэчлэх уү?')) return;
+  isBulkFilling.value = true;
+  try {
+    const response = await manageFinancialTransaction('bulkFillMeta', {});
+    if (response.success) {
+      showMessage(response.message, 'success');
+    } else {
+      showMessage(response.error || 'Алдаа гарлала', 'error');
+    }
+  } catch (e) {
+    showMessage('Алдаа гарлала: ' + e.message, 'error');
+  } finally {
+    isBulkFilling.value = false;
+  }
 }
 
 function handleAddItem() {
@@ -697,9 +842,13 @@ function handleAddItem() {
     projectLocation: '',
     employeeID: '',
     employeeFirstName: '',
+    employeeLastName: '',
+    employeeBankAccount: '',
     amount: 0,
     type: '',
     purpose: '',
+    bankType: '',
+    bankSubType: '',
     ebarimt: false,
     НӨАТ: false,
     comment: '',
@@ -714,6 +863,18 @@ function editItem(transaction) {
   isEditMode.value = true;
   formData.value = { ...transaction };
   displayAmount.value = transaction.amount ? transaction.amount.toLocaleString('en-US') : '0';
+
+  // Auto-fill bankType/bankSubType if missing
+  if (!formData.value.bankType && (formData.value.purpose || formData.value.type)) {
+    applyBankTypeMap();
+  }
+
+  // Auto-fill employeeBankAccount if missing but employee is known
+  if (!formData.value.employeeBankAccount && formData.value.employeeID) {
+    const emp = employeesStore.employees.find(e => e.Id === formData.value.employeeID);
+    if (emp) formData.value.employeeBankAccount = extractAccDigits(emp.BankAccountNumber);
+  }
+
   showForm.value = true;
 }
 
@@ -725,10 +886,14 @@ function closeForm() {
     projectID: '',
     projectLocation: '',
     employeeID: '',
+    employeeFirstName: '',
     employeeLastName: '',
+    employeeBankAccount: '',
     amount: 0,
     type: '',
     purpose: '',
+    bankType: '',
+    bankSubType: '',
     ebarimt: false,
     НӨАТ: false,
     comment: '',
@@ -973,6 +1138,7 @@ onMounted(async () => {
   await transactionsStore.fetchTransactions();
   await projectsStore.fetchProjects();
   await employeesStore.fetchEmployees();
+  loadBankTxnMap(); // non-blocking — loads bank txn map for linked-txn display
   
   // Load settings
   try {
@@ -1568,4 +1734,20 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
 }
+
+/* Linked bank transaction cell */
+.bank-link-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+.blc-date  { color: #374151; font-weight: 500; }
+.blc-amt   { color: #dc2626; font-weight: 600; }
+.blc-desc  { color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.blc-id    { color: #9ca3af; font-family: monospace; }
+.blc-none  { color: #d1d5db; }
+.src-badge { background: #dbeafe; color: #1e40af; font-size: 0.7rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; margin-left: 4px; }
+.expense-col { color: #dc2626; }
 </style>

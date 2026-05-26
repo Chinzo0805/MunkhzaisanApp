@@ -67,15 +67,16 @@ function mapRow(headers, values, fileAccountName) {
   const income  = parseNumber(get("income"));
   const expense = parseNumber(get("expense"));
 
-  // accountName: prefer cell value, fall back to filename
-  const accountNameCell = String(get("accountName") || "").trim();
-  const accountName = accountNameCell || fileAccountName;
+  // accountName: always the Excel filename (our bank account)
+  // counterpartyName: the other side account name from the Excel column
+  const counterpartyName = String(get("accountName") || "").trim();
 
   return {
     documentDate,
-    description:   String(get("description")    || "").trim(),
-    accountName,
-    accountNumber: String(get("accountNubmer")  || get("accountNumber") || "").trim(),
+    description:    String(get("description")    || "").trim(),
+    accountName:    fileAccountName,
+    counterpartyName,
+    accountNumber:  String(get("accountNubmer")  || get("accountNumber") || "").trim(),
     income,
     expense,
     // manually assigned later
@@ -251,6 +252,20 @@ exports.syncBankTransactionsFromExcel = functions
  *   date, documentDate, debit, credit, amount, relatedAccount, description, balance
  */
 
+// ── Account name resolver (maps Excel filename → official account name) ──────
+function resolveAccountName(rawName) {
+  const f = rawName.toLowerCase();
+  if (f.includes('kass') || f.includes('касс'))                               return 'Кассын данс';
+  if (f.includes('main') || f.includes('харилцах') || f.includes('harilts')) return 'Байгууллагын харилцах';
+  if (f.includes('tsalin') || f.includes('цалин') || f.includes('salary'))   return 'Цалингийн данс';
+  if (f.includes('tatvar') || f.includes('татвар') || f.includes('tax'))     return 'Татварын данс';
+  if (f.includes('zeel') || f.includes('зээл'))                               return 'Зээл төлөх данс';
+  if (f.includes('huwiin') || f.includes('huviin') || f.includes('хувийн'))  return 'Хувийн зардалын данс';
+  if (f.includes('office') || f.includes('оффис') || f.includes('офис'))     return 'Оффис хэрэглээний данс';
+  if (f.includes('petrovis') || f.includes('report'))                         return 'Petrovis account';
+  return rawName;
+}
+
 // ── Header aliases (case-insensitive, partial match) ──────────────────────────
 const HEADER_ALIASES = {
   date: [
@@ -258,28 +273,32 @@ const HEADER_ALIASES = {
     "value date", "гүйлгээ огноо",
   ],
   documentDate: [
-    "баримтын огноо", "document date", "баримт огноо", "doc date",
-    "бичиг баримтын огноо", "баримт",
+    "гүйлгээний огноо", "огноо", "баримтын огноо", "document date",
+    "баримт огноо", "doc date", "бичиг баримтын огноо", "баримт",
   ],
   debit: [
-    "зарлага", "debit", "дебит", "зардал", "гарсан", "гарлага",
-    "зарцуулсан", "expense",
+    "зарлага", "дебит гүйлгээ", "debit", "дебит", "зардал", "гарсан",
+    "гарлага", "зарцуулсан", "expense",
   ],
   credit: [
-    "орлого", "credit", "кредит", "ирсэн", "оруулсан", "income",
-    "нэмэгдсэн",
+    "орлого", "кредит гүйлгээ", "credit", "кредит", "ирсэн", "оруулсан",
+    "income", "нэмэгдсэн",
   ],
   amount: [
-    "дүн", "amount", "нийт дүн", "гүйлгээний дүн", "гүйлгээ дүн",
-    "transaction amount", "мөнгөн дүн",
+    "үнийн дүн", "дүн", "amount", "нийт дүн", "гүйлгээний дүн",
+    "гүйлгээ дүн", "transaction amount", "мөнгөн дүн",
+  ],
+  relatedAccountName: [
+    "эзэмшигч", "харьцсан дансны нэр", "харилцагч", "харилцагчийн нэр", "related account",
+    "хамааралтай данс", "дансны нэр", "counterpart", "нэр", "account name",
+    "bank account", "илгээгч", "хүлээн авагч", "accountname",
   ],
   relatedAccount: [
-    "харилцагч", "харилцагчийн нэр", "related account", "хамааралтай данс",
-    "дансны нэр", "counterpart", "нэр", "account name", "bank account",
-    "илгээгч", "хүлээн авагч",
+    "карт", "харьцсан данс", "accountnumber", "accountnubmer", "дансны дугаар",
+    "account number", "данс дугаар", "counterpart account",
   ],
   description: [
-    "тайлбар", "description", "утга", "гүйлгээний утга", "note",
+    "гүйлгээний утга", "=төрөл", "тайлбар", "description", "утга", "note",
     "дэлгэрэнгүй", "memo", "details", "details/note",
   ],
   balance: [
@@ -289,7 +308,60 @@ const HEADER_ALIASES = {
 
 function detectColumn(header, field) {
   const h = (header || "").toString().toLowerCase().trim();
-  return HEADER_ALIASES[field].some(alias => h.includes(alias));
+  return HEADER_ALIASES[field].some(alias => {
+    if (alias.startsWith('=')) return h === alias.slice(1); // exact match
+    return h.includes(alias);
+  });
+}
+
+// Priority order: more-specific fields listed first to avoid substring conflicts.
+// e.g. "Харьцсан дансны нэр" must match relatedAccountName before relatedAccount
+//      "Гүйлгээний огноо" must match documentDate (with time) before plain date
+const FIELD_PRIORITY = [
+  'documentDate',
+  'date',
+  'debit',
+  'credit',
+  'amount',
+  'relatedAccountName',
+  'relatedAccount',
+  'description',
+  'balance',
+];
+
+// Each column is assigned to at most ONE field (first match wins in priority order).
+// For each field, exact-match aliases (starting with '=') are tried first across ALL
+// columns before falling back to partial-match aliases. This ensures e.g. "=төрөл"
+// (exact) beats "тайлбар" (partial) even when "Тайлбар" appears earlier in the sheet.
+function mapColumns(headers) {
+  const colMap = {};
+  const taken = new Set();
+  for (const field of FIELD_PRIORITY) {
+    const exactAliases = HEADER_ALIASES[field].filter(a => a.startsWith('='));
+    // Pass 1: exact-match aliases
+    if (exactAliases.length > 0) {
+      for (let i = 0; i < headers.length; i++) {
+        if (taken.has(i)) continue;
+        const h = (headers[i] || "").toString().toLowerCase().trim();
+        if (exactAliases.some(a => h === a.slice(1))) {
+          colMap[field] = i;
+          taken.add(i);
+          break;
+        }
+      }
+    }
+    if (colMap[field] !== undefined) continue; // exact match found — skip partial pass
+    // Pass 2: partial-match aliases (includes exact aliases as fallback, harmless)
+    for (let i = 0; i < headers.length; i++) {
+      if (taken.has(i)) continue;
+      if (detectColumn(headers[i], field)) {
+        colMap[field] = i;
+        taken.add(i);
+        break;
+      }
+    }
+  }
+  return colMap;
 }
 
 function parseDate(raw) {
@@ -319,6 +391,38 @@ function parseDate(raw) {
   return null;
 }
 
+// Like parseDate but preserves time component for documentDate
+function parseDatetime(raw) {
+  if (!raw) return null;
+  if (typeof raw === "number") {
+    // Excel serial with possible decimal = time fraction
+    const d = new Date((raw - 25569) * 86400 * 1000);
+    if (isNaN(d.getTime())) return null;
+    const y  = d.getUTCFullYear();
+    const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dy = String(d.getUTCDate()).padStart(2, "0");
+    const h  = String(d.getUTCHours()).padStart(2, "0");
+    const mi = String(d.getUTCMinutes()).padStart(2, "0");
+    const sc = String(d.getUTCSeconds()).padStart(2, "0");
+    return `${y}-${mo}-${dy}T${h}:${mi}:${sc}`;
+  }
+  const s = String(raw).trim();
+  // ISO / space-separated datetime: YYYY-MM-DD HH:mm:ss or YYYY-MM-DDTHH:mm:ss
+  let m;
+  if ((m = s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/))) {
+    const date = `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+    const time = `${m[4].padStart(2,"0")}:${m[5]}:${(m[6]||"00").padStart(2,"0")}`;
+    return `${date}T${time}`;
+  }
+  // Date only
+  if ((m = s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/))) {
+    return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().replace('Z','');
+  return null;
+}
+
 function parseNumber(raw) {
   if (raw === null || raw === undefined || raw === "") return null;
   if (typeof raw === "number") return raw;
@@ -328,36 +432,40 @@ function parseNumber(raw) {
 }
 
 function mapRow(headers, values) {
-  const colMap = {};
-  headers.forEach((h, i) => {
-    for (const field of Object.keys(HEADER_ALIASES)) {
-      if (colMap[field] === undefined && detectColumn(h, field)) {
-        colMap[field] = i;
-      }
-    }
-  });
-
+  const colMap = mapColumns(headers);
   const get = field => (colMap[field] !== undefined ? values[colMap[field]] : undefined);
 
-  const date = parseDate(get("date"));
+  // date: prefer explicit 'date' column, fall back to 'documentDate' column
+  // (When the file has only "Гүйлгээний огноо", it is captured as documentDate
+  //  by FIELD_PRIORITY — so we must fall back here to get the date portion.)
+  const dateRaw = get("date") ?? get("documentDate");
+  const date = parseDate(dateRaw);
   if (!date) return null; // skip rows without a valid date
 
-  const debit  = parseNumber(get("debit"))  || 0;
-  const credit = parseNumber(get("credit")) || 0;
-  let amount   = parseNumber(get("amount"));
-  if (amount === null) {
-    amount = credit !== 0 ? credit : -debit; // derive from whichever side is filled
+  let income  = Math.abs(parseNumber(get("credit")) || 0);
+  let expense = Math.abs(parseNumber(get("debit"))  || 0);
+
+  // Fall back to a single amount column when neither credit nor debit found
+  if (income === 0 && expense === 0) {
+    const rawAmount = parseNumber(get("amount"));
+    if (rawAmount !== null) {
+      if (rawAmount >= 0) income  = rawAmount;
+      else                expense = Math.abs(rawAmount);
+    }
   }
+
+  // documentDate: prefer documentDate column with time, fall back to date column
+  const documentDateStr = parseDatetime(get("documentDate") ?? get("date")) || date;
 
   return {
     date,
-    documentDate:   parseDate(get("documentDate")) || null,
-    debit,
-    credit,
-    amount,
-    relatedAccount: String(get("relatedAccount") || "").trim(),
-    description:    String(get("description")    || "").trim(),
-    balance:        parseNumber(get("balance"))  || null,
+    _documentDateStr: documentDateStr, // converted to Firestore Timestamp in handler
+    income,
+    expense,
+    relatedAccount:     String(get("relatedAccount")     || "").trim(),
+    relatedAccountName: String(get("relatedAccountName") || "").trim(),
+    description:        String(get("description")        || "").trim(),
+    balance:            parseNumber(get("balance"))      || null,
   };
 }
 
@@ -418,9 +526,10 @@ exports.syncBankTransactionsFromExcel = functions
       const results = [];
 
       for (const file of excelFiles) {
-        const fileId   = file.id;
-        const fileName = file.name;
-        const accountName = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
+        const fileId      = file.id;
+        const fileName    = file.name;
+        const rawName     = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
+        const accountName = resolveAccountName(rawName);
 
         console.log(`Processing file: ${fileName} → accountName: "${accountName}"`);
 
@@ -463,52 +572,85 @@ exports.syncBankTransactionsFromExcel = functions
           const headers  = allRows[headerRowIdx];
           const dataRows = allRows.slice(headerRowIdx + 1);
 
-          // ── Delete existing records for this sourceFile if replaceExisting ─
-          if (replaceExisting) {
-            const existing = await db.collection("bankTransactions")
-              .where("sourceFile", "==", fileName).get();
-            if (!existing.empty) {
-              const chunkSize = 400;
-              for (let i = 0; i < existing.docs.length; i += chunkSize) {
-                const batch = db.batch();
-                existing.docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref));
-                await batch.commit();
-              }
-              console.log(`Deleted ${existing.docs.length} existing records for ${fileName}`);
-            }
-          }
+          // ── Load existing records to preserve manual fields ───────────────
+          // Load ALL existing records for this accountName (not just this sourceFile)
+          // so that re-uploading a renamed or overlapping file doesn't create duplicates.
+          const MANUAL_FIELDS = ['type','subtype','requesterID','requesterName','projectID','projectName','ebarimt','NOAT','reconciliationStatus','reconciledAmount'];
+          const rowFingerprint = r =>
+            [r.date, r.income, r.expense, String(r.description||'').slice(0,80), r.relatedAccount].join('|');
 
-          // ── Write new records ─────────────────────────────────────────────
+          const existingSnap = await db.collection("bankTransactions")
+            .where("accountName", "==", accountName).get();
+
+          // Map: fingerprint → { ref, manualFields, uploadedAt, sourceFile }
+          const existingMap = new Map();
+          existingSnap.docs.forEach(doc => {
+            const d = doc.data();
+            const fp = [d.date, d.income, d.expense, String(d.description||'').slice(0,80), d.relatedAccount].join('|');
+            // Keep first match if duplicates exist
+            if (!existingMap.has(fp)) {
+              existingMap.set(fp, {
+                ref: doc.ref,
+                manual: Object.fromEntries(MANUAL_FIELDS.map(f => [f, d[f] ?? null])),
+                uploadedAt: d.uploadedAt || null,
+                sourceFile: d.sourceFile || null,
+              });
+            }
+          });
+
+          // ── Write new records (merge manual fields where matched) ─────────
           let saved = 0;
           let skipped = 0;
           const chunkSize = 400;
           let batchDocs = [];
+          const matchedRefs = new Set();
 
-          const uploadedAt = admin.firestore.FieldValue.serverTimestamp();
+          const syncedAt = admin.firestore.FieldValue.serverTimestamp();
 
           for (const rowValues of dataRows) {
             const mapped = mapRow(headers, rowValues);
             if (!mapped) { skipped++; continue; }
 
+            const { _documentDateStr, ...rest } = mapped;
+            // Excel datetimes are in UTC+8 (Mongolia). Append offset so JS parses correctly.
+            const _dtStr = _documentDateStr.length > 10
+              ? _documentDateStr + "+08:00"
+              : _documentDateStr + "T00:00:00+08:00";
+            const documentDate = admin.firestore.Timestamp.fromDate(new Date(_dtStr));
+
+            const fp = rowFingerprint(mapped);
+            const existing = existingMap.get(fp);
+
+            const manualFields = existing
+              ? existing.manual
+              : { type: '', subtype: '', requesterID: '', requesterName: '', projectID: '', projectName: '', ebarimt: false, NOAT: accountName === 'Petrovis account', reconciliationStatus: 'unlinked', reconciledAmount: 0 };
+
+            const docRef = existing
+              ? existing.ref
+              : db.collection("bankTransactions").doc();
+
+            if (existing) matchedRefs.add(fp);
+
             batchDocs.push({
-              ...mapped,
-              accountName,
-              sourceFile: fileName,
-              type:    "",
-              subtype: "",
-              ebarimt: false,
-              NOAT:    false,
-              uploadedAt,
-              updatedAt: uploadedAt,
+              ref: docRef,
+              data: {
+                ...rest,
+                documentDate,
+                accountName,
+                sourceFile: fileName,
+                ...manualFields,
+                uploadedAt: (existing && existing.uploadedAt) ? existing.uploadedAt : syncedAt,
+                updatedAt: syncedAt,
+              },
             });
           }
 
+          // Append-only: never delete existing records.
+          // Rows not in the latest Excel are simply left in Firestore.
+
           for (let i = 0; i < batchDocs.length; i += chunkSize) {
             const batch = db.batch();
-            batchDocs.slice(i, i + chunkSize).forEach(doc => {
-              const ref = db.collection("bankTransactions").doc();
-              batch.set(ref, doc);
-            });
+            batchDocs.slice(i, i + chunkSize).forEach(({ ref, data }) => batch.set(ref, data));
             await batch.commit();
             saved += Math.min(chunkSize, batchDocs.length - i);
           }

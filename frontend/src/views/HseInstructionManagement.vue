@@ -152,6 +152,92 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- ─── Financial Transactions for this date ─── -->
+        <div class="fin-txn-section">
+          <div class="fin-txn-header">
+            <h4 class="section-title">💳 Санхүүгийн гүйлгээ — {{ reportDate }}</h4>
+            <button @click="loadFinTxnsForDate(reportDate)" class="btn-refresh" title="Шинэчлэх">🔄</button>
+          </div>
+          <div v-if="finTxnLoading" class="state-msg-small">Уншиж байна...</div>
+          <div v-else-if="finTxnRows.length === 0" class="state-msg-small">Тухайн өдрийн санхүүгийн гүйлгээ байхгүй байна</div>
+          <div v-else class="fin-txn-table-wrap">
+            <table class="fin-txn-table">
+              <thead>
+                <tr>
+                  <th>Ажилтан</th>
+                  <th>Дүн</th>
+                  <th>Ангилал (bankType)</th>
+                  <th>Дэд ангилал (bankSubType)</th>
+                  <th>Төсөл</th>
+                  <th>Тайлбар</th>
+                  <th style="width:90px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in finTxnRows" :key="row.id" :class="{ 'row-editing': row._editing }">
+                  <!-- Ажилтан -->
+                  <td class="td-emp-name">
+                    {{ row.employeeFirstName || '' }} {{ row.employeeLastName || '' }}
+                    <div class="td-sub">{{ row.date }}</div>
+                  </td>
+                  <!-- Дүн -->
+                  <td>
+                    <input v-if="row._editing" v-model.number="row.amount" type="number" step="1000" class="ft-inp ft-amount" />
+                    <span v-else class="td-amount">{{ (row.amount||0).toLocaleString() }}₮</span>
+                  </td>
+                  <!-- bankType / purpose -->
+                  <td>
+                    <select v-if="row._editing" v-model="row.bankType" class="ft-sel" @change="row.bankSubType = ''">
+                      <option value="">—</option>
+                      <option v-for="cat in categoryList" :key="cat" :value="cat">{{ cat }}</option>
+                    </select>
+                    <span v-else class="td-category">{{ row.bankType || row.purpose || '—' }}</span>
+                  </td>
+                  <!-- bankSubType / type -->
+                  <td>
+                    <select v-if="row._editing" v-model="row.bankSubType" class="ft-sel">
+                      <option value="">—</option>
+                      <option v-for="s in subtypesFor(row.bankType)" :key="s" :value="s">{{ s }}</option>
+                    </select>
+                    <span v-else class="td-subtype">{{ row.bankSubType || row.type || '—' }}</span>
+                  </td>
+                  <!-- Төсөл -->
+                  <td>
+                    <input v-if="row._editing" v-model="row.projectID" type="text" class="ft-inp ft-proj" />
+                    <span v-else>{{ row.projectID || '—' }}</span>
+                  </td>
+                  <!-- Тайлбар -->
+                  <td>
+                    <input v-if="row._editing" v-model="row.comment" type="text" class="ft-inp ft-comment" />
+                    <span v-else class="td-comment">{{ row.comment || '—' }}</span>
+                  </td>
+                  <!-- Actions -->
+                  <td class="td-actions">
+                    <template v-if="!row._editing">
+                      <button @click="row._editing = true" class="btn-ft-edit" title="Засах">✏️</button>
+                      <button @click="deleteFinTxn(row)" :disabled="deletingTxnIds[row.id]" class="btn-ft-del" title="Устгах">🗑️</button>
+                    </template>
+                    <template v-else>
+                      <button @click="saveFinTxn(row)" :disabled="savingTxnIds[row.id]" class="btn-ft-save">
+                        {{ savingTxnIds[row.id] ? '...' : '✅' }}
+                      </button>
+                      <button @click="row._editing = false" class="btn-ft-cancel">✕</button>
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2" class="td-total">
+                    Нийт: {{ finTxnRows.length }} гүйлгээ · {{ finTxnRows.reduce((s,r)=>s+(r.amount||0),0).toLocaleString() }}₮
+                  </td>
+                  <td colspan="5"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -274,7 +360,7 @@ import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
 import { useProjectsStore } from '../stores/projects';
 import { manageHseInstruction, manageFinancialTransaction } from '../services/api';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 const authStore = useAuthStore();
@@ -366,6 +452,55 @@ async function loadReport() {
     reportError.value = 'Тайлан ачаалахад алдаа гарлаа.';
   } finally {
     loadingReport.value = false;
+  }
+  // Also load financial transactions for that date
+  loadFinTxnsForDate(reportDate.value);
+}
+
+async function loadFinTxnsForDate(date) {
+  finTxnLoading.value = true;
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'financialTransactions'), where('date', '==', date))
+    );
+    finTxnRows.value = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+      _editing: false,
+    })).sort((a, b) => (a.employeeFirstName || '').localeCompare(b.employeeFirstName || ''));
+  } catch (e) {
+    console.error('Failed to load financial transactions:', e);
+  } finally {
+    finTxnLoading.value = false;
+  }
+}
+
+async function saveFinTxn(row) {
+  savingTxnIds.value[row.id] = true;
+  try {
+    const res = await manageFinancialTransaction('update', { ...row });
+    if (res.success) {
+      row._editing = false;
+    } else {
+      alert('Хадгалахад алдаа: ' + (res.error || 'Unknown'));
+    }
+  } catch (e) {
+    alert('Хадгалахад алдаа: ' + e.message);
+  } finally {
+    delete savingTxnIds.value[row.id];
+  }
+}
+
+async function deleteFinTxn(row) {
+  if (!confirm(`«${row.employeeFirstName}» ажилтны ${(row.amount||0).toLocaleString()}₮ гүйлгээг устгах уу?`)) return;
+  deletingTxnIds.value[row.id] = true;
+  try {
+    await deleteDoc(doc(db, 'financialTransactions', row.id));
+    finTxnRows.value = finTxnRows.value.filter(r => r.id !== row.id);
+  } catch (e) {
+    alert('Устгахад алдаа: ' + e.message);
+  } finally {
+    delete deletingTxnIds.value[row.id];
   }
 }
 
@@ -479,6 +614,26 @@ function toggleSelectAll(e) {
 
 const updatingType = ref('');
 
+// ─── Financial Transactions for report date ───────────────────────────────────
+const finTxnRows     = ref([]);   // editable copies
+const finTxnLoading  = ref(false);
+const savingTxnIds   = ref({});   // { id: true } while saving
+const deletingTxnIds = ref({});   // { id: true } while deleting
+
+const CATEGORY_SUBTYPES = {
+  'Шууд зардал': ['Хоолны мөнгө','Томилолт','Урамшуулал','Тээвэр, шатахуун','Бараа материал','Бусдад өгөх ажлын хөлс'],
+  'Хүний нөөцтэй холбоотой зардал': ['Цалин, нэмэгдэл, урамшуулал','Нийгмийн даатгал, эрүүл мэндийн даатгал','Сургалт, хөгжлийн зардал','Ажилд авах','Ажилтны хангамж'],
+  'Үйл ажиллагааны зардал': ['Түрээс','Цахилгаан, дулаан, ус, интернет, холбоо','Аж ахуй болон бичиг хэргийн хэрэгсэл','Тээвэр, шатахуун','Засвар үйлчилгээ','Бараа материал татах'],
+  'Захиргаа, удирдлагын зардал': ['Менежментийн цалин','Хууль, аудит, зөвлөх үйлчилгээ','Банкны шимтгэл','Лиценз, зөвшөөрөл'],
+  'Борлуулалт, маркетингийн зардал': ['Зар сурталчилгаа','Борлуулалтын урамшуулал','Үзэсгэлэн, арга хэмжээ'],
+  'Мэдээллийн технологийн зардал': ['Програм хангамжийн лиценз','Сервер, cloud үйлчилгээ','Тоног төхөөрөмж'],
+  'Санхүү, татварын зардал': ['Татвар, НӨАТ','Зээлийн төлөлт','Торгууль, алданги','Валютын ханшийн зөрүү'],
+  'Бусад зардал': ['Даатгал','Хандив, нийгмийн хариуцлага','Гэнэтийн/нөөц зардал'],
+  'Орлого': ['Борлуулалтын орлого','Үйлчилгээний орлого','Дансны орлого / хүү','Буцаалт, эргэн төлбөр','Бусад орлого'],
+};
+const categoryList = Object.keys(CATEGORY_SUBTYPES);
+function subtypesFor(cat) { return CATEGORY_SUBTYPES[cat] || []; }
+
 function getConfirmation(empId) {
   return confirmations.value.find(c => c.employeeId === empId) || null;
 }
@@ -524,15 +679,27 @@ async function addFoodMoney() {
     const emp = employeesStore.employees.find(e => String(e.ID || e.Id) === String(empId));
     const projectInfo = projectsStore.projects.find(p => p.id === conf.selectedProjectID);
 
+    const _acctRaw = String(emp?.BankAccountNumber || '').replace(/\D/g, '');
+    const _empAcct = _acctRaw.length > 9 ? _acctRaw.slice(-9) : _acctRaw;
+    const _bankMap = {
+      'Хоол/томилолт|Хоолны мөнгө': { bankType: 'Шууд зардал', bankSubType: 'Хоолны мөнгө' },
+      'Хоол/томилолт|Томилолт':     { bankType: 'Шууд зардал', bankSubType: 'Томилолт' },
+    };
+    const _meta = _bankMap[`Хоол/томилолт|${conf.transactionType}`] || { bankType: '', bankSubType: '' };
+
     const transaction = {
       date: reportDate.value,
       projectID: conf.selectedProjectID,
       projectLocation: conf.selectedProjectLocation || projectInfo?.siteLocation || '',
       employeeID: emp?.Id || empId,
       employeeFirstName: emp?.FirstName || conf.employeeName || '',
+      employeeLastName: emp?.LastName || '',
+      employeeBankAccount: _empAcct,
       amount: getAmount(conf.transactionType),
       type: conf.transactionType,
-      purpose: 'Хоол/томилолт',
+      purpose: _meta.bankType || 'Шууд зардал',
+      bankType: _meta.bankType,
+      bankSubType: _meta.bankSubType,
       ebarimt: false,
       НӨАТ: false,
       comment: 'HSE баталгаажуулалт',
@@ -820,4 +987,92 @@ function formatTime(iso) {
 .type-pill.food { background: #fef9c3; color: #92400e; }
 .type-pill.trip { background: #dbeafe; color: #1d4ed8; }
 .type-pill.none { color: #94a3b8; }
+/* ─── Financial Transactions section ─────────────────────────────────────── */
+.fin-txn-section {
+  margin-top: 28px;
+  border-top: 2px solid #e5e7eb;
+  padding-top: 16px;
+}
+.fin-txn-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.btn-refresh {
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-refresh:hover { background: #f3f4f6; }
+.fin-txn-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+.fin-txn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fin-txn-table th {
+  background: #f9fafb;
+  padding: 7px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+.fin-txn-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+.fin-txn-table tr:last-child td { border-bottom: none; }
+.fin-txn-table tr:hover td { background: #f9fafb; }
+.fin-txn-table tr.row-editing td { background: #eff6ff; }
+.fin-txn-table tfoot td { background: #f3f4f6; font-weight: 600; font-size: 12px; padding: 6px 10px; }
+.ft-inp {
+  padding: 3px 6px;
+  border: 1px solid #93c5fd;
+  border-radius: 3px;
+  font-size: 12px;
+  background: #fff;
+}
+.ft-amount  { width: 90px; }
+.ft-proj    { width: 70px; }
+.ft-comment { width: 160px; }
+.ft-sel {
+  padding: 3px 6px;
+  border: 1px solid #93c5fd;
+  border-radius: 3px;
+  font-size: 12px;
+  max-width: 180px;
+}
+.td-emp-name { font-weight: 500; white-space: nowrap; }
+.td-emp-name .td-sub { font-size: 11px; color: #9ca3af; }
+.td-amount { font-weight: 700; color: #15803d; }
+.td-category { font-size: 12px; color: #1d4ed8; }
+.td-subtype  { font-size: 12px; color: #4b5563; }
+.td-comment  { font-size: 11px; color: #6b7280; }
+.td-total    { font-size: 12px; color: #374151; }
+.td-actions  { white-space: nowrap; }
+.btn-ft-edit, .btn-ft-del, .btn-ft-save, .btn-ft-cancel {
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-right: 2px;
+}
+.btn-ft-edit:hover  { background: #dbeafe; border-color: #93c5fd; }
+.btn-ft-del:hover   { background: #fee2e2; border-color: #fca5a5; }
+.btn-ft-save        { border-color: #6ee7b7; }
+.btn-ft-save:hover  { background: #d1fae5; }
+.btn-ft-cancel:hover { background: #f3f4f6; }
 </style>

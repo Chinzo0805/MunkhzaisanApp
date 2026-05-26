@@ -206,6 +206,8 @@
                   <span v-else-if="col.key === 'Status'" class="status-badge" :class="getStatusClass(project.Status)">{{ project.Status || '-' }}</span>
                   <span v-else-if="col.key === 'projectType'">{{ projectTypeLabel(project.projectType) }}</span>
                   <span v-else-if="col.key === 'bountyPayDate'" style="color:#92400e;font-weight:600;">{{ project.bountyPayDate || '-' }}</span>
+                  <span v-else-if="col.key === 'StartDate'">{{ fmtProjectDate(project.StartDate) }}</span>
+                  <span v-else-if="col.key === 'EndDate'">{{ fmtProjectDate(project.EndDate) }}</span>
                   <span v-else-if="col.key === 'lastTADay'" :class="project.lastTADay ? 'last-ta-day' : ''">{{ project.lastTADay || '-' }}</span>
                   <span v-else-if="col.key === 'isInvoiceSent' || col.key === 'isEbarimtSent'">{{ project[col.key] ? '✅' : '☐' }}</span>
                   <span v-else-if="col.key === 'HourPerformance'">{{ project.HourPerformance ? project.HourPerformance.toFixed(2) + '%' : '-' }}</span>
@@ -294,6 +296,8 @@ const ALL_COLUMNS = [
   { key: 'projectType',             label: 'Төрөл' },
   { key: 'ResponsibleEmp',          label: 'Хариуцах' },
   { key: 'referenceIdfromCustomer', label: 'Лавлах дугаар' },
+  { key: 'StartDate',               label: 'Эхлэх огноо' },
+  { key: 'EndDate',                 label: 'Дуусах огноо' },
   { key: 'bountyPayDate',           label: 'Урамшуулал огноо' },
   { key: 'lastTADay',               label: 'Ажилласан сүүлийн өдөр' },
   // Hours + Performance (9-17)
@@ -340,11 +344,11 @@ const ALL_COLUMNS = [
 ];
 
 // Column groups for the toggle bar
-const COL_GROUP_BASIC    = ALL_COLUMNS.slice(0, 9);   // id..lastTADay
-const COL_GROUP_HOURS    = ALL_COLUMNS.slice(9, 18);  // WosHour..HourPerformance
-const COL_GROUP_SUMMARY  = ALL_COLUMNS.slice(18, 29); // RemainPercent..additionalValue
-const COL_GROUP_HR       = ALL_COLUMNS.slice(29, 39); // IncomeHR..ProfitHR
-const COL_GROUP_CARM     = ALL_COLUMNS.slice(39);     // Car + Material
+const COL_GROUP_BASIC    = ALL_COLUMNS.slice(0, 11);  // id..lastTADay
+const COL_GROUP_HOURS    = ALL_COLUMNS.slice(11, 20); // WosHour..HourPerformance
+const COL_GROUP_SUMMARY  = ALL_COLUMNS.slice(20, 31); // RemainPercent..additionalValue
+const COL_GROUP_HR       = ALL_COLUMNS.slice(31, 41); // IncomeHR..ProfitHR
+const COL_GROUP_CARM     = ALL_COLUMNS.slice(41);     // Car + Material
 
 // Keys that render as money-profit (colored)
 const PROFIT_KEYS = ['ProfitHR', 'ProfitCar', 'ProfitMaterial', 'TotalProfit'];
@@ -377,6 +381,16 @@ function resetCols() {
   visibleCols.value = [...DEFAULT_VISIBLE];
 }
 
+function fmtProjectDate(val) {
+  if (!val) return '-';
+  if (typeof val === 'string') return val.slice(0, 10);
+  if (typeof val === 'number') {
+    const d = new Date(Math.floor(val - 25569) * 86400 * 1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
+  return '-';
+}
+
 function colHeaderClass(col) {
   if (['IncomeHR','ExpenceHRBonus','EmployeeLaborCost','ExpenseHRFromTrx','ProfitHR'].includes(col.key)) return 'financial-hr';
   if (['IncomeCar','ExpenceCar','ProfitCar'].includes(col.key)) return 'financial-car';
@@ -399,6 +413,8 @@ const taLoading = ref(false);
 const taMap = ref({}); // persisted so it survives project reloads
 
 function applyTaMap() {
+  // Only overwrite if taMap has been populated; otherwise keep the Firestore value
+  if (Object.keys(taMap.value).length === 0) return;
   projectsStore.projects.forEach(p => {
     p.lastTADay = taMap.value[String(p.id)] || null;
   });
@@ -642,6 +658,8 @@ async function recalculateAll() {
     const result = await response.json();
     alert(`✅ Амжилттай! ${result.updated} төсөл шинэчлэгдсэн`);
     await loadProjects();
+    // Refresh lastTADay map so the column shows updated values immediately
+    await loadLastTADays();
   } catch (e) {
     console.error(e);
     alert('❌ Алдаа гарлаа: ' + e.message);

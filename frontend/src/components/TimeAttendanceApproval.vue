@@ -64,6 +64,14 @@
         {{ editMode ? '🔒 Харах горим' : '✏️ Засах горим' }}
       </button>
       <span v-if="editMode" class="edit-warning">⚠️ Засах горим идэвхтэй</span>
+      <button
+        v-if="editMode"
+        @click="saveAllApprovedEdits"
+        class="btn-save-all"
+        :disabled="processing || dirtyDocIds.length === 0"
+      >
+        💾 Хадгалах{{ dirtyDocIds.length > 0 ? ` (${dirtyDocIds.length})` : '' }}
+      </button>
     </div>
 
     <!-- Engineer mode: project filter only (1 project at a time, no Бүгд) -->
@@ -310,13 +318,13 @@
               <input type="checkbox" :value="request.docId" v-model="selectedRequests" />
             </td>
             <td>
-              <input type="date" v-model="request.Day" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <input type="date" v-model="request.Day" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)" />
               <span v-else>{{ formatDate(request.Day) }}</span>
             </td>
             <td>{{ request.WeekDay }}</td>
             <td>{{ request.EmployeeFirstName || request.EmployeeLastName || request.FirstName || request.LastName }}</td>
             <td>
-              <select v-model="request.Role" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)">
+              <select v-model="request.Role" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)">
                 <option value="Инженер">Инженер</option>
                 <option value="Техникч">Техникч</option>
                 <option value="Ажилтан">Ажилтан</option>
@@ -324,7 +332,7 @@
               <span v-else>{{ request.Role }}</span>
             </td>
             <td>
-              <select v-model="request.ProjectID" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)">
+              <select v-model="request.ProjectID" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)">
                 <option value="">Select project...</option>
                 <option v-for="project in projectsStore.projects" :key="project.id" :value="project.id">
                   {{ project.id }} - {{ project.siteLocation }}
@@ -333,21 +341,21 @@
               <span v-else>{{ request.ProjectID }}</span>
             </td>
             <td>
-              <input type="text" v-model="request.ProjectName" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <input type="text" v-model="request.ProjectName" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)" />
               <span v-else>{{ request.ProjectName }}</span>
             </td>
             <td>
-              <input type="time" v-model="request.startTime" @change="recalculateHours(request)" class="edit-input" step="60" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <input type="time" v-model="request.startTime" @change="recalcAndMark(request)" class="edit-input" step="60" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
               <span v-else>{{ request.startTime }}</span>
             </td>
             <td>
-              <input type="time" v-model="request.endTime" @change="recalculateHours(request)" class="edit-input" step="60" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <input type="time" v-model="request.endTime" @change="recalcAndMark(request)" class="edit-input" step="60" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
               <span v-else>{{ request.endTime }}</span>
             </td>
             <td>{{ request.WorkingHour }}ц</td>
             <td>{{ request.overtimeHour }}ц</td>
             <td>
-              <select v-model="request.Status" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)">
+              <select v-model="request.Status" class="edit-input" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)">
                 <option value="Ирсэн">Ирсэн</option>
                 <option value="Томилолт">Томилолт</option>
                 <option value="Чөлөөтэй/Амралт">Чөлөөтэй/Амралт</option>
@@ -358,7 +366,7 @@
               </span>
             </td>
             <td class="center-cell">
-              <input type="checkbox" v-model="request.usesPrivateCar" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" />
+              <input type="checkbox" v-model="request.usesPrivateCar" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" @change="markDirty(request.docId)" />
               <span v-else>{{ request.usesPrivateCar ? '🚗 Тийм' : '–' }}</span>
             </td>
             <td v-if="activeTab === 'invalid' || activeTab === 'notSynced'">
@@ -371,7 +379,7 @@
               <span class="engineer-badge">👷 {{ request.approvedByEngineerName || '—' }}</span>
             </td>
             <td>
-              <textarea v-model="request.comment" class="edit-textarea" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" rows="2"></textarea>
+              <textarea v-model="request.comment" class="edit-textarea" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" rows="2" @input="markDirty(request.docId)"></textarea>
               <span v-else>{{ request.comment }}</span>
             </td>
             <td v-if="activeTab === 'pending'" class="action-buttons">
@@ -400,15 +408,7 @@
                 </button>
               </template>
             </td>
-            <td v-if="activeTab === 'approved' && editMode" class="action-buttons">
-              <button 
-                @click="saveApprovedEdit(request)" 
-                class="btn-save"
-                :disabled="processing"
-              >
-                💾 Хадгалах
-              </button>
-            </td>
+
           </tr>
         </tbody>
       </table>
@@ -463,6 +463,8 @@ const syncMessageType = ref('');
 const selectedRequests = ref([]);
 const allSelected = ref(false);
 const editMode = ref(false);
+const editModeSnapshot = ref([]);
+const dirtyDocIds = ref([]);
 
 const today = new Date();
 const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -698,6 +700,11 @@ const totalWorkHours = computed(() => {
 });
 
 const displayedRequests = computed(() => {
+  // When edit mode is active for approved tab, use the snapshot so that
+  // editing a filtered field (e.g. Status) doesn't remove the row from view.
+  if (activeTab.value === 'approved' && editMode.value && editModeSnapshot.value.length > 0) {
+    return editModeSnapshot.value;
+  }
   if (activeTab.value === 'pending' || activeTab.value === 'approved' || activeTab.value === 'notSynced' || activeTab.value === 'engineerApproved') {
     return filteredRequests.value;
   } else if (activeTab.value === 'invalid') {
@@ -728,6 +735,20 @@ watch(activeTab, (newTab) => {
     filters.value.status = '';
     filters.value.month = '';
   }
+  // Reset edit mode and snapshot when switching tabs
+  editMode.value = false;
+  editModeSnapshot.value = [];
+  dirtyDocIds.value = [];
+});
+
+// Capture snapshot of displayed records when edit mode is activated
+watch(editMode, (newVal) => {
+  if (newVal && activeTab.value === 'approved') {
+    editModeSnapshot.value = [...filteredRequests.value];
+  } else {
+    editModeSnapshot.value = [];
+  }
+  dirtyDocIds.value = [];
 });
 
 async function refreshRequests() {
@@ -797,6 +818,17 @@ function recalculateHours(request) {
 function parseTime(timeString) {
   const [hours, minutes] = timeString.split(':').map(Number);
   return hours + minutes / 60;
+}
+
+function markDirty(docId) {
+  if (!dirtyDocIds.value.includes(docId)) {
+    dirtyDocIds.value.push(docId);
+  }
+}
+
+function recalcAndMark(request) {
+  recalculateHours(request);
+  markDirty(request.docId);
 }
 
 async function bulkApprove() {
@@ -905,6 +937,78 @@ async function rejectRequest(requestId) {
   } finally {
     processing.value = false;
   }
+}
+
+async function saveAllApprovedEdits() {
+  const toSave = editModeSnapshot.value.filter(r => dirtyDocIds.value.includes(r.docId));
+  if (toSave.length === 0) {
+    showSyncMessage('Өөрчлөгдсөн мэдээлэл байхгүй байна.', 'warning');
+    return;
+  }
+  if (!confirm(`${toSave.length} өгөгдлийг хадгалах уу?`)) return;
+
+  processing.value = true;
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const request of toSave) {
+    try {
+      const { docId, ...updateData } = request;
+      if (!docId) { errorCount++; continue; }
+
+      updateData.syncedToExcel = false;
+      updateData.lastEditedAt = new Date().toISOString();
+
+      let actualDocId = docId;
+      const docRef = doc(db, 'timeAttendance', docId);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        if (request.ID) {
+          const q = query(collection(db, 'timeAttendance'), where('ID', '==', request.ID));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            actualDocId = querySnapshot.docs[0].id;
+          } else {
+            errorCount++;
+            continue;
+          }
+        } else {
+          errorCount++;
+          continue;
+        }
+      }
+
+      const correctDocRef = doc(db, 'timeAttendance', actualDocId);
+      await updateDoc(correctDocRef, updateData);
+      successCount++;
+    } catch (err) {
+      console.error('Save error for', request.docId, err);
+      errorCount++;
+    }
+  }
+
+  // Trigger project recalculation once after all saves
+  if (successCount > 0) {
+    try {
+      await updateProjectRealHours();
+      await projectsStore.fetchProjects();
+    } catch (calcError) {
+      console.error('Project calculation error:', calcError);
+    }
+  }
+
+  processing.value = false;
+  dirtyDocIds.value = [];
+
+  if (errorCount === 0) {
+    showSyncMessage(`${successCount} өгөгдөл амжилттай хадгалагдлаа.`, 'success');
+  } else {
+    showSyncMessage(`${successCount} амжилттай, ${errorCount} алдаатай.`, 'warning');
+  }
+
+  await refreshRequests();
+  editMode.value = false;
 }
 
 async function saveApprovedEdit(request) {
@@ -1770,6 +1874,30 @@ function showSyncMessage(text, type) {
 .btn-toggle-edit:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.btn-save-all {
+  padding: 10px 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-save-all:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(40, 167, 69, 0.4);
+}
+
+.btn-save-all:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .edit-warning {

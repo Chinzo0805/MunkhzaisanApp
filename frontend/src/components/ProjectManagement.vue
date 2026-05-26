@@ -253,6 +253,9 @@
             <button type="button" @click="activeTab = 'basic'" :class="['form-tab', activeTab === 'basic' ? 'form-tab-active' : '']">📋 Үндсэн мэдээлэл</button>
             <button type="button" @click="activeTab = 'hr'" :class="['form-tab', activeTab === 'hr' ? 'form-tab-active' : '']">👷 Цаг / Ажилтан</button>
             <button type="button" @click="activeTab = 'financial'" :class="['form-tab', activeTab === 'financial' ? 'form-tab-active' : '']">💰 Санхүү</button>
+            <button v-if="editingItem" type="button" @click="activeTab = 'ta'" :class="['form-tab', activeTab === 'ta' ? 'form-tab-active' : '']">📅 TA</button>
+            <button v-if="editingItem" type="button" @click="activeTab = 'fintxn'" :class="['form-tab', activeTab === 'fintxn' ? 'form-tab-active' : '']">💳 Санхүүгийн гүйлгээ</button>
+            <button v-if="editingItem" type="button" @click="activeTab = 'banktxn'" :class="['form-tab', activeTab === 'banktxn' ? 'form-tab-active' : '']">🏦 Дансны гүйлгээ</button>
           </div>
 
           <!-- ═══════════════════════════════ TAB 1: BASIC ═══════════════════════════════ -->
@@ -614,6 +617,146 @@
 
           </div>
 
+          <!-- ═══════════════════════════════ TAB 4: TIME ATTENDANCE ═══════════════════ -->
+          <div v-if="activeTab === 'ta'" class="tab-content">
+            <div class="section-header sh-blue">📅 Цаг бүртгэл (TA)</div>
+            <div v-if="taLoading" class="tab-loading">⏳ Уншиж байна...</div>
+            <div v-else-if="taEditRows.length === 0" class="tab-empty">Энэ төсөлд цаг бүртгэл олдсонгүй</div>
+            <div v-else class="proj-sub-table-wrap">
+              <table class="proj-sub-table">
+                <thead>
+                  <tr>
+                    <th>Огноо</th>
+                    <th>Ажилтан</th>
+                    <th>Статус</th>
+                    <th>Ердийн цаг</th>
+                    <th>Илүү цаг</th>
+                    <th>Тайлбар</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="rec in taEditRows" :key="rec.docId">
+                    <td>{{ rec.Day }}</td>
+                    <td class="td-emp">{{ rec.EmployeeFirstName }} {{ rec.EmployeeLastName }}</td>
+                    <td><span class="status-chip">{{ rec.Status }}</span></td>
+                    <td>
+                      <input v-if="isEditMode" v-model.number="rec.WorkingHour" type="number" step="0.5" min="0" class="sub-inp" @change="taDirtyIds[rec.docId] = true" />
+                      <span v-else>{{ rec.WorkingHour }}ц</span>
+                    </td>
+                    <td>
+                      <input v-if="isEditMode" v-model.number="rec.overtimeHour" type="number" step="0.5" min="0" class="sub-inp" @change="taDirtyIds[rec.docId] = true" />
+                      <span v-else>{{ rec.overtimeHour || 0 }}ц</span>
+                    </td>
+                    <td>
+                      <input v-if="isEditMode" v-model="rec.comment" type="text" class="sub-inp wide" @change="taDirtyIds[rec.docId] = true" />
+                      <span v-else class="td-comment">{{ rec.comment || '—' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tab-summary">
+                Нийт: {{ taEditRows.length }} бүртгэл ·
+                Ердийн: {{ taEditRows.reduce((s,r) => s + (r.WorkingHour||0), 0) }}ц ·
+                Илүү: {{ taEditRows.reduce((s,r) => s + (r.overtimeHour||0), 0) }}ц
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══════════════════════════════ TAB 5: FINANCIAL TRANSACTIONS ════════════ -->
+          <div v-if="activeTab === 'fintxn'" class="tab-content">
+            <div class="section-header sh-green">💳 Санхүүгийн гүйлгээ</div>
+            <div v-if="finEditRows.length === 0" class="tab-empty">Энэ төсөлд санхүүгийн гүйлгээ олдсонгүй</div>
+            <div v-else class="proj-sub-table-wrap">
+              <table class="proj-sub-table">
+                <thead>
+                  <tr>
+                    <th>Огноо</th>
+                    <th>Ажилтан</th>
+                    <th>Дүн</th>
+                    <th>Зорилго</th>
+                    <th>Төрөл</th>
+                    <th>Тайлбар</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="txn in finEditRows" :key="txn.id">
+                    <td>
+                      <input v-if="isEditMode" v-model="txn.date" type="date" class="sub-inp" @change="finDirtyIds[txn.id] = true" />
+                      <span v-else>{{ txn.date }}</span>
+                    </td>
+                    <td class="td-emp">{{ txn.employeeFirstName || txn.employeeID || '—' }}</td>
+                    <td class="td-amount">
+                      <input v-if="isEditMode" v-model.number="txn.amount" type="number" step="100" class="sub-inp" @change="finDirtyIds[txn.id] = true" />
+                      <span v-else>{{ formatNumber(txn.amount) }}₮</span>
+                    </td>
+                    <td>
+                      <select v-if="isEditMode" v-model="txn.purpose" class="sub-sel" @change="finDirtyIds[txn.id] = true">
+                        <option v-for="p in FIN_PURPOSES" :key="p" :value="p">{{ p }}</option>
+                      </select>
+                      <span v-else class="td-comment">{{ txn.purpose || '—' }}</span>
+                    </td>
+                    <td>
+                      <input v-if="isEditMode" v-model="txn.type" type="text" class="sub-inp wide" @change="finDirtyIds[txn.id] = true" />
+                      <span v-else class="td-comment">{{ txn.type || '—' }}</span>
+                    </td>
+                    <td>
+                      <input v-if="isEditMode" v-model="txn.comment" type="text" class="sub-inp wide" @change="finDirtyIds[txn.id] = true" />
+                      <span v-else class="td-comment">{{ txn.comment || '—' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tab-summary">
+                Нийт: {{ finEditRows.length }} гүйлгээ ·
+                Нийт дүн: {{ formatNumber(finEditRows.reduce((s,t) => s + (t.amount||0), 0)) }}₮
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══════════════════════════════ TAB 6: BANK TRANSACTIONS ════════════════ -->
+          <div v-if="activeTab === 'banktxn'" class="tab-content">
+            <div class="section-header sh-purple">🏦 Дансны гүйлгээ</div>
+            <div v-if="bankTxnLoading" class="tab-loading">⏳ Уншиж байна...</div>
+            <div v-else-if="bankEditRows.length === 0" class="tab-empty">Энэ төсөлд дансны гүйлгээ олдсонгүй</div>
+            <div v-else class="proj-sub-table-wrap">
+              <table class="proj-sub-table">
+                <thead>
+                  <tr>
+                    <th>Огноо</th>
+                    <th>Данс</th>
+                    <th>Орлого</th>
+                    <th>Зарлага</th>
+                    <th>Тайлбар</th>
+                    <th>Ангилал</th>
+                    <th>Дэд ангилал</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="txn in bankEditRows" :key="txn.id">
+                    <td>{{ (txn.date || txn.documentDate || '').slice(0,10) }}</td>
+                    <td><small>{{ txn.accountName }}</small></td>
+                    <td class="td-income">{{ txn.income ? formatNumber(txn.income) + '₮' : '' }}</td>
+                    <td class="td-expense">{{ txn.expense ? formatNumber(txn.expense) + '₮' : '' }}</td>
+                    <td><small class="td-comment">{{ txn.description }}</small></td>
+                    <td>
+                      <input v-if="isEditMode" v-model="txn.type" type="text" class="sub-inp" @change="bankDirtyIds[txn.id] = true" />
+                      <span v-else class="td-comment">{{ txn.type || '—' }}</span>
+                    </td>
+                    <td>
+                      <input v-if="isEditMode" v-model="txn.subtype" type="text" class="sub-inp" @change="bankDirtyIds[txn.id] = true" />
+                      <span v-else class="td-comment">{{ txn.subtype || '—' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tab-summary">
+                Нийт: {{ bankEditRows.length }} гүйлгээ ·
+                Орлого: {{ formatNumber(bankEditRows.reduce((s,t) => s + (t.income||0), 0)) }}₮ ·
+                Зарлага: {{ formatNumber(bankEditRows.reduce((s,t) => s + (t.expense||0), 0)) }}₮
+              </div>
+            </div>
+          </div>
+
           <div class="form-actions">
             <button v-if="editingItem && !isEditMode" type="button" @click="isEditMode = true" class="edit-btn">
               Засах
@@ -621,7 +764,9 @@
             <button v-if="isEditMode" type="submit" class="save-btn" :disabled="saving">
               {{ saving ? 'Хадгалж байна...' : 'Хадгалах' }}
             </button>
-            <button type="button" @click="closeModal" class="cancel-btn">{{ isEditMode ? 'Цуцлах' : 'Хаах' }}</button>
+            <button v-if="isEditMode" type="button" @click="cancelEdit" class="cancel-btn">Цуцлах</button>
+            <span v-if="saveSuccess" class="save-success-msg">✅ {{ saveSuccess }}</span>
+            <button type="button" @click="closeModal" class="close-btn">Хаах</button>
           </div>
         </form>
       </div>
@@ -728,23 +873,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useProjectsStore } from '../stores/projects';
 import { useCustomersStore } from '../stores/customers';
 import { useEmployeesStore } from '../stores/employees';
-import { manageProject, mergeProjects } from '../services/api';
+import { useFinancialTransactionsStore } from '../stores/financialTransactions';
+import { manageProject, mergeProjects, manageFinancialTransaction, manageBankTransaction } from '../services/api';
+import { db } from '../config/firebase';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 const projectsStore = useProjectsStore();
 const customersStore = useCustomersStore();
 const employeesStore = useEmployeesStore();
+const financialTransactionsStore = useFinancialTransactionsStore();
 
-// Ensure customers and employees are loaded
+// Ensure customers, employees and financial transactions are loaded
 onMounted(async () => {
   if (customersStore.customers.length === 0) {
     await customersStore.fetchCustomers();
   }
   if (employeesStore.employees.length === 0) {
     await employeesStore.fetchEmployees();
+  }
+  if (financialTransactionsStore.transactions.length === 0) {
+    financialTransactionsStore.fetchTransactions();
   }
 });
 
@@ -759,6 +911,42 @@ const listTypeFilter = ref('all');
 const saving = ref(false);
 const formError = ref('');
 const activeTab = ref('basic');
+const saveSuccess = ref('');
+
+// ── Sub-tab data: TA ──────────────────────────────────────────────────────────
+const taEditRows   = ref([]);
+const taLoading    = ref(false);
+const taDirtyIds   = ref({});
+
+// ── Sub-tab data: Financial Transactions ─────────────────────────────────────
+const finEditRows  = ref([]);
+const finDirtyIds  = ref({});
+
+// ── Sub-tab data: Bank Transactions ──────────────────────────────────────────
+const bankEditRows   = ref([]);
+const bankTxnLoading = ref(false);
+const bankTxnLoaded  = ref(false);
+const bankDirtyIds   = ref({});
+
+const FIN_PURPOSES = [
+  'Шууд зардал', 'Хүний нөөцтэй холбоотой зардал', 'Үйл ажиллагааны зардал',
+  'Захиргаа, удирдлагын зардал', 'Борлуулалт, маркетингийн зардал',
+  'Мэдээллийн технологийн зардал', 'Санхүү, татварын зардал', 'Бусад зардал', 'Орлого',
+];
+
+// Lazy-load sub-tab data when tabs are activated
+watch(activeTab, async (tab) => {
+  if (!editingItem.value) return;
+  if (tab === 'ta' && taEditRows.value.length === 0 && !taLoading.value) {
+    await loadTaRecords(form.value.id);
+  }
+  if (tab === 'fintxn') {
+    initFinEditRows(form.value.id);
+  }
+  if (tab === 'banktxn' && !bankTxnLoaded.value && !bankTxnLoading.value) {
+    await loadBankTxnsForProject(form.value.id);
+  }
+});
 
 // ── Merge state ──────────────────────────────────────────────────────────────
 const showMergeModal = ref(false);
@@ -1082,7 +1270,12 @@ async function saveInlineField(project, field, value) {
 }
 
 function excelSerialToDate(serial) {
-  if (!serial || typeof serial !== 'number') return '';
+  if (!serial) return '';
+  if (typeof serial === 'string') {
+    // Already an ISO date string (YYYY-MM-DD) or similar — return as-is
+    return serial.slice(0, 10);
+  }
+  if (typeof serial !== 'number') return '';
   const utc_days = Math.floor(serial - 25569);
   const date_info = new Date(utc_days * 86400 * 1000);
   const year = date_info.getUTCFullYear();
@@ -1278,6 +1471,16 @@ function editItem(project) {
   editingDocId.value = project.docId; // Store Firestore document ID
   activeTab.value = 'basic';
   
+  // Reset sub-tab data for new project
+  taEditRows.value = [];
+  taDirtyIds.value = {};
+  finEditRows.value = [];
+  finDirtyIds.value = {};
+  bankEditRows.value = [];
+  bankDirtyIds.value = {};
+  bankTxnLoaded.value = false;
+  saveSuccess.value = '';
+  
   console.log('Editing project:', { project, docId: project.docId, id: project.id });
   
   isEditMode.value = false; // Start in view mode when clicking from list
@@ -1349,7 +1552,15 @@ function closeModal() {
   editingDocId.value = null;
   isEditMode.value = false;
   formError.value = '';
+  saveSuccess.value = '';
   activeTab.value = 'basic';
+  taEditRows.value = [];
+  taDirtyIds.value = {};
+  finEditRows.value = [];
+  finDirtyIds.value = {};
+  bankEditRows.value = [];
+  bankDirtyIds.value = {};
+  bankTxnLoaded.value = false;
   form.value = {
     id: '',
     customer: '',
@@ -1407,6 +1618,7 @@ function closeModal() {
 async function handleSave() {
   saving.value = true;
   formError.value = '';
+  saveSuccess.value = '';
   
   try {
     // Calculate all financial fields before saving
@@ -1418,15 +1630,110 @@ async function handleSave() {
     console.log('Saving project:', { action, itemId, formData: form.value });
     
     await manageProject(action, form.value, itemId);
-    // onSnapshot auto-updates the store — no manual fetchProjects needed
-    
+
+    // ── Save dirty TA records ────────────────────────────────────────────────
+    for (const rec of taEditRows.value) {
+      if (taDirtyIds.value[rec.docId]) {
+        await updateDoc(doc(db, 'timeAttendance', rec.docId), {
+          WorkingHour: rec.WorkingHour || 0,
+          overtimeHour: rec.overtimeHour || 0,
+          comment: rec.comment || '',
+        });
+      }
+    }
+    taDirtyIds.value = {};
+
+    // ── Save dirty financial transactions ────────────────────────────────────
+    for (const txn of finEditRows.value) {
+      if (finDirtyIds.value[txn.id]) {
+        await manageFinancialTransaction('update', { ...txn });
+      }
+    }
+    finDirtyIds.value = {};
+
+    // ── Save dirty bank transactions ─────────────────────────────────────────
+    for (const txn of bankEditRows.value) {
+      if (bankDirtyIds.value[txn.id]) {
+        await manageBankTransaction({ action: 'update', id: txn.id, updates: { type: txn.type || '', subtype: txn.subtype || '' } });
+      }
+    }
+    bankDirtyIds.value = {};
+
     emit('saved', { success: true, action, type: 'project' });
-    closeModal();
+    isEditMode.value = false;
+    saveSuccess.value = 'Амжилттай хадгаллаа!';
+    setTimeout(() => { saveSuccess.value = ''; }, 3000);
+
+    // If new project was added, link it to editingItem for subsequent edits
+    if (action === 'add') {
+      showModal.value = true; // keep open
+      const newProject = projectsStore.projects.find(p => String(p.id) === String(form.value.id));
+      if (newProject) {
+        editingItem.value = newProject;
+        editingDocId.value = newProject.docId;
+      }
+    }
   } catch (error) {
     console.error('Error saving project:', error);
     formError.value = error.message;
   } finally {
     saving.value = false;
+  }
+}
+
+// Cancel edits — restore form from original project data
+function cancelEdit() {
+  if (editingItem.value) {
+    editItem(editingItem.value);
+  } else {
+    isEditMode.value = false;
+  }
+}
+
+// Load TA records for the given project ID
+async function loadTaRecords(projectId) {
+  taLoading.value = true;
+  taDirtyIds.value = {};
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'timeAttendance'), where('ProjectID', '==', Number(projectId)))
+    );
+    taEditRows.value = snap.docs
+      .map(d => ({ docId: d.id, ...d.data() }))
+      .sort((a, b) => (a.Day || '').localeCompare(b.Day || ''));
+  } catch (e) {
+    console.error('Failed to load TA records:', e);
+    taEditRows.value = [];
+  } finally {
+    taLoading.value = false;
+  }
+}
+
+// Initialise editable copy of financial transactions for the project
+function initFinEditRows(projectId) {
+  finEditRows.value = financialTransactionsStore.transactions
+    .filter(t => String(t.projectID) === String(projectId))
+    .map(t => ({ ...t }));
+  finDirtyIds.value = {};
+}
+
+// Load bank transactions for the project (lazy, once per modal open)
+async function loadBankTxnsForProject(projectId) {
+  bankTxnLoading.value = true;
+  bankDirtyIds.value = {};
+  try {
+    const res = await manageBankTransaction({ action: 'list' });
+    if (res.success) {
+      bankEditRows.value = (res.transactions || [])
+        .filter(t => String(t.projectID) === String(projectId))
+        .map(t => ({ ...t }));
+    }
+    bankTxnLoaded.value = true;
+  } catch (e) {
+    console.error('Failed to load bank transactions:', e);
+    bankEditRows.value = [];
+  } finally {
+    bankTxnLoading.value = false;
   }
 }
 
@@ -2526,5 +2833,98 @@ defineExpose({
   font-size: 13px;
   font-weight: 600;
 }
+/* ─── Project Sub-Tabs (TA / FinTxn / BankTxn) ─────────────────────────────── */
+.proj-sub-table-wrap {
+  overflow-x: auto;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+.proj-sub-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.proj-sub-table th {
+  background: #f3f4f6;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+.proj-sub-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+.proj-sub-table tr:last-child td { border-bottom: none; }
+.proj-sub-table tr:hover td { background: #f9fafb; }
+.sub-inp {
+  width: 70px;
+  padding: 3px 5px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  font-size: 12px;
+  background: #fff;
+}
+.sub-inp.wide { width: 140px; }
+.sub-sel {
+  padding: 3px 5px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  font-size: 11px;
+  max-width: 140px;
+}
+.tab-loading, .tab-empty {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+.tab-summary {
+  padding: 8px 12px;
+  background: #f9fafb;
+  font-size: 12px;
+  color: #6b7280;
+  border-top: 1px solid #e5e7eb;
+}
+.td-emp { white-space: nowrap; font-weight: 500; }
+.td-amount, .td-income { color: #16a34a; font-weight: 600; }
+.td-expense { color: #dc2626; font-weight: 600; }
+.td-comment { color: #6b7280; font-size: 11px; }
+.status-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.save-success-msg {
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 8px;
+}
+.close-btn {
+  padding: 8px 20px;
+  background: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.close-btn:hover { background: #4b5563; }
+.sh-blue { background: #dbeafe; color: #1e40af; }
+.sh-green { background: #dcfce7; color: #15803d; }
+.sh-purple { background: #ede9fe; color: #6d28d9; }
 </style>
 

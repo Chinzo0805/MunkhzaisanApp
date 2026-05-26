@@ -37,7 +37,19 @@ exports.recalculateAllProjects = functions.runWith({
 
   try {
     const db = admin.firestore();
-    
+
+    // Build lastTADay map: projectId -> max Day from timeAttendance
+    const taSnapshot = await db.collection('timeAttendance').get();
+    const lastTADayMap = {};
+    taSnapshot.docs.forEach(d => {
+      const data = d.data();
+      const pid = String(data.ProjectID || '');
+      const day = data.Day || '';
+      if (pid && day && (!lastTADayMap[pid] || day > lastTADayMap[pid])) {
+        lastTADayMap[pid] = day;
+      }
+    });
+
     // Get all projects
     const projectsRef = db.collection('projects');
     const snapshot = await projectsRef.get();
@@ -108,6 +120,7 @@ exports.recalculateAllProjects = functions.runWith({
       batch.update(doc.ref, {
         ...calculations,
         ...backfill,
+        lastTADay: lastTADayMap[String(projectId)] || null,
         lastRealHourUpdate: nowIso,
       });
       
