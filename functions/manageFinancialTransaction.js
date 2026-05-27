@@ -1,6 +1,70 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
+function normalizeAccountDigits(value) {
+  const raw = String(value || "").replace(/\D/g, "");
+  return raw.length > 10 ? raw.slice(-10) : raw;
+}
+
+async function resolveEmployeeBankAccount(db, employeeID, incomingAccount) {
+  const normalizedIncoming = normalizeAccountDigits(incomingAccount);
+  if (normalizedIncoming) return normalizedIncoming;
+  if (!employeeID) return "";
+
+  const empSnap = await db.collection("employees")
+    .where("Id", "==", employeeID)
+    .limit(1)
+    .get();
+  if (empSnap.empty) return "";
+
+  return normalizeAccountDigits(empSnap.docs[0].data().BankAccountNumber || "");
+}
+
+async function syncLinkedBankTransaction(db, bankTransactionId, primaryFinancialData) {
+  if (!bankTransactionId) return;
+
+  const bankRef = db.collection("bankTransactions").doc(bankTransactionId);
+  const bankDoc = await bankRef.get();
+  if (!bankDoc.exists) return;
+  const bankData = bankDoc.data() || {};
+
+  const linkedSnap = await db.collection("financialTransactions")
+    .where("bankTransactionId", "==", bankTransactionId)
+    .get();
+
+  const reconciledAmount = linkedSnap.docs.reduce((sum, d) => sum + (parseFloat(d.data().amount) || 0), 0);
+  const bankExpense = parseFloat(bankData.expense) || 0;
+
+  let reconciliationStatus = "unlinked";
+  if (linkedSnap.size > 0) {
+    if (reconciledAmount === bankExpense) reconciliationStatus = "matched";
+    else if (reconciledAmount > bankExpense) reconciliationStatus = "over";
+    else reconciliationStatus = "partial";
+  }
+
+  const src = primaryFinancialData || (linkedSnap.size > 0 ? linkedSnap.docs[0].data() : null);
+  const requesterName = src
+    ? String(src.employeeFirstName || "").trim() || String(src.employeeLastName || "").trim()
+    : "";
+
+  const updateData = {
+    reconciledAmount,
+    reconciliationStatus,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (src) {
+    updateData.type = src.bankType || src.purpose || "";
+    updateData.subtype = src.bankSubType || src.type || "";
+    updateData.requesterID = src.employeeID || "";
+    updateData.requesterName = requesterName || bankData.requesterName || "";
+    updateData.projectID = src.projectID || "";
+    updateData.projectName = src.projectLocation || "";
+  }
+
+  await bankRef.update(updateData);
+}
+
 /**
  * Cloud Function to manage Financial Transactions (Create, Update, Delete)
  * Handles CRUD operations for the financialTransactions collection
@@ -75,6 +139,12 @@ exports.manageFinancialTransaction = functions
         const _bankType    = (transaction.bankType    || transaction.purpose || "").trim();
         const _bankSubType = (transaction.bankSubType || transaction.type    || "").trim();
 
+        const employeeBankAccount = await resolveEmployeeBankAccount(
+          db,
+          transaction.employeeID,
+          transaction.employeeBankAccount
+        );
+
         // Create new transaction with auto-generated ID
         // Note: projectID and type are optional on all categories
         const docRef = await db.collection("financialTransactions").add({
@@ -89,7 +159,7 @@ exports.manageFinancialTransaction = functions
           employeeID: transaction.employeeID || "",
           employeeFirstName: transaction.employeeFirstName || "",
           employeeLastName: transaction.employeeLastName || "",
-          employeeBankAccount: transaction.employeeBankAccount || "",
+          employeeBankAccount,
           comment: transaction.comment || "",
           ebarimt: transaction.ebarimt || false,
           "НӨАТ": transaction["НӨАТ"] || false,
@@ -103,6 +173,10 @@ exports.manageFinancialTransaction = functions
         // Get the created document with its ID
         const newDoc = await docRef.get();
         const newTransaction = { id: newDoc.id, ...newDoc.data() };
+
+        if (newTransaction.bankTransactionId) {
+          await syncLinkedBankTransaction(db, newTransaction.bankTransactionId, newTransaction);
+        }
 
         console.log("Created financial transaction:", newTransaction.id);
         return res.status(200).json({
@@ -132,6 +206,13 @@ exports.manageFinancialTransaction = functions
         const _updBankType    = (transaction.bankType    || transaction.purpose || "").trim();
         const _updBankSubType = (transaction.bankSubType || transaction.type    || "").trim();
 
+        const oldBankTransactionId = doc.data().bankTransactionId || "";
+        const employeeBankAccount = await resolveEmployeeBankAccount(
+          db,
+          transaction.employeeID,
+          transaction.employeeBankAccount
+        );
+
         // Update transaction
         const updateData = {
           date: transaction.date,
@@ -140,7 +221,7 @@ exports.manageFinancialTransaction = functions
           employeeID: transaction.employeeID || "",
           employeeFirstName: transaction.employeeFirstName || "",
           employeeLastName: transaction.employeeLastName || "",
-          employeeBankAccount: transaction.employeeBankAccount || "",
+          employeeBankAccount,
           amount: parseFloat(transaction.amount) || 0,
           purpose:    _updBankType,
           type:       _updBankSubType,
@@ -156,6 +237,13 @@ exports.manageFinancialTransaction = functions
         };
 
         await docRef.update(updateData);
+
+        if (updateData.bankTransactionId) {
+          await syncLinkedBankTransaction(db, updateData.bankTransactionId, updateData);
+        }
+        if (oldBankTransactionId && oldBankTransactionId !== updateData.bankTransactionId) {
+          await syncLinkedBankTransaction(db, oldBankTransactionId);
+        }
 
         console.log("Updated financial transaction:", transaction.id);
         return res.status(200).json({
@@ -181,7 +269,14 @@ exports.manageFinancialTransaction = functions
           });
         }
 
+        const oldData = doc.data() || {};
+        const oldBankTransactionId = oldData.bankTransactionId || "";
+
         await docRef.delete();
+
+        if (oldBankTransactionId) {
+          await syncLinkedBankTransaction(db, oldBankTransactionId);
+        }
 
         console.log("Deleted financial transaction:", transaction.id);
         return res.status(200).json({

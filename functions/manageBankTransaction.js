@@ -65,13 +65,22 @@ function normalizeAccount(value) {
   return String(value || "").replace(/\s+/g, "").toUpperCase();
 }
 
+function normalizeEmployeeAccount(value) {
+  const raw = String(value || "").replace(/\D/g, "");
+  return raw.length > 10 ? raw.slice(-10) : raw;
+}
+
+function last9Digits(value) {
+  const raw = String(value || "").replace(/\D/g, "");
+  return raw.length > 9 ? raw.slice(-9) : raw;
+}
+
 function sanitizeRuleInput(rule = {}) {
-  const desc = Array.isArray(rule.descriptionIncludes)
+  const rawDesc = Array.isArray(rule.descriptionIncludes)
     ? rule.descriptionIncludes
-    : String(rule.descriptionIncludes || "")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
+    : String(rule.descriptionIncludes || "").split(/[,|]/).map((x) => x.trim()).filter(Boolean);
+  // Also split any array items that contain | (user may have typed pipe-separated in one field)
+  const desc = rawDesc.flatMap((x) => String(x || "").split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean));
 
   return {
     name: String(rule.name || "").trim(),
@@ -89,7 +98,8 @@ function ruleMatchesTransaction(rule, txn) {
   if (!rule || rule.isActive === false) return false;
   if (!rule.type || !rule.subtype) return false;
 
-  if (rule.accountName && normalizeText(txn.accountName) !== normalizeText(rule.accountName)) {
+  const ruleAcct = normalizeText(rule.accountName);
+  if (ruleAcct && ruleAcct !== "бүгд" && ruleAcct !== normalizeText(txn.accountName)) {
     return false;
   }
 
@@ -616,20 +626,21 @@ exports.manageBankTransaction = functions
           };
         }
 
-        // Group unlinked finTxns by date+amount for fast lookup
-        // key: "YYYY-MM-DD|amount"  → [{id, amount, date, ...meta}]
+        // Group unlinked finTxns by date+amount+last9acct for fast lookup
+        // key: "YYYY-MM-DD|amount|last9acct"  → [{id, amount, date, acct9, ...meta}]
         const byDateAmt = {};
         finSnap.docs.forEach(doc => {
           const d = doc.data();
           if (d.bankTransactionId) return; // already linked — skip
           const date = typeof d.date === 'string' ? d.date.slice(0, 10) : null;
           if (!date) return;
-          const key = `${date}|${parseFloat(d.amount) || 0}`;
+          const acct9 = last9Digits(d.employeeBankAccount);
+          const key = `${date}|${parseFloat(d.amount) || 0}|${acct9}`;
           if (!byDateAmt[key]) byDateAmt[key] = [];
-          byDateAmt[key].push({ id: doc.id, amount: parseFloat(d.amount) || 0, date, ...finMeta(d) });
+          byDateAmt[key].push({ id: doc.id, amount: parseFloat(d.amount) || 0, date, acct9, ...finMeta(d) });
         });
 
-        // Also build a map for split-matching: date → [{id, amount, ...meta}]
+        // Also build a map for split-matching: date → [{id, amount, acct9, ...meta}]
         const byDate = {};
         finSnap.docs.forEach(doc => {
           const d = doc.data();
@@ -637,7 +648,7 @@ exports.manageBankTransaction = functions
           const date = typeof d.date === 'string' ? d.date.slice(0, 10) : null;
           if (!date) return;
           if (!byDate[date]) byDate[date] = [];
-          byDate[date].push({ id: doc.id, amount: parseFloat(d.amount) || 0, ...finMeta(d) });
+          byDate[date].push({ id: doc.id, amount: parseFloat(d.amount) || 0, acct9: last9Digits(d.employeeBankAccount), ...finMeta(d) });
         });
 
         // Load all bank expense transactions from fromDate
@@ -664,7 +675,8 @@ exports.manageBankTransaction = functions
           if (!btDate) { skipped++; continue; }
 
           // --- Case 1: exact single match ---
-          const exactKey = `${btDate}|${bankExpense}`;
+          const btAcct9 = last9Digits(bt.relatedAccount);
+          const exactKey = `${btDate}|${bankExpense}|${btAcct9}`;
           const exactMatches = byDateAmt[exactKey] || [];
 
           if (exactMatches.length === 1) {
@@ -714,7 +726,7 @@ exports.manageBankTransaction = functions
           }
 
           // --- Case 2: split match (sum of same-day finTxns == bankExpense) ---
-          const sameDayFins = (byDate[btDate] || []).filter(x => x.amount > 0);
+          const sameDayFins = (byDate[btDate] || []).filter(x => x.amount > 0 && x.acct9 === btAcct9);
           if (sameDayFins.length > 0) {
             const total = sameDayFins.reduce((s, x) => s + x.amount, 0);
             if (total === bankExpense) {
@@ -875,6 +887,115 @@ exports.manageBankTransaction = functions
         }
 
         return res.status(200).json({ success: true, updated });
+      }
+
+      // ── BACKFILL LINKED FINANCIAL META ────────────────────────────────────
+      // One-time repair utility:
+      // 1) Fill/normalize employeeBankAccount on all financial transactions
+      //    from employees.Id -> BankAccountNumber mapping.
+      // 2) For each bank transaction linked to financial transactions,
+      //    copy requester/project from the first linked financial transaction.
+      //    Also recompute reconciledAmount + reconciliationStatus.
+      if (action === "backfillLinkedFinancialMeta") {
+        // Build employee map: Id -> normalized account digits
+        const empSnap = await db.collection("employees").get();
+        const empAcctMap = {};
+        empSnap.forEach((d) => {
+          const e = d.data() || {};
+          const acct = normalizeEmployeeAccount(e.BankAccountNumber || "");
+          if (e.Id && acct) empAcctMap[e.Id] = acct;
+        });
+
+        // Update all financial transactions account field
+        const finAllSnap = await db.collection("financialTransactions").get();
+        let financialUpdated = 0;
+
+        for (let i = 0; i < finAllSnap.docs.length; i += 400) {
+          const chunk = finAllSnap.docs.slice(i, i + 400);
+          const batch = db.batch();
+          chunk.forEach((docSnap) => {
+            const d = docSnap.data() || {};
+            const mapped = d.employeeID ? (empAcctMap[d.employeeID] || "") : "";
+            const normalizedExisting = normalizeEmployeeAccount(d.employeeBankAccount || "");
+            const nextAccount = mapped || normalizedExisting;
+            if ((d.employeeBankAccount || "") !== nextAccount) {
+              batch.update(docSnap.ref, {
+                employeeBankAccount: nextAccount,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              financialUpdated++;
+            }
+          });
+          await batch.commit();
+        }
+
+        // Re-read linked financial transactions after account backfill
+        const linkedFinSnap = await db.collection("financialTransactions")
+          .where("bankTransactionId", "!=", "")
+          .get();
+
+        const groupedByBank = {};
+        linkedFinSnap.docs.forEach((docSnap) => {
+          const d = docSnap.data() || {};
+          const bankId = d.bankTransactionId;
+          if (!bankId) return;
+          if (!groupedByBank[bankId]) groupedByBank[bankId] = [];
+          groupedByBank[bankId].push(d);
+        });
+
+        const bankIds = Object.keys(groupedByBank);
+        let bankUpdated = 0;
+
+        for (let i = 0; i < bankIds.length; i += 200) {
+          const chunk = bankIds.slice(i, i + 200);
+          const docs = await Promise.all(
+            chunk.map((id) => db.collection("bankTransactions").doc(id).get())
+          );
+
+          const batch = db.batch();
+          docs.forEach((bankDoc, idx) => {
+            if (!bankDoc.exists) return;
+
+            const bankId = chunk[idx];
+            const fins = groupedByBank[bankId] || [];
+            if (fins.length === 0) return;
+
+            const first = fins[0];
+            const reconciledAmount = fins.reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+            const expense = parseFloat(bankDoc.data().expense) || 0;
+
+            let reconciliationStatus = "unlinked";
+            if (fins.length > 0) {
+              if (reconciledAmount === expense) reconciliationStatus = "matched";
+              else if (reconciledAmount > expense) reconciliationStatus = "over";
+              else reconciliationStatus = "partial";
+            }
+
+            const requesterName = String(first.employeeFirstName || "").trim()
+              || String(first.employeeLastName || "").trim()
+              || "";
+
+            batch.update(bankDoc.ref, {
+              requesterID: first.employeeID || "",
+              requesterName,
+              projectID: first.projectID || "",
+              projectName: first.projectLocation || "",
+              reconciledAmount,
+              reconciliationStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            bankUpdated++;
+          });
+
+          await batch.commit();
+        }
+
+        return res.status(200).json({
+          success: true,
+          financialUpdated,
+          linkedBanksScanned: bankIds.length,
+          bankUpdated,
+        });
       }
 
       return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
