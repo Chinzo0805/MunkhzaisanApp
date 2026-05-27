@@ -297,8 +297,13 @@ const HEADER_ALIASES = {
     "карт", "харьцсан данс", "accountnumber", "accountnubmer", "дансны дугаар",
     "account number", "данс дугаар", "counterpart account",
   ],
+  txnType: [
+    "гүйлгээний төрөл",
+    "transaction type",
+    "=төрөл",
+  ],
   description: [
-    "гүйлгээний утга", "=төрөл", "тайлбар", "description", "утга", "note",
+    "гүйлгээний утга", "тайлбар", "description", "утга", "note",
     "дэлгэрэнгүй", "memo", "details", "details/note",
   ],
   balance: [
@@ -325,6 +330,7 @@ const FIELD_PRIORITY = [
   'amount',
   'relatedAccountName',
   'relatedAccount',
+  'txnType',
   'description',
   'balance',
 ];
@@ -452,6 +458,19 @@ function mapRow(headers, values) {
       if (rawAmount >= 0) income  = rawAmount;
       else                expense = Math.abs(rawAmount);
     }
+  }
+
+  // Гүйлгээний төрөл overrides income/expense direction
+  const txnType = String(get("txnType") || "").trim();
+  if (txnType === "Худалдан авалт") return null; // skip purchases
+  if (txnType === "Шилжүүлгийн орлого") {
+    // Petrovis received payment from company → company expense
+    const total = income + expense;
+    income = 0; expense = total;
+  } else if (txnType === "Шилжүүлгийн зарлага") {
+    // Petrovis paid back to company → company income
+    const total = income + expense;
+    income = total; expense = 0;
   }
 
   // documentDate: prefer documentDate column with time, fall back to date column
