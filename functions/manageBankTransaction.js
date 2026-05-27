@@ -691,19 +691,17 @@ exports.manageBankTransaction = functions
               reconciliationStatus: "matched",
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
-            // Copy classification from financial transaction (only if not already set)
-            if (!bt.type) {
-              if (fin.type)          bankUpdate.type          = fin.type;
-              if (fin.subtype)       bankUpdate.subtype       = fin.subtype;
-              if (fin.requesterID)   bankUpdate.requesterID   = fin.requesterID;
-              if (fin.requesterName) bankUpdate.requesterName = fin.requesterName;
-              if (fin.projectID)     bankUpdate.projectID     = fin.projectID;
-              if (fin.projectName)   bankUpdate.projectName   = fin.projectName;
+            // Copy classification from financial transaction (always overrides auto-classification)
+            if (fin.type)          bankUpdate.type          = fin.type;
+            if (fin.subtype)       bankUpdate.subtype       = fin.subtype;
+            if (fin.requesterID)   bankUpdate.requesterID   = fin.requesterID;
+            if (fin.requesterName) bankUpdate.requesterName = fin.requesterName;
+            if (fin.projectID)     bankUpdate.projectID     = fin.projectID;
+            if (fin.projectName)   bankUpdate.projectName   = fin.projectName;
 
-              if (!bankUpdate.type) {
-                const matched = applyRulesToTransaction(bt, classificationRules);
-                if (matched) Object.assign(bankUpdate, matched.updates);
-              }
+            if (!bankUpdate.type) {
+              const matched = applyRulesToTransaction(bt, classificationRules);
+              if (matched) Object.assign(bankUpdate, matched.updates);
             }
             await bankDoc.ref.update(bankUpdate);
             // Remove from lookup to prevent double-linking
@@ -747,20 +745,18 @@ exports.manageBankTransaction = functions
                 reconciliationStatus: "matched",
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
               };
-              // Copy classification from first finTxn (only if bank txn has no type)
-              if (!bt.type) {
-                const first = sameDayFins[0];
-                if (first.type)          splitBankUpdate.type          = first.type;
-                if (first.subtype)       splitBankUpdate.subtype       = first.subtype;
-                if (first.requesterID)   splitBankUpdate.requesterID   = first.requesterID;
-                if (first.requesterName) splitBankUpdate.requesterName = first.requesterName;
-                if (first.projectID)     splitBankUpdate.projectID     = first.projectID;
-                if (first.projectName)   splitBankUpdate.projectName   = first.projectName;
+              // Copy classification from first finTxn (always overrides auto-classification)
+              const first = sameDayFins[0];
+              if (first.type)          splitBankUpdate.type          = first.type;
+              if (first.subtype)       splitBankUpdate.subtype       = first.subtype;
+              if (first.requesterID)   splitBankUpdate.requesterID   = first.requesterID;
+              if (first.requesterName) splitBankUpdate.requesterName = first.requesterName;
+              if (first.projectID)     splitBankUpdate.projectID     = first.projectID;
+              if (first.projectName)   splitBankUpdate.projectName   = first.projectName;
 
-                if (!splitBankUpdate.type) {
-                  const matched = applyRulesToTransaction(bt, classificationRules);
-                  if (matched) Object.assign(splitBankUpdate, matched.updates);
-                }
+              if (!splitBankUpdate.type) {
+                const matched = applyRulesToTransaction(bt, classificationRules);
+                if (matched) Object.assign(splitBankUpdate, matched.updates);
               }
               await bankDoc.ref.update(splitBankUpdate);
               // Remove used finTxns from lookup
