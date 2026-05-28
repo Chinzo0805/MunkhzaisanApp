@@ -119,7 +119,7 @@
       <div class="section-toolbar">
         <h3>📉 Зарлага</h3>
         <div class="toolbar-right">
-          <span class="sync-info-badge">🔄 Санхүүгийн гүйлгээнээс синхрончлагдсан</span>
+          <span class="sync-info-badge">🔄 Шууд зардлаас синхрончлагдсан</span>
           <router-link to="/financial-transactions" class="btn-goto">✏️ Засах →</router-link>
         </div>
       </div>

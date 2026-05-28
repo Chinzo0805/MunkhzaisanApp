@@ -99,8 +99,8 @@
         <label>Авто эхлэх:</label>
         <input type="date" v-model="autoLinkFromDate" class="sel-sm" />
       </div>
-      <button @click="runBulkAutoLink" class="btn-automatch" :disabled="autoLinkRunning || !autoLinkFromDate" title="Сонгосон огнооноос бүх зардлын гүйлгээг санхүүтэй автоматаар холбож, ангиллыг нөхнө">
-        {{ autoLinkRunning ? '⏳ Холбож байна...' : '🔗 Авто холбох + Ангилах' }}
+      <button @click="runBulkAutoLink" class="btn-automatch" :disabled="autoLinkRunning || !autoLinkFromDate" title="Дансны зардал тааруулах + Petrovis зардал үүсгэх + Ангиллыг нөхөх">
+        {{ autoLinkRunning ? '⏳ Боловсруулж байна...' : '🔗 Авто холбох + Ангилах' }}
       </button>
       <div class="total-pills">
         <span class="pill income">↑ {{ fmtMnt(totals.income) }}</span>
@@ -491,6 +491,7 @@
           <button @click="showAutoLinkResult = false" class="match-modal-close">✕</button>
         </div>
         <div class="auto-link-result" v-if="autoLinkResult">
+          <div class="alr-section-title">🔗 Авто холбох</div>
           <div class="alr-row alr-ok"><span>✅ Холбогдсон</span><strong>{{ autoLinkResult.linked }}</strong></div>
           <div class="alr-row alr-skip"><span>⏭ Тааралдаагүй / Орлого</span><strong>{{ autoLinkResult.skipped }}</strong></div>
           <div class="alr-row alr-amb"><span>⚠️ Хоёрдмол (гараар хийнэ)</span><strong>{{ autoLinkResult.ambiguous }}</strong></div>
@@ -499,6 +500,16 @@
             <div class="alr-row alr-ok"><span>🏷 Ангилсан</span><strong>{{ autoLinkResult.autoTyped.updated || 0 }}</strong></div>
             <div class="alr-row alr-done"><span>📝 Ангилсан тул алгассан</span><strong>{{ autoLinkResult.autoTyped.skippedTyped || 0 }}</strong></div>
             <div class="alr-row alr-skip"><span>🔎 Ангилал таараагүй</span><strong>{{ autoLinkResult.autoTyped.unmatched || 0 }}</strong></div>
+          </template>
+          <template v-if="autoLinkResult.petrovis">
+            <div class="alr-section-title" style="margin-top:10px">⛽ Petrovis зардал</div>
+            <div v-if="autoLinkResult.petrovis.error" class="alr-row alr-amb"><span>⚠️ Алдаа</span><strong>{{ autoLinkResult.petrovis.error }}</strong></div>
+            <template v-else>
+              <div class="alr-row alr-ok"><span>✅ Зардал үүсгэгдсэн</span><strong>{{ autoLinkResult.petrovis.created }}</strong></div>
+              <div class="alr-row alr-skip" v-if="autoLinkResult.petrovis.skippedNoEmployee > 0"><span>❌ Карт тохирсонгүй</span><strong>{{ autoLinkResult.petrovis.skippedNoEmployee }}</strong></div>
+              <div class="alr-row alr-skip" v-if="autoLinkResult.petrovis.skippedNoTA > 0"><span>📋 TA бүртгэлгүй</span><strong>{{ autoLinkResult.petrovis.skippedNoTA }}</strong></div>
+              <div class="alr-row alr-done" v-if="autoLinkResult.petrovis.skippedAlreadyLinked > 0"><span>🔁 Аль хэдийн холбоотой</span><strong>{{ autoLinkResult.petrovis.skippedAlreadyLinked }}</strong></div>
+            </template>
           </template>
         </div>
         <div class="match-modal-footer">
@@ -626,6 +637,77 @@
       </div>
     </div>
 
+  <!-- ── Petrovis Зардал Үүсгэх Modal ── -->
+  <div v-if="petrovisModal.show" class="match-modal-overlay" @click.self="petrovisModal.show = false">
+    <div class="match-modal" style="max-width:560px">
+      <div class="match-modal-header">
+        <span>⛽ Petrovis зардлаас шууд зардал үүсгэх</span>
+        <button @click="petrovisModal.show = false" class="match-modal-close">✕</button>
+      </div>
+      <div style="padding:16px 18px">
+        <p style="margin:0 0 12px;font-size:13px;color:#555">
+          Petrovis дансны зардлуудыг ажилтны карт дугаарт тааруулж, тухайн өдрийн цагийн бүртгэлээс төслийг олоод <strong>Шууд зардлын бүртгэл</strong> автоматаар үүсгэнэ.
+        </p>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <label style="font-size:13px;white-space:nowrap">Эхлэх огноо:</label>
+          <input type="date" v-model="petrovisModal.fromDate" class="sel-sm" />
+        </div>
+        <button
+          @click="runBulkCreateFromPetrovis"
+          class="btn-connect"
+          :disabled="petrovisModal.running || !petrovisModal.fromDate"
+          style="width:100%;margin-bottom:14px"
+        >
+          {{ petrovisModal.running ? '⏳ Үүсгэж байна...' : '⛽ Үүсгэх' }}
+        </button>
+
+        <!-- Results -->
+        <div v-if="petrovisModal.result" style="font-size:13px">
+          <div v-if="petrovisModal.result.error" style="color:#c00;padding:8px;background:#fff3f3;border-radius:6px">
+            ⚠️ {{ petrovisModal.result.error }}
+          </div>
+          <template v-else>
+            <div class="petro-result-row ok">✅ Бүтэн үүсгэгдсэн: <strong>{{ petrovisModal.result.created }}</strong></div>
+            <div class="petro-result-row warn" v-if="petrovisModal.result.createdNoProject > 0">
+              ⚠️ Төсөлгүй үүсгэгдсэн (ЦБ олдсонгүй): <strong>{{ petrovisModal.result.createdNoProject }}</strong>
+              — Тулгалт хуудаснаас төсөл оруулна уу
+            </div>
+            <div class="petro-result-row skip" v-if="petrovisModal.result.skippedNoEmployee > 0">
+              ❌ Ажилтан олдоогүй: <strong>{{ petrovisModal.result.skippedNoEmployee }}</strong>
+            </div>
+            <div class="petro-result-row dim" v-if="petrovisModal.result.skippedAlreadyLinked > 0">
+              ⏭️ Аль хэдийн холбоотой: <strong>{{ petrovisModal.result.skippedAlreadyLinked }}</strong>
+            </div>
+
+            <!-- Unmatched accounts list -->
+            <div v-if="petrovisModal.result.details?.skippedNoEmployee?.length > 0" style="margin-top:10px">
+              <div style="font-weight:600;margin-bottom:4px;color:#888">Олдоогүй дансны дугаарууд:</div>
+              <div
+                v-for="item in petrovisModal.result.details.skippedNoEmployee"
+                :key="item.bankId"
+                style="font-size:12px;color:#666;padding:2px 0"
+              >
+                {{ item.date }} · {{ item.relatedAccount }} · {{ fmtMnt(item.amount) }}₮
+              </div>
+            </div>
+
+            <!-- No-project list -->
+            <div v-if="petrovisModal.result.details?.createdNoProject?.length > 0" style="margin-top:10px">
+              <div style="font-weight:600;margin-bottom:4px;color:#b07000">Төсөл дутуу бичлэгүүд (ЦБ олдсонгүй):</div>
+              <div
+                v-for="item in petrovisModal.result.details.createdNoProject"
+                :key="item.bankId"
+                style="font-size:12px;color:#666;padding:2px 0"
+              >
+                {{ item.date }} · {{ item.emp }} · {{ fmtMnt(item.amount) }}₮
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div>
 </template>
 
@@ -705,6 +787,36 @@ const autoLinkResult     = ref(null);
 const showAutoLinkResult = ref(false);
 const autoLinkFromDate   = ref('2026-02-01');
 const unlinkingId        = ref(null);
+
+// ── Petrovis bulk-create state ──────────────────────────────────
+const petrovisModal = ref({
+  show:     false,
+  fromDate: '2026-01-01',
+  running:  false,
+  result:   null,
+});
+function openPetrovisModal() {
+  petrovisModal.value.result = null;
+  petrovisModal.value.show   = true;
+}
+async function runBulkCreateFromPetrovis() {
+  if (!petrovisModal.value.fromDate) return;
+  petrovisModal.value.running = true;
+  petrovisModal.value.result  = null;
+  try {
+    const res = await manageBankTransaction({
+      action:   'bulkCreateFromPetrovis',
+      fromDate: petrovisModal.value.fromDate,
+    });
+    petrovisModal.value.result = res;
+    if (res.success) await loadTransactions();
+  } catch (e) {
+    petrovisModal.value.result = { error: e.message };
+  } finally {
+    petrovisModal.value.running = false;
+  }
+}
+
 const showCreateModal    = ref(false);
 const createSourceTxn    = ref(null);
 const createSaving       = ref(false);
@@ -1019,21 +1131,32 @@ async function runBulkAutoLink() {
     alert('Эхлэх огноо сонгоно уу.');
     return;
   }
-  if (!confirm(`${autoLinkFromDate.value} өдрөөс эхлэн бүх дансны зардлын гүйлгээг санхүүгийн гүйлгээтэй тааруулж, ангиллыг автоматаар нөхөх үү?`)) return;
+  if (!confirm(`${autoLinkFromDate.value} өдрөөс эхлэн:\n• Дансны зардлуудыг санхүүтэй автоматаар холбох\n• Petrovis зардлаас шууд зардлын бүртгэл үүсгэх\n• Ангиллыг нөхөх\n\nЦааш үргэлжлүүлэх үү?`)) return;
   autoLinkRunning.value = true;
   try {
+    // Step 1: auto-link + classify
     const res = await manageBankTransaction({
       action: 'bulkAutoLink',
       fromDate: autoLinkFromDate.value,
       applyClassificationRules: true,
       onlyUnclassifiedForRules: true,
     });
-    if (res.success) {
-      autoLinkResult.value     = res;
-      showAutoLinkResult.value = true;
-    } else {
-      alert('Алдаа: ' + (res.error || ''));
+    if (!res.success) {
+      alert('Авто холбох алдаа: ' + (res.error || ''));
+      return;
     }
+    // Step 2: create financial txns from Petrovis (non-fatal if fails)
+    try {
+      const petRes = await manageBankTransaction({
+        action:   'bulkCreateFromPetrovis',
+        fromDate: autoLinkFromDate.value,
+      });
+      res.petrovis = petRes.success ? petRes : { error: petRes.error, created: 0, skippedNoEmployee: 0, skippedNoTA: 0, skippedAlreadyLinked: 0 };
+    } catch (petErr) {
+      res.petrovis = { error: petErr.message, created: 0, skippedNoEmployee: 0, skippedNoTA: 0, skippedAlreadyLinked: 0 };
+    }
+    autoLinkResult.value     = res;
+    showAutoLinkResult.value = true;
   } catch (e) {
     alert('Алдаа: ' + e.message);
   } finally {
@@ -1412,15 +1535,26 @@ async function handleSync() {
         applyClassificationRules: true,
         onlyUnclassifiedForRules: true,
       });
+      // Also run Petrovis after sync
+      let petrovisText = '';
+      try {
+        const petRes = await manageBankTransaction({
+          action:   'bulkCreateFromPetrovis',
+          fromDate: autoLinkFromDate.value,
+        });
+        if (petRes.success && petRes.created > 0) {
+          petrovisText = ` | ⛽ Petrovis зардал: ${petRes.created}`;
+        }
+      } catch (_) {}
       if (postRes.success) {
         syncMsg.value = {
           success: true,
-          text: `${res.message} | Авто холбосон: ${postRes.linked || 0}, Авто ангилсан: ${(postRes.autoTyped && postRes.autoTyped.updated) || 0}`,
+          text: `${res.message} | Авто холбосон: ${postRes.linked || 0}, Авто ангилсан: ${(postRes.autoTyped && postRes.autoTyped.updated) || 0}${petrovisText}`,
         };
       } else {
         syncMsg.value = {
           success: true,
-          text: `${res.message} | Авто холбоход алдаа: ${postRes.error || 'Алдаа'}`,
+          text: `${res.message} | Авто холбоход алдаа: ${postRes.error || 'Алдаа'}${petrovisText}`,
         };
       }
       await loadTransactions();
@@ -1856,6 +1990,24 @@ onMounted(async () => {
   font-weight: 600;
 }
 .btn-automatch:hover { background: #6d28d9; }
+
+.btn-petrovis {
+  background: #d97706;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.btn-petrovis:hover { background: #b45309; }
+
+.petro-result-row { padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
+.petro-result-row.ok   { color: #166534; }
+.petro-result-row.warn { color: #92400e; }
+.petro-result-row.skip { color: #991b1b; }
+.petro-result-row.dim  { color: #6b7280; }
 
 .btn-rules {
   background: #0f766e;
@@ -2405,6 +2557,7 @@ onMounted(async () => {
 /* ── Bulk auto-link result ────────────────────────────── */
 .auto-link-result { padding: 10px; font-size: 0.83rem; }
 .alr-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.alr-section-title { font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 8px; }
 .alr-ok   { color: #16a34a; font-weight: 600; }
 .alr-skip { color: #ca8a04; }
 .alr-amb  { color: #dc2626; }

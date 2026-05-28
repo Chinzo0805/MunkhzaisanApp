@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "bankTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountName", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timeAttendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "EmployeeID", "order": "ASCENDING" },
+        { "fieldPath": "Day", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "timeAttendanceRequests",
       "queryScope": "COLLECTION",
       "fields": [

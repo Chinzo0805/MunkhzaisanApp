@@ -70,7 +70,7 @@
             💰 Санхүү бүртгэл, төлөвлөлт
           </button>
           <button @click="$router.push('/financial-transactions')" class="btn-action finance">
-            💵 Санхүүгийн гүйлгээ
+            💵 Шууд зардал
           </button>
           <button @click="$router.push('/bank-transactions')" class="btn-action bank-txn">
             🏦 Дансны гүйлгээ

@@ -102,22 +102,37 @@
           <template v-for="emp in tableFiltered" :key="emp.id">
             <tr :class="emp.State !== 'Ажиллаж байгаа' ? 'row-inactive' : ''">
               <td v-for="col in activeColumns" :key="col.key">
-                <template v-if="col.key === 'State'">
-                  <span class="state-badge" :class="emp.State === 'Ажиллаж байгаа' ? 'active' : 'inactive'">
-                    {{ emp.State || '—' }}
-                  </span>
+                <!-- Bulk edit: inline input for editable columns -->
+                <template v-if="bulkEditMode && editState[emp.id] && canEditCell(emp, col.key)">
+                  <select v-if="CELL_SELECT_OPTIONS[col.key]" v-model="editState[emp.id][col.key]" class="cell-input">
+                    <option v-for="opt in CELL_SELECT_OPTIONS[col.key]" :key="opt" :value="opt">{{ opt || '—' }}</option>
+                  </select>
+                  <select v-else-if="col.key === 'BankName'" v-model="editState[emp.id].BankName" class="cell-input">
+                    <option value="">—</option>
+                    <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
+                  </select>
+                  <input v-else-if="col.key === 'Salary'" v-model.number="editState[emp.id].Salary" type="number" min="0" step="1000" class="cell-input" style="width:90px" />
+                  <input v-else v-model="editState[emp.id][col.key]" type="text" class="cell-input" />
                 </template>
-                <template v-else-if="col.key === 'Salary'">
-                  {{ emp.Salary ? Number(emp.Salary).toLocaleString() + '₮' : '—' }}
-                </template>
-                <template v-else-if="col.key === 'isNDS'">
-                  {{ emp.isNDS !== false ? '✅' : '✖️' }}
-                </template>
-                <template v-else-if="col.key === 'autoTA'">
-                  {{ emp.autoTA ? '✅' : '—' }}
-                </template>
+                <!-- Normal display -->
                 <template v-else>
-                  {{ emp[col.key] || '—' }}
+                  <template v-if="col.key === 'State'">
+                    <span class="state-badge" :class="emp.State === 'Ажиллаж байгаа' ? 'active' : 'inactive'">
+                      {{ emp.State || '—' }}
+                    </span>
+                  </template>
+                  <template v-else-if="col.key === 'Salary'">
+                    {{ emp.Salary ? Number(emp.Salary).toLocaleString() + '₮' : '—' }}
+                  </template>
+                  <template v-else-if="col.key === 'isNDS'">
+                    {{ emp.isNDS !== false ? '✅' : '✖️' }}
+                  </template>
+                  <template v-else-if="col.key === 'autoTA'">
+                    {{ emp.autoTA ? '✅' : '—' }}
+                  </template>
+                  <template v-else>
+                    {{ emp[col.key] || '—' }}
+                  </template>
                 </template>
               </td>
               <td class="td-actions">
@@ -143,99 +158,7 @@
               </td>
             </tr>
 
-            <!-- Inline edit row -->
-            <tr v-if="editState[emp.id]?.editing" class="row-edit-inline">
-              <td :colspan="activeColumns.length + 1" class="td-panel">
-                <div class="emp-info-block">
-                  <div class="emp-info-header">
-                    <div>
-                      <strong>{{ emp.LastName }} {{ emp.FirstName }}</strong>
-                      <span class="panel-pos">{{ emp.Position }}</span>
-                    </div>
-                    <div class="emp-header-actions">
-                      <button @click.stop="saveEdit(emp)" :disabled="editState[emp.id].saving" class="btn-save-bank">
-                        {{ editState[emp.id].saving ? 'Хадгалж байна...' : '💾 Хадгалах' }}
-                      </button>
-                      <button @click.stop="cancelEdit(emp)" class="btn-emp-edit btn-cancel">✖ Болих</button>
-                      <span v-if="editState[emp.id].saved" class="bank-saved">✅ Хадгалагдлаа</span>
-                      <span v-if="editState[emp.id].error" class="bank-error">⚠️ {{ editState[emp.id].error }}</span>
-                    </div>
-                  </div>
-                  <div class="emp-edit-grid">
-                    <template v-if="canEditAll(emp)">
-                      <div class="edit-item">
-                        <label class="edit-label">Төлөв</label>
-                        <select v-model="editState[emp.id].State" class="edit-input">
-                          <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
-                          <option value="Гарсан">Гарсан</option>
-                          <option value="Чөлөөтэй/Амралт">Чөлөөтэй/Амралт</option>
-                        </select>
-                      </div>
-                      <div class="edit-item">
-                        <label class="edit-label">Төрөл</label>
-                        <select v-model="editState[emp.id].Type" class="edit-input">
-                          <option value="">—</option>
-                          <option value="Гэрээт">Гэрээт</option>
-                          <option value="Үндсэн">Үндсэн</option>
-                          <option value="Дадлагжигч">Дадлагжигч</option>
-                        </select>
-                      </div>
-                      <div class="edit-item">
-                        <label class="edit-label">Role</label>
-                        <select v-model="editState[emp.id].Role" class="edit-input">
-                          <option value="Employee">Employee</option>
-                          <option value="Supervisor">Supervisor</option>
-                          <option value="Accountant">Accountant</option>
-                          <option value="nonEmployee">nonEmployee</option>
-                          <option value="Financial">Financial</option>
-                        </select>
-                      </div>
-                      <div class="edit-item">
-                        <label class="edit-label">Цалин ₮</label>
-                        <input v-model.number="editState[emp.id].Salary" type="number" min="0" step="1000" class="edit-input" />
-                      </div>
-                      <div class="edit-item">
-                        <label class="edit-label">Утас</label>
-                        <input v-model="editState[emp.id].Phone" type="text" class="edit-input" />
-                      </div>
-                      <div class="edit-item">
-                        <label class="edit-label">Имэйл</label>
-                        <input v-model="editState[emp.id].Email" type="email" class="edit-input" />
-                      </div>
-                    </template>
-                    <div class="edit-item">
-                      <label class="edit-label">🏦 Банк</label>
-                      <select v-model="editState[emp.id].BankName" class="edit-input">
-                        <option value="">— Банк сонгоно уу —</option>
-                        <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
-                      </select>
-                    </div>
-                    <div class="edit-item">
-                      <label class="edit-label">IBAN Данс №</label>
-                      <input v-model="editState[emp.id].BankAccountNumber" type="text" class="edit-input" placeholder="IBAN Дансны дугаар" />
-                    </div>
-                    <div class="edit-item">
-                      <label class="edit-label">ТТД</label>
-                      <input v-model="editState[emp.id].TIN" type="text" class="edit-input" placeholder="Татвар төлөгчийн дугаар" />
-                    </div>
-                    <div class="edit-item">
-                      <label class="edit-label">👔 Дээд хувцас</label>
-                      <input v-model="editState[emp.id].ClothesUpperSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
-                    </div>
-                    <div class="edit-item">
-                      <label class="edit-label">👖 Доод хувцас</label>
-                      <input v-model="editState[emp.id].ClothesLowerSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
-                    </div>
-                    <div class="edit-item">
-                      <label class="edit-label">👟 Гутлын хэмжээ</label>
-                      <input v-model="editState[emp.id].ClothesShoesSize" type="text" class="edit-input" placeholder="38 / 40 / 42 / 44" />
-                    </div>
-                  </div>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Adjustment panels row (toggled by 📋 button) -->
+            <!-- Adjustment panels row (toggled by ⚙️ button) -->
             <tr v-if="panelsId === emp.id" class="row-expanded">
               <td :colspan="activeColumns.length + 1" class="td-panel">
                 <div class="panels-grid">
@@ -278,6 +201,116 @@
           </template>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ── Edit Employee Modal ──────────────────────────────────────── -->
+  <div v-if="editModal.show" class="edit-overlay" @click.self="closeEditModal">
+    <div class="edit-modal">
+      <div class="edit-modal-header">
+        <span>
+          ✏️ {{ editModal.emp?.LastName }} {{ editModal.emp?.FirstName }}
+          <span class="edit-modal-pos">{{ editModal.emp?.Position }}</span>
+        </span>
+        <button @click="closeEditModal" class="modal-close-btn">✕</button>
+      </div>
+
+      <div class="edit-modal-body" v-if="editModal.emp && editState[editModal.emp.id]">
+        <!-- Section: Үндсэн мэдээлэл (supervisor/accountant only) -->
+        <template v-if="canEditAll(editModal.emp)">
+          <div class="edit-section-title">📋 Үндсэн мэдээлэл</div>
+          <div class="emp-edit-grid">
+            <div class="edit-item">
+              <label class="edit-label">Төлөв</label>
+              <select v-model="editState[editModal.emp.id].State" class="edit-input">
+                <option>Ажиллаж байгаа</option>
+                <option>Гарсан</option>
+                <option>Чөлөөтэй/Амралт</option>
+              </select>
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">Төрөл</label>
+              <select v-model="editState[editModal.emp.id].Type" class="edit-input">
+                <option value="">—</option>
+                <option>Гэрээт</option>
+                <option>Үндсэн</option>
+                <option>Дадлагжигч</option>
+              </select>
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">Role</label>
+              <select v-model="editState[editModal.emp.id].Role" class="edit-input">
+                <option>Employee</option>
+                <option>Supervisor</option>
+                <option>Accountant</option>
+                <option>nonEmployee</option>
+                <option>Financial</option>
+              </select>
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">Цалин ₮</label>
+              <input v-model.number="editState[editModal.emp.id].Salary" type="number" min="0" step="1000" class="edit-input" />
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">Утас</label>
+              <input v-model="editState[editModal.emp.id].Phone" type="text" class="edit-input" />
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">Имэйл</label>
+              <input v-model="editState[editModal.emp.id].Email" type="email" class="edit-input" />
+            </div>
+            <div class="edit-item">
+              <label class="edit-label">ТТД</label>
+              <input v-model="editState[editModal.emp.id].TIN" type="text" class="edit-input" />
+            </div>
+          </div>
+        </template>
+
+        <!-- Section: Банкны мэдээлэл -->
+        <div class="edit-section-title" :style="canEditAll(editModal.emp) ? 'margin-top:16px' : ''">🏦 Банкны мэдээлэл</div>
+        <div class="emp-edit-grid">
+          <div class="edit-item">
+            <label class="edit-label">🏦 Банк</label>
+            <select v-model="editState[editModal.emp.id].BankName" class="edit-input">
+              <option value="">— Банк сонгоно уу —</option>
+              <option v-for="bank in MONGOLIAN_BANKS" :key="bank" :value="bank">{{ bank }}</option>
+            </select>
+          </div>
+          <div class="edit-item">
+            <label class="edit-label">IBAN Данс №</label>
+            <input v-model="editState[editModal.emp.id].BankAccountNumber" type="text" class="edit-input" placeholder="Дансны дугаар" />
+          </div>
+          <div class="edit-item">
+            <label class="edit-label">⛽ Petrovis карт №</label>
+            <input v-model="editState[editModal.emp.id].PetrovisCard" type="text" class="edit-input" placeholder="Petrovis картын дугаар" />
+          </div>
+        </div>
+
+        <!-- Section: Хувцасны хэмжээ -->
+        <div class="edit-section-title" style="margin-top:16px">👔 Хувцасны хэмжээ</div>
+        <div class="emp-edit-grid">
+          <div class="edit-item">
+            <label class="edit-label">👔 Дээд хувцас</label>
+            <input v-model="editState[editModal.emp.id].ClothesUpperSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
+          </div>
+          <div class="edit-item">
+            <label class="edit-label">👖 Доод хувцас</label>
+            <input v-model="editState[editModal.emp.id].ClothesLowerSize" type="text" class="edit-input" placeholder="S / M / L / XL / XXL" />
+          </div>
+          <div class="edit-item">
+            <label class="edit-label">👟 Гутлын хэмжээ</label>
+            <input v-model="editState[editModal.emp.id].ClothesShoesSize" type="text" class="edit-input" placeholder="38 / 40 / 42 / 44" />
+          </div>
+        </div>
+      </div>
+
+      <div class="edit-modal-footer">
+        <button @click="saveEditModal" :disabled="editState[editModal.emp?.id]?.saving" class="btn-save-bank">
+          {{ editState[editModal.emp?.id]?.saving ? 'Хадгалж байна...' : '💾 Хадгалах' }}
+        </button>
+        <button @click="closeEditModal" class="btn-emp-edit btn-cancel">✖ Болих</button>
+        <span v-if="editState[editModal.emp?.id]?.error" class="bank-error">⚠️ {{ editState[editModal.emp?.id]?.error }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -344,6 +377,7 @@ function openEdit(emp) {
     Email:  emp.Email  || '',
     BankName: emp.BankName || '',
     BankAccountNumber: emp.BankAccountNumber || '',
+    PetrovisCard: emp.PetrovisCard || '',
     TIN: emp.TIN || '',
     ClothesUpperSize: emp.ClothesUpperSize || '',
     ClothesLowerSize: emp.ClothesLowerSize || '',
@@ -352,9 +386,55 @@ function openEdit(emp) {
   };
 }
 
-// Alias used by the ✏️ button in the row
+// Alias used by the ✏️ button in the row — now opens modal
 function openEditRow(emp) {
+  openEditModal(emp);
+}
+
+// ── Edit Modal ───────────────────────────────────────────────────
+const editModal = ref({ show: false, emp: null });
+
+function openEditModal(emp) {
   openEdit(emp);
+  editModal.value = { show: true, emp };
+}
+
+function closeEditModal() {
+  if (editModal.value.emp) {
+    delete editState.value[editModal.value.emp.id];
+  }
+  editModal.value = { show: false, emp: null };
+}
+
+async function saveEditModal() {
+  const emp = editModal.value.emp;
+  if (!emp) return;
+  await saveEdit(emp);
+  if (!editState.value[emp.id]?.error) {
+    editModal.value = { show: false, emp: null };
+  }
+}
+
+// ── Bulk inline cell editing ─────────────────────────────────────
+const CELL_SELECT_OPTIONS = {
+  State: ['Ажиллаж байгаа', 'Гарсан', 'Чөлөөтэй/Амралт'],
+  Type:  ['', 'Гэрээт', 'Үндсэн', 'Дадлагжигч'],
+  Role:  ['Employee', 'Supervisor', 'Accountant', 'nonEmployee', 'Financial'],
+};
+
+// perm: 'all' = supervisor/accountant only; 'bank' = own + supervisor/accountant
+const CELL_EDIT_PERM = {
+  State: 'all', Type: 'all', Role: 'all', Salary: 'all', Phone: 'all', Email: 'all', TIN: 'all',
+  BankName: 'bank', BankAccountNumber: 'bank', PetrovisCard: 'bank',
+  ClothesUpperSize: 'bank', ClothesLowerSize: 'bank', ClothesShoesSize: 'bank',
+};
+
+function canEditCell(emp, colKey) {
+  const perm = CELL_EDIT_PERM[colKey];
+  if (!perm) return false;
+  if (perm === 'all') return canEditAll(emp);
+  if (perm === 'bank') return canEditAll(emp) || canEditBank(emp);
+  return false;
 }
 
 function cancelEdit(emp) {
@@ -377,6 +457,7 @@ async function saveEdit(emp) {
         Email:  state.Email,
         BankName: state.BankName.trim(),
         BankAccountNumber: state.BankAccountNumber.trim(),
+        PetrovisCard: state.PetrovisCard.trim(),
         TIN: state.TIN.trim(),
         ClothesUpperSize: state.ClothesUpperSize.trim(),
         ClothesLowerSize: state.ClothesLowerSize.trim(),
@@ -388,6 +469,7 @@ async function saveEdit(emp) {
       patch = {
         BankName: state.BankName.trim(),
         BankAccountNumber: state.BankAccountNumber.trim(),
+        PetrovisCard: state.PetrovisCard.trim(),
         ClothesUpperSize: state.ClothesUpperSize.trim(),
         ClothesLowerSize: state.ClothesLowerSize.trim(),
         ClothesShoesSize: state.ClothesShoesSize.trim(),
@@ -431,29 +513,33 @@ async function deleteEmptyEmployees() {
 
 // ── Columns ─────────────────────────────────────────────────────
 const ALL_COLUMNS = [
-  { key: 'Id',          label: 'ID' },
-  { key: 'NumID',       label: 'УБ дугаар' },
-  { key: 'LastName',    label: 'Овог' },
-  { key: 'FirstName',   label: 'Нэр' },
-  { key: 'Department',  label: 'Хэлтэс' },
-  { key: 'Position',    label: 'Албан' },
-  { key: 'State',       label: 'Төлөв' },
-  { key: 'Phone',       label: 'Утас' },
-  { key: 'Mobile',      label: 'Гар утас' },
-  { key: 'Email',       label: 'Email' },
-  { key: 'DateJoined',  label: 'Орсон огноо' },
-  { key: 'Date-Leave',  label: 'Гарсан огноо' },
-  { key: 'Type',        label: 'Төрөл' },
-  { key: 'Role',        label: 'Role' },
-  { key: 'Salary',      label: 'Цалин' },
-  { key: 'isNDS',       label: 'НДШ' },
-  { key: 'autoTA',      label: 'Auto TA' },
-  { key: 'Gender',      label: 'Хүйс' },
-  { key: 'DateBirth',   label: 'Төрсөн өдөр' },
-  { key: 'DoorNum',       label: 'Хаалганы №' },
-  { key: 'BankName',        label: 'Банк' },
-  { key: 'BankAccountNumber', label: 'IBAN Дансны дугаар' },
-  { key: 'TIN',             label: 'ТТД' },
+  { key: 'Id',                  label: 'ID' },
+  { key: 'NumID',               label: 'УБ дугаар' },
+  { key: 'LastName',            label: 'Овог' },
+  { key: 'FirstName',           label: 'Нэр' },
+  { key: 'Department',          label: 'Хэлтэс' },
+  { key: 'Position',            label: 'Албан' },
+  { key: 'State',               label: 'Төлөв' },
+  { key: 'Type',                label: 'Төрөл' },
+  { key: 'Role',                label: 'Role' },
+  { key: 'Salary',              label: 'Цалин' },
+  { key: 'Phone',               label: 'Утас' },
+  { key: 'Mobile',              label: 'Гар утас' },
+  { key: 'Email',               label: 'Email' },
+  { key: 'DateJoined',          label: 'Орсон огноо' },
+  { key: 'Date-Leave',          label: 'Гарсан огноо' },
+  { key: 'Gender',              label: 'Хүйс' },
+  { key: 'DateBirth',           label: 'Төрсөн өдөр' },
+  { key: 'DoorNum',             label: 'Хаалганы №' },
+  { key: 'isNDS',               label: 'НДШ' },
+  { key: 'autoTA',              label: 'Auto TA' },
+  { key: 'BankName',            label: 'Банк' },
+  { key: 'BankAccountNumber',   label: 'IBAN Данс №' },
+  { key: 'PetrovisCard',        label: '⛽ Petrovis карт' },
+  { key: 'TIN',                 label: 'ТТД' },
+  { key: 'ClothesUpperSize',    label: '👔 Дээд хувцас' },
+  { key: 'ClothesLowerSize',    label: '👖 Доод хувцас' },
+  { key: 'ClothesShoesSize',    label: '👟 Гутал' },
 ];
 
 const DEFAULT_VISIBLE = ['Id', 'LastName', 'FirstName', 'Position', 'State', 'Phone', 'Salary', 'Type', 'Role'];
@@ -1006,4 +1092,78 @@ onMounted(() => {
   font-size: 13px;
   background: #fff;
 }
+
+/* ── Edit modal overlay ──────────────────────────────────────── */
+.edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.edit-modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+  width: min(640px, 95vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.edit-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.edit-modal-pos { font-size: 12px; font-weight: 400; color: #64748b; margin-left: 8px; }
+.modal-close-btn {
+  width: 28px; height: 28px;
+  border: none; background: #f1f5f9; border-radius: 6px;
+  cursor: pointer; font-size: 14px; color: #64748b;
+}
+.modal-close-btn:hover { background: #e2e8f0; color: #374151; }
+.edit-modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+.edit-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+.edit-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+}
+
+/* ── Inline cell inputs (bulk edit mode) ─────────────────────── */
+.cell-input {
+  padding: 3px 6px;
+  border: 1px solid #a5b4fc;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #eef2ff;
+  width: 100%;
+  min-width: 60px;
+  box-sizing: border-box;
+}
+.cell-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px #6366f133; }
 </style>

@@ -994,6 +994,157 @@ exports.manageBankTransaction = functions
         });
       }
 
+      // ── BULK CREATE FINANCIAL TXN FROM PETROVIS ─────────────────────────────
+      // For each Petrovis bank txn with expense > 0 that has no linked financial
+      // txn yet:
+      //   1. Match relatedAccount last 8 digits → employee PetrovisCard
+      //   2. Look up timeAttendance for that employee on that date → project
+      //      (if multiple TA records: pick the one with the most WorkingHour)
+      //   3. Create financial txn: purpose "Төсөлд", type "Тээвэр, шатахуун"
+      //      If no TA found: create with empty projectID + needsProject:true
+      //   4. Link bank txn: reconciliationStatus "matched" (or "partial" if no project)
+      if (action === "bulkCreateFromPetrovis") {
+        const { fromDate } = req.body;
+        if (!fromDate) return res.status(400).json({ success: false, error: "Missing fromDate" });
+
+        // 1. Load only employees that have a PetrovisCard set
+        //    (Firestore can't filter "field exists", so we load all and filter client-side.
+        //     Employee collection is small ~100–200 docs — this is the only unavoidable full load.)
+        const empSnap = await db.collection("employees").get();
+        const cardMap = {}; // last8(PetrovisCard) → { NumID, FirstName, LastName }
+        empSnap.docs.forEach(d => {
+          const e = d.data();
+          if (!e.PetrovisCard) return;
+          const last8 = String(e.PetrovisCard).replace(/\s/g, '').slice(-8);
+          if (last8) cardMap[last8] = {
+            NumID:     e.Id || 0,
+            FirstName: e.FirstName || '',
+            LastName:  e.LastName  || '',
+          };
+        });
+
+        // 2. Load Petrovis bank txns from fromDate (already filtered by account + date)
+        const bankSnap = await db.collection("bankTransactions")
+          .where("accountName", "==", "Petrovis account")
+          .where("date", ">=", fromDate)
+          .get();
+
+        // 3. Project location cache (populated on-demand, never reloaded twice)
+        const projLocationCache = {}; // projectID string → location string
+        async function getProjectLocation(projectID) {
+          if (!projectID) return '';
+          if (projLocationCache[projectID] !== undefined) return projLocationCache[projectID];
+          const snap = await db.collection("projects").where("id", "==", projectID).limit(1).get();
+          const loc  = snap.empty ? '' : (snap.docs[0].data().Location || snap.docs[0].data().location || snap.docs[0].data().projectLocation || '');
+          projLocationCache[projectID] = loc;
+          return loc;
+        }
+
+        const created              = [];
+        const skippedNoEmployee    = [];
+        const skippedNoTA          = [];
+        const skippedAlreadyLinked = [];
+
+        for (const bankDoc of bankSnap.docs) {
+          const bt      = bankDoc.data();
+          const expense = parseFloat(bt.expense) || 0;
+          if (expense <= 0) continue;
+
+          // Skip if already fully matched (reconciliationStatus = "matched")
+          if (bt.reconciliationStatus === "matched") {
+            skippedAlreadyLinked.push(bankDoc.id);
+            continue;
+          }
+
+          // Also skip if a financial txn already linked to this bank txn exists
+          const existingFin = await db.collection("financialTransactions")
+            .where("bankTransactionId", "==", bankDoc.id)
+            .limit(1).get();
+          if (!existingFin.empty) {
+            skippedAlreadyLinked.push(bankDoc.id);
+            continue;
+          }
+
+          // Match employee by last 8 digits of relatedAccount
+          const relAcct = String(bt.relatedAccount || '').replace(/\s/g, '');
+          const last8   = relAcct.slice(-8);
+          const emp     = last8 ? cardMap[last8] : null;
+          if (!emp) {
+            skippedNoEmployee.push({ bankId: bankDoc.id, relatedAccount: bt.relatedAccount, date: bt.date, amount: expense });
+            continue;
+          }
+
+          // Query TA for this employee on this exact date
+          const taSnap = await db.collection("timeAttendance")
+            .where("EmployeeID", "==", emp.NumID)
+            .where("Day", "==", bt.date)
+            .get();
+
+          const taRecords = taSnap.docs
+            .map(d => d.data())
+            .filter(t => t.ProjectID);
+
+          if (taRecords.length === 0) {
+            skippedNoTA.push({ bankId: bankDoc.id, date: bt.date, emp: emp.FirstName, amount: expense });
+            continue;
+          }
+
+          // Pick project with most working hours
+          const best = taRecords.reduce((a, b) => (parseFloat(b.WorkingHour) || 0) > (parseFloat(a.WorkingHour) || 0) ? b : a);
+          const projectID       = String(best.ProjectID).trim();
+          const projectLocation = await getProjectLocation(projectID);
+
+          // Create financial transaction
+          const finRef  = db.collection("financialTransactions").doc();
+          await finRef.set({
+            date:               bt.date,
+            amount:             expense,
+            purpose:            "Төсөлд",
+            type:               "Тээвэр, шатахуун",
+            bankType:           "Тээвэр, шатахуун",
+            bankSubType:        "",
+            employeeID:         emp.NumID,
+            employeeFirstName:  emp.FirstName,
+            projectID:          projectID,
+            projectLocation:    projectLocation,
+            bankTransactionId:  bankDoc.id,
+            source:             "petrovis-auto",
+            needsProject:       false,
+            ebarimt:            false,
+            НӨАТ:               true,
+            comment:            "",
+            isEbarimtReceived:  false,
+            isNOATinSystem:     false,
+            createdAt:          admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt:          admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Mark bank txn as matched
+          await bankDoc.ref.update({
+            reconciledAmount:     expense,
+            reconciliationStatus: "matched",
+            type:                 "Тээвэр, шатахуун",
+            subtype:              "",
+            requesterID:          String(emp.NumID),
+            requesterName:        emp.FirstName,
+            projectID:            projectID,
+            projectName:          projectLocation,
+            updatedAt:            admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          created.push({ bankId: bankDoc.id, finId: finRef.id, date: bt.date, emp: emp.FirstName, amount: expense, projectID });
+        }
+
+        return res.status(200).json({
+          success:              true,
+          created:              created.length,
+          skippedNoEmployee:    skippedNoEmployee.length,
+          skippedNoTA:          skippedNoTA.length,
+          skippedAlreadyLinked: skippedAlreadyLinked.length,
+          details: { created, skippedNoEmployee, skippedNoTA },
+        });
+      }
+
       return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
 
     } catch (err) {

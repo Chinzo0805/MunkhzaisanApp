@@ -254,7 +254,7 @@
             <button type="button" @click="activeTab = 'hr'" :class="['form-tab', activeTab === 'hr' ? 'form-tab-active' : '']">👷 Цаг / Ажилтан</button>
             <button type="button" @click="activeTab = 'financial'" :class="['form-tab', activeTab === 'financial' ? 'form-tab-active' : '']">💰 Санхүү</button>
             <button v-if="editingItem" type="button" @click="activeTab = 'ta'" :class="['form-tab', activeTab === 'ta' ? 'form-tab-active' : '']">📅 TA</button>
-            <button v-if="editingItem" type="button" @click="activeTab = 'fintxn'" :class="['form-tab', activeTab === 'fintxn' ? 'form-tab-active' : '']">💳 Санхүүгийн гүйлгээ</button>
+            <button v-if="editingItem" type="button" @click="activeTab = 'fintxn'" :class="['form-tab', activeTab === 'fintxn' ? 'form-tab-active' : '']">💳 Шууд зардал</button>
             <button v-if="editingItem" type="button" @click="activeTab = 'banktxn'" :class="['form-tab', activeTab === 'banktxn' ? 'form-tab-active' : '']">🏦 Дансны гүйлгээ</button>
           </div>
 
@@ -664,8 +664,8 @@
 
           <!-- ═══════════════════════════════ TAB 5: FINANCIAL TRANSACTIONS ════════════ -->
           <div v-if="activeTab === 'fintxn'" class="tab-content">
-            <div class="section-header sh-green">💳 Санхүүгийн гүйлгээ</div>
-            <div v-if="finEditRows.length === 0" class="tab-empty">Энэ төсөлд санхүүгийн гүйлгээ олдсонгүй</div>
+            <div class="section-header sh-green">💳 Шууд зардал</div>
+            <div v-if="finEditRows.length === 0" class="tab-empty">Энэ төсөлд шууд зардал олдсонгүй</div>
             <div v-else class="proj-sub-table-wrap">
               <table class="proj-sub-table">
                 <thead>

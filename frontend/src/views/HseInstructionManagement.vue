@@ -156,11 +156,11 @@
         <!-- ─── Financial Transactions for this date ─── -->
         <div class="fin-txn-section">
           <div class="fin-txn-header">
-            <h4 class="section-title">💳 Санхүүгийн гүйлгээ — {{ reportDate }}</h4>
+            <h4 class="section-title">💳 Шууд зардал — {{ reportDate }}</h4>
             <button @click="loadFinTxnsForDate(reportDate)" class="btn-refresh" title="Шинэчлэх">🔄</button>
           </div>
           <div v-if="finTxnLoading" class="state-msg-small">Уншиж байна...</div>
-          <div v-else-if="finTxnRows.length === 0" class="state-msg-small">Тухайн өдрийн санхүүгийн гүйлгээ байхгүй байна</div>
+          <div v-else-if="finTxnRows.length === 0" class="state-msg-small">Тухайн өдрийн шууд зардал байхгүй байна</div>
           <div v-else class="fin-txn-table-wrap">
             <table class="fin-txn-table">
               <thead>

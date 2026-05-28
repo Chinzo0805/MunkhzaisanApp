@@ -298,10 +298,11 @@ const HEADER_ALIASES = {
     "account number", "данс дугаар", "counterpart account",
   ],
   txnType: [
+    "=гүйлгээний төрөл",  // exact — the Petrovis Excel transaction type column
     "гүйлгээний төрөл",
     "transaction type",
-    "=төрөл",
   ],
+  // Note: "төрөл" alone is the description/subtype column in Petrovis — NOT txnType
   description: [
     "гүйлгээний утга", "тайлбар", "description", "утга", "note",
     "дэлгэрэнгүй", "memo", "details", "details/note",
@@ -312,7 +313,7 @@ const HEADER_ALIASES = {
 };
 
 function detectColumn(header, field) {
-  const h = (header || "").toString().toLowerCase().trim();
+  const h = (header || "").toString().normalize("NFC").toLowerCase().trim();
   return HEADER_ALIASES[field].some(alias => {
     if (alias.startsWith('=')) return h === alias.slice(1); // exact match
     return h.includes(alias);
@@ -348,7 +349,7 @@ function mapColumns(headers) {
     if (exactAliases.length > 0) {
       for (let i = 0; i < headers.length; i++) {
         if (taken.has(i)) continue;
-        const h = (headers[i] || "").toString().toLowerCase().trim();
+        const h = (headers[i] || "").toString().normalize("NFC").toLowerCase().trim();
         if (exactAliases.some(a => h === a.slice(1))) {
           colMap[field] = i;
           taken.add(i);
@@ -461,13 +462,14 @@ function mapRow(headers, values) {
   }
 
   // Гүйлгээний төрөл overrides income/expense direction
-  const txnType = String(get("txnType") || "").trim();
-  if (txnType === "Худалдан авалт") return null; // skip purchases
-  if (txnType === "Шилжүүлгийн орлого") {
+  // Normalize: NFC, lowercase, collapse whitespace — handles Excel Unicode variants
+  const txnType = String(get("txnType") || "").trim().normalize("NFC").toLowerCase().replace(/\s+/g, " ");
+  if (txnType.includes("худалдан авалт")) return null; // skip fuel purchases
+  if (txnType.includes("шилжүүлгийн орлого")) {
     // Petrovis received payment from company → company expense
     const total = income + expense;
     income = 0; expense = total;
-  } else if (txnType === "Шилжүүлгийн зарлага") {
+  } else if (txnType.includes("шилжүүлгийн зарлага")) {
     // Petrovis paid back to company → company income
     const total = income + expense;
     income = total; expense = 0;
