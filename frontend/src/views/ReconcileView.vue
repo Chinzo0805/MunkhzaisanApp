@@ -410,6 +410,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { manageBankTransaction, manageFinancialTransaction } from '../services/api';
+import { db } from '../config/firebase';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { useEmployeesStore } from '../stores/employees';
 import { useProjectsStore } from '../stores/projects';
@@ -905,12 +907,11 @@ function showToast(text, ok) {
 async function loadBankTransactions() {
   loadingBank.value = true;
   try {
-    const [res, accRes] = await Promise.all([
-      manageBankTransaction({ action: 'list' }),
-      manageBankTransaction({ action: 'listAccounts' }),
-    ]);
-    if (res.success)    bankTxns.value = res.transactions || [];
-    if (accRes.success) accounts.value = accRes.accounts  || [];
+    const snap = await getDocs(query(collection(db, 'bankTransactions'), orderBy('date', 'desc'), limit(2000)));
+    bankTxns.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const nameSet = new Set();
+    bankTxns.value.forEach(t => { if (t.accountName) nameSet.add(t.accountName); });
+    accounts.value = [...nameSet].sort();
   } catch (e) {
     console.error(e);
   } finally {

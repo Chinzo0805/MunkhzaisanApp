@@ -75,6 +75,9 @@
           <button @click="$router.push('/bank-transactions')" class="btn-action bank-txn">
             🏦 Дансны гүйлгээ
           </button>
+          <button @click="$router.push('/bank-report')" class="btn-action bank-txn">
+            📊 Дансны тайлан
+          </button>
           <button @click="$router.push('/warehouse')" class="btn-action warehouse">
             📦 Агуулах
           </button>

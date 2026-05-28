@@ -89,12 +89,9 @@
       <button @click="loadTransactions" class="btn-refresh" :disabled="loading">
         {{ loading ? '...' : '🔄 Хайх' }}
       </button>
-      <select v-model="filterReconStatus" class="sel-sm">
-        <option value="">Бүгд</option>
-        <option value="untyped">📝 Ангилаагүй</option>
-        <option value="unlinked">❌ Холбоогүй</option>
-        <option value="matched">✅ Тулгарсан</option>
-      </select>
+      <label class="filter-cb"><input type="checkbox" v-model="filterUntyped" /> 📝 Ангилаагүй</label>
+      <label class="filter-cb"><input type="checkbox" v-model="filterUnlinked" /> ❌ Тулгаагүй</label>
+      <label class="filter-cb"><input type="checkbox" v-model="filterMatched" /> ✅ Тулгасан</label>
       <div class="filter-group auto-link-date-group">
         <label>Авто эхлэх:</label>
         <input type="date" v-model="autoLinkFromDate" class="sel-sm" />
@@ -718,6 +715,8 @@ import { useEmployeesStore } from '../stores/employees';
 import { useProjectsStore } from '../stores/projects';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { manageBankTransaction, syncBankTransactionsFromExcel, manageFinancialTransaction } from '../services/api';
+import { db } from '../config/firebase';
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 
 const authStore          = useAuthStore();
 const employeesStore     = useEmployeesStore();
@@ -736,6 +735,9 @@ const filterFrom        = ref('');
 const filterTo          = ref('');
 const filterType        = ref('');
 const filterUnclassified = ref(false);
+const filterUntyped  = ref(false);
+const filterUnlinked = ref(false);
+const filterMatched  = ref(false);
 const searchFilters = ref([{ text: '', exclude: false }]);
 
 const sortField = ref('documentDate');
@@ -781,7 +783,6 @@ const matchSearchQuery = ref('');
 
 // ── Reconciliation / linking state ────────────────────────────────────────────
 const linkingSaving      = ref(false);
-const filterReconStatus  = ref('');
 const autoLinkRunning    = ref(false);
 const autoLinkResult     = ref(null);
 const showAutoLinkResult = ref(false);
@@ -1392,14 +1393,13 @@ const filtered = computed(() => {
   if (filterFrom.value)         list = list.filter(t => (t.date || t.documentDate || '') >= filterFrom.value);
   if (filterTo.value)           list = list.filter(t => (t.date || t.documentDate || '') <= filterTo.value);
   if (filterType.value)         list = list.filter(t => t.type === filterType.value);
-  if (filterReconStatus.value) {
-    if (filterReconStatus.value === 'untyped') {
-      list = list.filter(t => !t.type);
-    } else if (filterReconStatus.value === 'unlinked') {
-      list = list.filter(t => t.expense > 0 && (!t.reconciliationStatus || t.reconciliationStatus === 'unlinked'));
-    } else {
-      list = list.filter(t => t.reconciliationStatus === filterReconStatus.value);
-    }
+  if (filterUntyped.value || filterUnlinked.value || filterMatched.value) {
+    list = list.filter(t => {
+      if (filterUntyped.value  && !t.type) return true;
+      if (filterUnlinked.value && t.expense > 0 && (!t.reconciliationStatus || t.reconciliationStatus === 'unlinked' || t.reconciliationStatus === 'partial')) return true;
+      if (filterMatched.value  && t.reconciliationStatus === 'matched') return true;
+      return false;
+    });
   }
 
   // Hide rows where all visible amount columns are 0
@@ -1456,7 +1456,7 @@ const allSelected = computed(() => {
 });
 
 // Reset to page 1 on filter change
-watch([filterAccount, filterFrom, filterTo, filterType, searchFilters, filterReconStatus], () => { page.value = 1; }, { deep: true });
+watch([filterAccount, filterFrom, filterTo, filterType, searchFilters, filterUntyped, filterUnlinked, filterMatched], () => { page.value = 1; }, { deep: true });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtMnt(n) {
@@ -1508,12 +1508,14 @@ function setSort(field) {
 async function loadTransactions() {
   loading.value = true;
   try {
-    const res = await manageBankTransaction({ action: 'list' });
-    if (res.success) {
-      transactions.value = res.transactions || [];
-    }
-    const accRes = await manageBankTransaction({ action: 'listAccounts' });
-    if (accRes.success) accounts.value = accRes.accounts || [];
+    const constraints = [orderBy('date', 'desc'), limit(2000)];
+    const snap = await getDocs(query(collection(db, 'bankTransactions'), ...constraints));
+    transactions.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Derive account list from loaded data (no second round-trip needed)
+    const nameSet = new Set();
+    transactions.value.forEach(t => { if (t.accountName) nameSet.add(t.accountName); });
+    accounts.value = [...nameSet].sort();
   } catch (e) {
     console.error(e);
   } finally {
@@ -1944,6 +1946,21 @@ onMounted(async () => {
   font-size: 0.78rem;
   margin-bottom: 3px;
 }
+.filter-cb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #f9fafb;
+  user-select: none;
+}
+.filter-cb input { cursor: pointer; margin: 0; }
+.filter-cb:has(input:checked) { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
 .edit-type-cell { min-width: 160px; }
 .edit-actions { display: flex; gap: 4px; align-items: center; }
 .btn-edit-sm {

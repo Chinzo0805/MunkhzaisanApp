@@ -28,6 +28,7 @@ import WarehouseRequestForm from '../components/WarehouseRequestForm.vue';
 import PublicProjects from '../views/PublicProjects.vue';
 import BankTransactionsView from '../views/BankTransactionsView.vue';
 import ReconcileView from '../views/ReconcileView.vue';
+import BankReportView from '../views/BankReportView.vue';
 
 
 const routes = [
@@ -200,6 +201,12 @@ const routes = [
     path: '/reconcile',
     name: 'Reconcile',
     component: ReconcileView,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/bank-report',
+    name: 'BankReport',
+    component: BankReportView,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
 ];

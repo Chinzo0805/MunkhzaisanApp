@@ -67,6 +67,12 @@ service cloud.firestore {
       allow read: if request.auth != null && isSupervisorOrAccountant();
       allow write: if false; // Only backend can create/update/delete
     }
+
+    // Bank transactions - supervisors and accountants can read directly
+    match /bankTransactions/{txnId} {
+      allow read: if request.auth != null && isSupervisorOrAccountant();
+      allow write: if false; // Only backend can create/update/delete
+    }
     
     // Settings - supervisors can read/write
     match /settings/{settingId} {
