@@ -1,70 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
-function normalizeAccountDigits(value) {
-  const raw = String(value || "").replace(/\D/g, "");
-  return raw.length > 10 ? raw.slice(-10) : raw;
-}
-
-async function resolveEmployeeBankAccount(db, employeeID, incomingAccount) {
-  const normalizedIncoming = normalizeAccountDigits(incomingAccount);
-  if (normalizedIncoming) return normalizedIncoming;
-  if (!employeeID) return "";
-
-  const empSnap = await db.collection("employees")
-    .where("Id", "==", employeeID)
-    .limit(1)
-    .get();
-  if (empSnap.empty) return "";
-
-  return normalizeAccountDigits(empSnap.docs[0].data().BankAccountNumber || "");
-}
-
-async function syncLinkedBankTransaction(db, bankTransactionId, primaryFinancialData) {
-  if (!bankTransactionId) return;
-
-  const bankRef = db.collection("bankTransactions").doc(bankTransactionId);
-  const bankDoc = await bankRef.get();
-  if (!bankDoc.exists) return;
-  const bankData = bankDoc.data() || {};
-
-  const linkedSnap = await db.collection("financialTransactions")
-    .where("bankTransactionId", "==", bankTransactionId)
-    .get();
-
-  const reconciledAmount = linkedSnap.docs.reduce((sum, d) => sum + (parseFloat(d.data().amount) || 0), 0);
-  const bankExpense = parseFloat(bankData.expense) || 0;
-
-  let reconciliationStatus = "unlinked";
-  if (linkedSnap.size > 0) {
-    if (reconciledAmount === bankExpense) reconciliationStatus = "matched";
-    else if (reconciledAmount > bankExpense) reconciliationStatus = "over";
-    else reconciliationStatus = "partial";
-  }
-
-  const src = primaryFinancialData || (linkedSnap.size > 0 ? linkedSnap.docs[0].data() : null);
-  const requesterName = src
-    ? String(src.employeeFirstName || "").trim() || String(src.employeeLastName || "").trim()
-    : "";
-
-  const updateData = {
-    reconciledAmount,
-    reconciliationStatus,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
-
-  if (src) {
-    updateData.type = src.bankType || src.purpose || "";
-    updateData.subtype = src.bankSubType || src.type || "";
-    updateData.requesterID = src.employeeID || "";
-    updateData.requesterName = requesterName || bankData.requesterName || "";
-    updateData.projectID = src.projectID || "";
-    updateData.projectName = src.projectLocation || "";
-  }
-
-  await bankRef.update(updateData);
-}
-
 /**
  * Cloud Function to manage Financial Transactions (Create, Update, Delete)
  * Handles CRUD operations for the financialTransactions collection
@@ -86,16 +22,10 @@ exports.manageFinancialTransaction = functions
       const db = admin.firestore();
       const { action, transaction } = req.body;
 
-      if (!action) {
+      if (!action || !transaction) {
         return res.status(400).json({
           success: false,
-          error: "Missing action",
-        });
-      }
-      if (action !== "bulkFillMeta" && !transaction) {
-        return res.status(400).json({
-          success: false,
-          error: "Missing transaction data",
+          error: "Missing action or transaction data",
         });
       }
       if (action === "create") {
@@ -107,9 +37,8 @@ exports.manageFinancialTransaction = functions
           });
         }
 
-        // Validate purpose — accept both new bankType values and legacy values
+        // Validate purpose values (must match bankTransactions.type taxonomy)
         const validPurposes = [
-          // New-style (bankType values)
           "Шууд зардал",
           "Хүний нөөцтэй холбоотой зардал",
           "Үйл ажиллагааны зардал",
@@ -120,63 +49,165 @@ exports.manageFinancialTransaction = functions
           "Бусад зардал",
           "Орлого",
           "Дотоод шилжүүлэг",
-          // Legacy values (accepted until migration is complete)
-          "Төсөлд", "Цалингийн урьдчилгаа", "Бараа материал/Хангамж авах",
-          "хувийн зарлага", "Оффис хэрэглээний зардал", "Хоол/томилолт",
         ];
-        // We check the effective bankType (which may come from bankType field)
-        const _effectivePurpose = (transaction.bankType || transaction.purpose || "").trim();
-        if (_effectivePurpose && !validPurposes.includes(_effectivePurpose)) {
+        if (!validPurposes.includes(transaction.purpose)) {
           return res.status(400).json({
             success: false,
             error: "Invalid purpose value",
           });
         }
 
-        // Normalise: purpose==bankType, type==bankSubType
-        // Caller may send either the old fields or the new fields; we trust
-        // bankType/bankSubType when present, otherwise fall back to purpose/type.
-        const _bankType    = (transaction.bankType    || transaction.purpose || "").trim();
-        const _bankSubType = (transaction.bankSubType || transaction.type    || "").trim();
+        // If purpose is "Шууд зардал", projectID and type are mandatory
+        if (transaction.purpose === "Шууд зардал") {
+          if (!transaction.projectID) {
+            return res.status(400).json({
+              success: false,
+              error: "ProjectID is required when purpose is Шууд зардал",
+            });
+          }
+          if (!transaction.type) {
+            return res.status(400).json({
+              success: false,
+              error: "Type is required when purpose is Шууд зардал",
+            });
+          }
+        }
 
-        const employeeBankAccount = await resolveEmployeeBankAccount(
-          db,
-          transaction.employeeID,
-          transaction.employeeBankAccount
-        );
+        // Business rule: Employee can only receive ONE of food money OR business trip per day (mutually exclusive)
+        if ((transaction.type === "Томилолт" || transaction.type === "Хоолны мөнгө") && transaction.employeeID) {
+          const dateStr = transaction.date.split("T")[0];
+          const employeeIdNum = typeof transaction.employeeID === 'number' 
+            ? transaction.employeeID 
+            : parseInt(transaction.employeeID);
+
+          // Check for the opposite type on the same day (any project)
+          const oppositeType = transaction.type === "Томилолт" ? "Хоолны мөнгө" : "Томилолт";
+          
+          const oppositeSnapshot = await db.collection("financialTransactions")
+            .where("employeeID", "==", employeeIdNum)
+            .where("type", "==", oppositeType)
+            .get();
+
+          const oppositeRecords = oppositeSnapshot.docs.filter(doc => {
+            const docDate = doc.data().date;
+            const docDateStr = typeof docDate === "string" ? docDate.split("T")[0] : docDate;
+            return docDateStr === dateStr;
+          });
+
+          if (oppositeRecords.length > 0) {
+            const currentTypeMsg = transaction.type === "Томилолт" ? "томилолтын мөнгө" : "хоолны мөнгө";
+            const oppositeTypeMsg = oppositeType === "Томилолт" ? "томилолтын мөнгө" : "хоолны мөнгө";
+            return res.status(400).json({
+              success: false,
+              error: `Энэ ажилтан тухайн өдөр ${oppositeTypeMsg} аль хэдийн авсан байна. Өдөрт нэг төрлийн мөнгө л авах боломжтой (хоолны мөнгө эсвэл томилолт).`,
+            });
+          }
+        }
+
+        // Business rule: One person can take only 1 business trip per day per project
+        if (transaction.type === "Томилолт" && transaction.employeeID && transaction.projectID) {
+          // Get the date in YYYY-MM-DD format
+          const dateStr = transaction.date.split("T")[0];
+          // Convert employeeID to number for comparison
+          const employeeIdNum = typeof transaction.employeeID === 'number' 
+            ? transaction.employeeID 
+            : parseInt(transaction.employeeID);
+
+          const existingTripsSnapshot = await db.collection("financialTransactions")
+            .where("employeeID", "==", employeeIdNum)
+            .where("type", "==", "Томилолт")
+            .where("projectID", "==", transaction.projectID)
+            .get();
+
+          // Filter by date in memory (since Firestore doesn't support multiple range queries)
+          const existingTrips = existingTripsSnapshot.docs.filter(doc => {
+            const docDate = doc.data().date;
+            const docDateStr = typeof docDate === "string" ? docDate.split("T")[0] : docDate;
+            return docDateStr === dateStr;
+          });
+
+          if (existingTrips.length > 0) {
+            return res.status(400).json({
+              success: false,
+              error: "Энэ ажилтан тухайн өдөр энэ төсөлд томилолтын мөнгө аль хэдийн авсан байна. Төсөлд өдөрт нэг удаа л авах боломжтой.",
+            });
+          }
+        }
+
+        // Business rule: Food money can be given twice per day per project, but needs confirmation
+        if (transaction.type === "Хоолны мөнгө" && transaction.employeeID && transaction.projectID) {
+          // Get the date in YYYY-MM-DD format
+          const dateStr = transaction.date.split("T")[0];
+          // Convert employeeID to number for comparison
+          const employeeIdNum = typeof transaction.employeeID === 'number' 
+            ? transaction.employeeID 
+            : parseInt(transaction.employeeID);
+
+          const existingFoodSnapshot = await db.collection("financialTransactions")
+            .where("employeeID", "==", employeeIdNum)
+            .where("type", "==", "Хоолны мөнгө")
+            .where("projectID", "==", transaction.projectID)
+            .get();
+
+          // Filter by date in memory
+          const existingFood = existingFoodSnapshot.docs.filter(doc => {
+            const docDate = doc.data().date;
+            const docDateStr = typeof docDate === "string" ? docDate.split("T")[0] : docDate;
+            return docDateStr === dateStr;
+          });
+
+          if (existingFood.length >= 2) {
+            return res.status(400).json({
+              success: false,
+              error: "Энэ ажилтан тухайн өдөр энэ төсөлд хоолны мөнгө 2 удаа авсан байна. Төсөлд өдөрт хамгийн ихдээ 2 удаа л авах боломжтой.",
+            });
+          } else if (existingFood.length === 1) {
+            // Return a warning that needs confirmation
+            if (!transaction.confirmDuplicate) {
+              return res.status(400).json({
+                success: false,
+                error: "DUPLICATE_FOOD_WARNING",
+                message: "Энэ ажилтан тухайн өдөр энэ төсөлд хоолны мөнгө 1 удаа авсан байна. Дахин нэмэх үү?",
+                needsConfirmation: true,
+              });
+            }
+          }
+        }
+
+        // Resolve employeeBankAccount from employee record if not provided
+        let employeeBankAccount = transaction.employeeBankAccount || "";
+        if (!employeeBankAccount && transaction.employeeID) {
+          const empSnap = await db.collection("employees")
+            .where("Id", "==", typeof transaction.employeeID === 'number' ? transaction.employeeID : parseInt(transaction.employeeID))
+            .limit(1).get();
+          if (!empSnap.empty) employeeBankAccount = empSnap.docs[0].data().BankAccountNumber || "";
+        }
 
         // Create new transaction with auto-generated ID
-        // Note: projectID and type are optional on all categories
         const docRef = await db.collection("financialTransactions").add({
           date: transaction.date,
-          amount: Number(transaction.amount) || 0,
-          purpose:    _bankType,
-          type:       _bankSubType,
-          bankType:   _bankType,
-          bankSubType: _bankSubType,
           projectID: transaction.projectID || "",
           projectLocation: transaction.projectLocation || "",
           employeeID: transaction.employeeID || "",
           employeeFirstName: transaction.employeeFirstName || "",
-          employeeLastName: transaction.employeeLastName || "",
-          employeeBankAccount,
-          comment: transaction.comment || "",
+          employeeBankAccount: employeeBankAccount,
+          amount: parseFloat(transaction.amount) || 0,
+          type: transaction.type || "",
+          purpose: transaction.purpose,
+          // bankType / bankSubType mirror bankTransactions.type / subtype for reconciliation
+          bankType: transaction.purpose || "",
+          bankSubType: transaction.type || "",
           ebarimt: transaction.ebarimt || false,
-          "НӨАТ": transaction["НӨАТ"] || false,
+          НӨАТ: transaction.НӨАТ || false,
+          comment: transaction.comment || "",
           isEbarimtReceived: transaction.isEbarimtReceived || false,
           isNOATinSystem: transaction.isNOATinSystem || false,
-          bankTransactionId: transaction.bankTransactionId || "",
-          source: transaction.source || "",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Get the created document with its ID
         const newDoc = await docRef.get();
         const newTransaction = { id: newDoc.id, ...newDoc.data() };
-
-        if (newTransaction.bankTransactionId) {
-          await syncLinkedBankTransaction(db, newTransaction.bankTransactionId, newTransaction);
-        }
 
         console.log("Created financial transaction:", newTransaction.id);
         return res.status(200).json({
@@ -202,16 +233,14 @@ exports.manageFinancialTransaction = functions
           });
         }
 
-        // Normalise: purpose==bankType, type==bankSubType
-        const _updBankType    = (transaction.bankType    || transaction.purpose || "").trim();
-        const _updBankSubType = (transaction.bankSubType || transaction.type    || "").trim();
-
-        const oldBankTransactionId = doc.data().bankTransactionId || "";
-        const employeeBankAccount = await resolveEmployeeBankAccount(
-          db,
-          transaction.employeeID,
-          transaction.employeeBankAccount
-        );
+        // Resolve employeeBankAccount from employee record if not provided
+        let employeeBankAccount = transaction.employeeBankAccount || "";
+        if (!employeeBankAccount && transaction.employeeID) {
+          const empSnap = await db.collection("employees")
+            .where("Id", "==", typeof transaction.employeeID === 'number' ? transaction.employeeID : parseInt(transaction.employeeID))
+            .limit(1).get();
+          if (!empSnap.empty) employeeBankAccount = empSnap.docs[0].data().BankAccountNumber || "";
+        }
 
         // Update transaction
         const updateData = {
@@ -220,29 +249,55 @@ exports.manageFinancialTransaction = functions
           projectLocation: transaction.projectLocation || "",
           employeeID: transaction.employeeID || "",
           employeeFirstName: transaction.employeeFirstName || "",
-          employeeLastName: transaction.employeeLastName || "",
-          employeeBankAccount,
+          employeeBankAccount: employeeBankAccount,
           amount: parseFloat(transaction.amount) || 0,
-          purpose:    _updBankType,
-          type:       _updBankSubType,
-          bankType:   _updBankType,
-          bankSubType: _updBankSubType,
+          type: transaction.type || "",
+          purpose: transaction.purpose,
+          // bankType / bankSubType mirror bankTransactions.type / subtype for reconciliation
+          bankType: transaction.purpose || "",
+          bankSubType: transaction.type || "",
           ebarimt: transaction.ebarimt || false,
           НӨАТ: transaction.НӨАТ || false,
           comment: transaction.comment || "",
           isEbarimtReceived: transaction.isEbarimtReceived || false,
           isNOATinSystem: transaction.isNOATinSystem || false,
-          bankTransactionId: transaction.bankTransactionId !== undefined ? transaction.bankTransactionId : (doc.data().bankTransactionId || ""),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
         await docRef.update(updateData);
 
-        if (updateData.bankTransactionId) {
-          await syncLinkedBankTransaction(db, updateData.bankTransactionId, updateData);
-        }
-        if (oldBankTransactionId && oldBankTransactionId !== updateData.bankTransactionId) {
-          await syncLinkedBankTransaction(db, oldBankTransactionId);
+        // If this fin txn is linked to a bank txn, sync classification + recompute reconciliation
+        const linkedBankTxnId = doc.data().bankTransactionId || null;
+        if (linkedBankTxnId) {
+          const bankRef = db.collection("bankTransactions").doc(linkedBankTxnId);
+          const bankDoc = await bankRef.get();
+          if (bankDoc.exists) {
+            const bankData = bankDoc.data();
+            const bankExpense = parseFloat(bankData.expense) || 0;
+            // Re-sum all fin txns linked to this bank txn (after update)
+            const linkedSnap = await db.collection("financialTransactions")
+              .where("bankTransactionId", "==", linkedBankTxnId)
+              .get();
+            const reconciledAmount = linkedSnap.docs.reduce((s, d) => s + (parseFloat(d.data().amount) || 0), 0);
+            let reconciliationStatus = "unlinked";
+            if (linkedSnap.size > 0) {
+              if (Math.abs(reconciledAmount - bankExpense) < 0.01) reconciliationStatus = "matched";
+              else if (reconciledAmount > bankExpense) reconciliationStatus = "over";
+              else reconciliationStatus = "partial";
+            }
+            await bankRef.update({
+              requesterID:   updateData.employeeID        || "",
+              requesterName: updateData.employeeFirstName || "",
+              projectID:     updateData.projectID         || "",
+              projectName:   updateData.projectLocation   || "",
+              type:          updateData.bankType          || "",
+              subtype:       updateData.bankSubType       || "",
+              reconciledAmount,
+              reconciliationStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.log("Synced bank transaction", linkedBankTxnId, "after fin txn update");
+          }
         }
 
         console.log("Updated financial transaction:", transaction.id);
@@ -269,13 +324,35 @@ exports.manageFinancialTransaction = functions
           });
         }
 
-        const oldData = doc.data() || {};
-        const oldBankTransactionId = oldData.bankTransactionId || "";
+        const finData = doc.data();
+        const linkedBankTxnId = finData.bankTransactionId || null;
 
         await docRef.delete();
 
-        if (oldBankTransactionId) {
-          await syncLinkedBankTransaction(db, oldBankTransactionId);
+        // If this financial transaction was linked to a bank transaction,
+        // recompute the bank transaction's reconciliation status
+        if (linkedBankTxnId) {
+          const bankRef = db.collection("bankTransactions").doc(linkedBankTxnId);
+          const bankDoc = await bankRef.get();
+          if (bankDoc.exists) {
+            const bankData = bankDoc.data();
+            const bankExpense = parseFloat(bankData.expense) || 0;
+            const remainingSnap = await db.collection("financialTransactions")
+              .where("bankTransactionId", "==", linkedBankTxnId)
+              .get();
+            const reconciledAmount = remainingSnap.docs.reduce((s, d) => s + (parseFloat(d.data().amount) || 0), 0);
+            let reconciliationStatus = "unlinked";
+            if (remainingSnap.size > 0) {
+              if (reconciledAmount === bankExpense) reconciliationStatus = "matched";
+              else if (reconciledAmount > bankExpense) reconciliationStatus = "over";
+              else reconciliationStatus = "partial";
+            }
+            await bankRef.update({
+              reconciledAmount,
+              reconciliationStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
         }
 
         console.log("Deleted financial transaction:", transaction.id);
@@ -283,62 +360,10 @@ exports.manageFinancialTransaction = functions
           success: true,
           message: "Financial transaction deleted successfully",
         });
-      } else if (action === "bulkFillMeta") {
-        const BANK_TYPE_MAP = {
-          "Хоол/томилолт|Хоолны мөнгө":         { bankType: "Шууд зардал", bankSubType: "Хоолны мөнгө" },
-          "Хоол/томилолт|Томилолт":              { bankType: "Шууд зардал", bankSubType: "Томилолт" },
-          "Цалингийн урьдчилгаа|":               { bankType: "Хүний нөөцтэй холбоотой зардал", bankSubType: "Цалин, нэмэгдэл, урамшуулал" },
-          "Төсөлд|Түлш":                        { bankType: "Шууд зардал", bankSubType: "Тээвэр, шатахуун" },
-          "Төсөлд|Бараа материал":              { bankType: "Шууд зардал", bankSubType: "Бараа материал" },
-          "Төсөлд|Бусдад өгөх ажлын хөлс":      { bankType: "Шууд зардал", bankSubType: "Бусдад өгөх ажлын хөлс" },
-          "Төсөлд|Машин засварын зардал":      { bankType: "Үйл ажиллагааны зардал", bankSubType: "Засвар үйлчилгээ" },
-          "Оффис хэрэглээний зардал|":          { bankType: "Үйл ажиллагааны зардал", bankSubType: "" },
-          "хувийн зарлага|":                    { bankType: "Захиргаа, удирдлагын зардал", bankSubType: "Менежментийн цалин" },
-          "Бараа материал/Хангамж авах|":      { bankType: "Үйл ажиллагааны зардал", bankSubType: "Бараа материал татах" },
-        };
-
-        // Build employee account map (digits only, last 10)
-        const empSnap = await db.collection("employees").get();
-        const empAcctMap = {};
-        empSnap.forEach(doc => {
-          const d = doc.data();
-          const raw = String(d.BankAccountNumber || "").replace(/\D/g, "");
-          const acct = raw.length > 10 ? raw.slice(-10) : raw;
-          if (d.Id && acct) empAcctMap[d.Id] = acct;
-        });
-
-        const finSnap = await db.collection("financialTransactions").get();
-        const docs = finSnap.docs;
-        let updated = 0;
-
-        for (let i = 0; i < docs.length; i += 500) {
-          const batch = db.batch();
-          docs.slice(i, i + 500).forEach(doc => {
-            const d = doc.data();
-            const purpose = d.purpose || "";
-            const type = d.type || "";
-            const key = purpose + "|" + type;
-            const mapping = BANK_TYPE_MAP[key] || null;
-            const acct = d.employeeID ? (empAcctMap[d.employeeID] || d.employeeBankAccount || "") : (d.employeeBankAccount || "");
-            batch.update(doc.ref, {
-              bankType: mapping ? mapping.bankType : (d.bankType || ""),
-              bankSubType: mapping ? mapping.bankSubType : (d.bankSubType || ""),
-              employeeBankAccount: acct,
-            });
-            updated++;
-          });
-          await batch.commit();
-        }
-
-        return res.status(200).json({
-          success: true,
-          message: `Бүх дүүрслэл: ${updated} бичлэг шинэчлэгдлэв`,
-          count: updated,
-        });
       } else {
         return res.status(400).json({
           success: false,
-          error: "Invalid action. Use 'create', 'update', 'delete', or 'bulkFillMeta'",
+          error: "Invalid action. Use 'create', 'update', or 'delete'",
         });
       }
     } catch (error) {

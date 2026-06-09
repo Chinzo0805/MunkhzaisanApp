@@ -527,7 +527,7 @@ async function submitCreate() {
       EngineerWorkHour: 0, NonEngineerWorkHour: 0,
       additionalHour: 0, additionalValue: 0,
       IncomeHR: 0, IncomeCar: 0, IncomeMaterial: 0,
-      ExpenceHR: 0, ExpenceCar: 0, ExpenceMaterial: 0, ExpenceHSE: 0,
+      ExpenceCar: 0, ExpenceMaterial: 0, ExpenceHSE: 0,
       BaseAmount: 0, EngineerHand: 0, TeamBounty: 0,
       NonEngineerBounty: 0, OvertimeBounty: 0, OvertimeHours: 0,
       WorkingHours: 0, HourPerformance: 0,

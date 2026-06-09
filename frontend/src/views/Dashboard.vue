@@ -467,10 +467,14 @@ async function saveMyInfo() {
 
 // Projects where the logged-in employee is the responsible engineer
 const myProjectIds = computed(() => {
+  const empId = authStore.effectiveEmployeeId;
   const firstName = authStore.userData?.employeeFirstName;
-  if (!firstName) return [];
+  if (!empId && !firstName) return [];
   return projectsStore.projects
-    .filter(p => p.ResponsibleEmp === firstName)
+    .filter(p => {
+      if (empId != null && p.ResponsibleEmpId != null) return Number(p.ResponsibleEmpId) === Number(empId);
+      return p.ResponsibleEmp === firstName;
+    })
     .map(p => p.id);
 });
 

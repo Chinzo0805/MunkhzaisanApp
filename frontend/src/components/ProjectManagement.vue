@@ -216,10 +216,6 @@
                 <span class="kcalc-sep" v-if="project.OvertimeHours">·</span>
                 <span class="kcalc-value" v-if="project.OvertimeHours">{{ formatNumber(project.OvertimeHours) }}ц</span>
               </div>
-              <div class="kcard-calc-row" v-else-if="project.projectType === 'unpaid' && project.EmployeeLaborCost">
-                <span class="kcalc-label">💼</span>
-                <span class="kcalc-value kcalc-cost">Цалин: {{ formatNumber(project.EmployeeLaborCost || 0) }}₮</span>
-              </div>
               <div class="kcard-footer">
                 <span class="kcard-id">#{{ project.id }}</span>
                 <span class="kcard-profit"
@@ -256,6 +252,7 @@
             <button v-if="editingItem" type="button" @click="activeTab = 'ta'" :class="['form-tab', activeTab === 'ta' ? 'form-tab-active' : '']">📅 TA</button>
             <button v-if="editingItem" type="button" @click="activeTab = 'fintxn'" :class="['form-tab', activeTab === 'fintxn' ? 'form-tab-active' : '']">💳 Шууд зардал</button>
             <button v-if="editingItem" type="button" @click="activeTab = 'banktxn'" :class="['form-tab', activeTab === 'banktxn' ? 'form-tab-active' : '']">🏦 Дансны гүйлгээ</button>
+            <button v-if="editingItem" type="button" @click="activeTab = 'profit'" :class="['form-tab', activeTab === 'profit' ? 'form-tab-active' : '']">📊 Ү/А ашиг</button>
           </div>
 
           <!-- ═══════════════════════════════ TAB 1: BASIC ═══════════════════════════════ -->
@@ -333,9 +330,13 @@
             <div class="form-grid-3">
               <div class="form-group">
                 <label>Хариуцах ажилтан</label>
-                <select v-model="form.ResponsibleEmp" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                <select
+                  :value="form.ResponsibleEmpId || ''"
+                  :disabled="!isEditMode"
+                  :style="!isEditMode ? 'background-color: #f9fafb;' : ''"
+                  @change="onResponsibleEmpSelect">
                   <option value="">Ажилтан сонгох...</option>
-                  <option v-for="emp in workingEmployees" :key="emp.NumID" :value="emp.FirstName">{{ emp.FirstName }} {{ emp.LastName }}</option>
+                  <option v-for="emp in workingEmployees" :key="emp.Id ?? emp.NumID" :value="emp.Id ?? emp.NumID">{{ emp.FirstName }} {{ emp.LastName || emp.EmployeeLastName }}</option>
                 </select>
               </div>
               <div class="form-group">
@@ -395,6 +396,14 @@
                 <small class="hint">Income HR-г тооцоолно</small>
               </div>
               <div class="form-group">
+                <label>Урамшууллын тариф</label>
+                <select v-model="form.bountyRatesVersion" :disabled="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''">
+                  <option :value="null">— Өгөгдмөл (сүүлийн тариф) —</option>
+                  <option v-for="v in bountyRateVersions" :key="v.id" :value="v.id">{{ v.version }} — {{ v.label }}</option>
+                </select>
+                <small class="hint">Дуусгасан төсөлд тогтсон тариф өөрчлөгдөхгүй</small>
+              </div>
+              <div class="form-group">
                 <label>Төлөвлөгдсөн цаг</label>
                 <input :value="formatNumber(form.PlannedHour || 0)" type="text" readonly style="background-color: #f5f5f5;" />
                 <small class="hint">WosHour × 3</small>
@@ -439,9 +448,9 @@
 
             <div v-if="form.projectType === 'unpaid' || form.projectType === 'overtime'" class="form-grid-2" style="margin-top: 8px;">
               <div class="form-group">
-                <label>Ажилтны цалингийн зардал</label>
-                <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
-                <small class="hint">Salary/160ц × Цаг (TA-аас)</small>
+                <label>Цалингийн зардал (ИТА дундаж)</label>
+                <input :value="formatNumber(form.ExpenseSalary || 0) + '₮'" type="text" readonly style="background-color: #ede9fe; font-weight: 600; color: #7c3aed;" />
+                <small class="hint">ИТА дундаж × 1.3 / 168 × Нийт цаг</small>
               </div>
             </div>
           </div>
@@ -467,10 +476,6 @@
                   <small class="hint" v-else>Хасалтгүй (100%)</small>
                 </div>
                 <div class="form-group">
-                  <label>HR зардал</label>
-                  <input v-model.number="form.ExpenceHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="calculateFinancials" />
-                </div>
-                <div class="form-group">
                   <label>HR зардал (гүйлгээнээс)</label>
                   <input :value="formatNumber(form.ExpenseHRFromTrx || 0) + '₮'" type="text" readonly style="background-color: #f5f5f5;" />
                   <small class="hint">Ажлын хөлс, томилолт, хоол</small>
@@ -490,14 +495,14 @@
                 <div class="form-group">
                   <label>Инженерийн урамшуулал</label>
                   <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-                  <small class="hint">Гүйцэтгэлийн дагуу тохируулсан</small>
+                  <small class="hint">TeamBounty − NonEngineerBounty</small>
                 </div>
               </div>
               <div v-if="form.projectType === 'paid'" class="form-grid-3">
                 <div class="form-group">
                   <label>Инженер бус урамшуулал</label>
                   <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-                  <small class="hint">NonEngineerHour × 5,000₮</small>
+                  <small class="hint">ManualBountyHours × 5,000₮</small>
                 </div>
               </div>
 
@@ -508,24 +513,21 @@
                   <input :value="formatNumber(form.OvertimeBounty || 0) + '₮'" type="text" readonly style="background-color: #fef9c3; font-weight: 600; color: #b45309;" />
                   <small class="hint">OvertimeHours × 15,000₮</small>
                 </div>
-                <div class="form-group">
-                  <label>Ажилтны цалингийн зардал</label>
-                  <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
-                </div>
-              </div>
-
-              <!-- Unpaid labor cost -->
-              <div v-if="form.projectType === 'unpaid'" class="form-grid-2">
-                <div class="form-group">
-                  <label>Ажилтны цалингийн зардал</label>
-                  <input :value="formatNumber(form.EmployeeLaborCost || 0) + '₮'" type="text" readonly style="background-color: #fee2e2; font-weight: 600; color: #dc2626;" />
-                </div>
               </div>
 
               <div class="form-grid-1">
                 <div class="form-group profit-field" :class="(form.ProfitHR||0) >= 0 ? 'profit-pos-bg' : 'profit-neg-bg'">
                   <label>HR ашиг</label>
                   <input :value="formatNumber(form.ProfitHR)" type="text" readonly style="font-weight: 700; font-size: 15px;" />
+                </div>
+              </div>
+
+              <!-- ExpenseSalary — all project types -->
+              <div class="form-grid-2" style="margin-top: 8px;">
+                <div class="form-group">
+                  <label>Цалингийн зардал</label>
+                  <input :value="formatNumber(form.ExpenseSalary || 0) + '₮'" type="text" readonly style="background-color: #ede9fe; font-weight: 600; color: #7c3aed;" />
+                  <small class="hint">ИТА дундаж цалин × 1.3 / 168 × RealHour</small>
                 </div>
               </div>
             </div>
@@ -603,7 +605,7 @@
                 </div>
                 <div class="form-group">
                   <label>Хүлээн авах орлого <small style="color:#6b7280;">({{ form.RemainPercent ?? 100 }}%)</small></label>
-                  <input :value="formatNumber(form.ReceivingIncome || 0)" type="text" readonly :style="(form.RemainPercent != null && form.RemainPercent < 100) ? 'background-color: #fef9c3; font-weight: 700; color: #b45309;' : 'background-color: #dcfce7; font-weight: 700; color: #16a34a;'" />
+                  <input :value="formatNumber(form.PlannedReceive || 0)" type="text" readonly :style="(form.RemainPercent != null && form.RemainPercent < 100) ? 'background-color: #fef9c3; font-weight: 700; color: #b45309;' : 'background-color: #dcfce7; font-weight: 700; color: #16a34a;'" />
                   <small v-if="form.RemainPercent != null && form.RemainPercent < 100" style="color:#ef4444;">{{ (100 - form.RemainPercent).toFixed(1) }}% хасалттай</small>
                 </div>
               </div>
@@ -757,6 +759,94 @@
             </div>
           </div>
 
+          <!-- ═══════════════════════════════ TAB: Ү/А АШИГ ═══════════════════════════════ -->
+          <div v-if="activeTab === 'profit'" class="tab-content">
+
+            <!-- Орлого section -->
+            <div class="fin-section">
+              <div class="section-header sh-green">💰 Орлого</div>
+              <table class="profit-summary-table">
+                <tbody>
+                  <tr>
+                    <td>HR орлого</td>
+                    <td class="pst-num">{{ formatNumber(form.IncomeHR || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Тээврийн орлого</td>
+                    <td class="pst-num">{{ formatNumber(form.IncomeCar || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Материалын орлого</td>
+                    <td class="pst-num">{{ formatNumber(form.IncomeMaterial || 0) }}₮</td>
+                  </tr>
+                  <tr class="pst-total-row">
+                    <td>Нийт орлого</td>
+                    <td class="pst-num pst-total-val">{{ formatNumber(form.TotalIncome || ((form.IncomeHR||0)+(form.IncomeCar||0)+(form.IncomeMaterial||0))) }}₮</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Зардал section -->
+            <div class="fin-section">
+              <div class="section-header sh-red">📉 Зардал</div>
+              <table class="profit-summary-table">
+                <tbody>
+                  <tr>
+                    <td>Цалингийн зардал</td>
+                    <td class="pst-num">{{ formatNumber(form.ExpenseSalary || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>HR зардал (гүйлгээнээс)</td>
+                    <td class="pst-num">{{ formatNumber(form.ExpenseHRFromTrx || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Урамшуулал</td>
+                    <td class="pst-num">{{ formatNumber(form.TeamBounty || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Тээврийн зардал</td>
+                    <td class="pst-num">{{ formatNumber(form.ExpenceCar || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Материалын зардал</td>
+                    <td class="pst-num">{{ formatNumber(form.ExpenceMaterial || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>HSE зардал</td>
+                    <td class="pst-num">{{ formatNumber(form.ExpenceHSE || 0) }}₮</td>
+                  </tr>
+                  <tr v-if="(form.additionalValue || 0) > 0">
+                    <td>Нэмэлт зардал <small style="color:#9ca3af;">(HR ашгаас)</small></td>
+                    <td class="pst-num">{{ formatNumber(form.additionalValue || 0) }}₮</td>
+                  </tr>
+                  <tr class="pst-total-row">
+                    <td>Нийт зардал</td>
+                    <td class="pst-num pst-total-val">{{ formatNumber(form.TotalExpence || 0) }}₮</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Ашгийн тайлбар section -->
+            <div class="fin-section">
+              <div class="section-header" :class="(form.TotalProfit || 0) >= 0 ? 'sh-green' : 'sh-red'">📊 Ашгийн тайлбар</div>
+              <table class="profit-summary-table">
+                <tbody>
+                  <tr class="pst-total-row" :class="(form.TotalProfit || 0) >= 0 ? 'pst-profit-pos' : 'pst-profit-neg'">
+                    <td style="font-weight:700;">Нийт ашиг</td>
+                    <td class="pst-num" style="font-size:18px; font-weight:800;">{{ formatNumber(form.TotalProfit || 0) }}₮</td>
+                  </tr>
+                  <tr>
+                    <td>Менежерийн цалин <small style="color:#9ca3af;">(ашгийн 2%)</small></td>
+                    <td class="pst-num" style="color:#7c3aed; font-weight:600;">{{ formatNumber((form.TotalProfit || 0) > 0 ? Math.round((form.TotalProfit || 0) * 0.02) : 0) }}₮</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
           <div class="form-actions">
             <button v-if="editingItem && !isEditMode" type="button" @click="isEditMode = true" class="edit-btn">
               Засах
@@ -878,7 +968,7 @@ import { useProjectsStore } from '../stores/projects';
 import { useCustomersStore } from '../stores/customers';
 import { useEmployeesStore } from '../stores/employees';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
-import { manageProject, mergeProjects, manageFinancialTransaction, manageBankTransaction } from '../services/api';
+import { manageProject, mergeProjects, manageFinancialTransaction, manageBankTransaction, manageBountyRates } from '../services/api';
 import { db } from '../config/firebase';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
@@ -888,6 +978,8 @@ const employeesStore = useEmployeesStore();
 const financialTransactionsStore = useFinancialTransactionsStore();
 
 // Ensure customers, employees and financial transactions are loaded
+const bountyRateVersions = ref([]);  // [{id, version, label}]
+
 onMounted(async () => {
   if (customersStore.customers.length === 0) {
     await customersStore.fetchCustomers();
@@ -897,6 +989,13 @@ onMounted(async () => {
   }
   if (financialTransactionsStore.transactions.length === 0) {
     financialTransactionsStore.fetchTransactions();
+  }
+  // Load bounty rate versions for the selector
+  try {
+    const r = await manageBountyRates('list');
+    bountyRateVersions.value = (r.versions || []).filter(v => !v.isDefault);
+  } catch (e) {
+    console.warn('Could not load bounty rate versions', e);
   }
 });
 
@@ -989,6 +1088,10 @@ const mergeAllowed = computed(() => {
   const c = mergeChecks.value;
   return c && c.customer.match && c.projectType.match && c.responsible.match;
 });
+
+// ── Profit tab computed values ────────────────────────────────────────────────
+const profitTabTotalExpense = computed(() => form.value.TotalExpence || 0);
+const profitTabProfit = computed(() => (form.value.TotalIncome || 0) - profitTabTotalExpense.value);
 
 async function confirmMerge() {
   mergeError.value = '';
@@ -1109,14 +1212,14 @@ async function onDrop(status, event) {
       id: project.id, customer: project.customer, type: project.type, subtype: project.subtype,
       projectType: project.projectType || 'paid',
       siteLocation: project.siteLocation, StartDate: project.StartDate, EndDate: project.EndDate,
-      ResponsibleEmp: project.ResponsibleEmp, Detail: project.Detail, Comment: project.Comment,
+      ResponsibleEmp: project.ResponsibleEmp, ResponsibleEmpId: project.ResponsibleEmpId ?? '', Detail: project.Detail, Comment: project.Comment,
       referenceIdfromCustomer: project.referenceIdfromCustomer, Status: status,
       WosHour: project.WosHour, BaseAmount: project.BaseAmount, EngineerHand: project.EngineerHand,
       TeamBounty: project.TeamBounty, PlannedHour: project.PlannedHour, RealHour: project.RealHour,
       EngineerWorkHour: project.EngineerWorkHour, NonEngineerWorkHour: project.NonEngineerWorkHour,
       NonEngineerBounty: project.NonEngineerBounty, HourPerformance: project.HourPerformance,
       additionalHour: project.additionalHour, additionalValue: project.additionalValue,
-      AdditionalOwner: project.AdditionalOwner, IncomeHR: project.IncomeHR, ExpenceHR: project.ExpenceHR,
+      AdditionalOwner: project.AdditionalOwner, IncomeHR: project.IncomeHR,
       IncomeCar: project.IncomeCar, ExpenceCar: project.ExpenceCar, IncomeMaterial: project.IncomeMaterial,
       ExpenceMaterial: project.ExpenceMaterial, ExpenceHSE: project.ExpenceHSE,
       ProfitHR: project.ProfitHR, ProfitCar: project.ProfitCar, ProfitMaterial: project.ProfitMaterial,
@@ -1125,6 +1228,7 @@ async function onDrop(status, event) {
       isEbarimtSent: project.isEbarimtSent || false, IncomeDate: project.IncomeDate || '',
       RemainPercent: project.RemainPercent != null ? project.RemainPercent : 100,
       ReceivingIncome: project.ReceivingIncome || 0,
+      PlannedReceive: project.PlannedReceive || project.ReceivingIncome || 0,
     };
     await manageProject('update', updatedData, project.docId);
     // onSnapshot auto-updates the store
@@ -1143,6 +1247,7 @@ const form = ref({
   StartDate: '',
   EndDate: '',
   ResponsibleEmp: '',
+  ResponsibleEmpId: '',
   Detail: '',
   Comment: '',
   referenceIdfromCustomer: '',
@@ -1155,6 +1260,7 @@ const form = ref({
   RealHour: 0,
   EngineerWorkHour: 0,
   NonEngineerWorkHour: 0,
+  ManualBountyHours: 0,
   NonEngineerBounty: 0,
   HourPerformance: 0,
   additionalHour: 0,
@@ -1165,7 +1271,6 @@ const form = ref({
   OvertimeHours: 0,
   WorkingHours: 0,
   IncomeHR: 0,
-  ExpenceHR: 0,
   ExpenseHRFromTrx: 0,
   IncomeCar: 0,
   ExpenceCar: 0,
@@ -1178,10 +1283,13 @@ const form = ref({
   TotalProfit: 0,
   RemainPercent: 100,
   ReceivingIncome: 0,
+  PlannedReceive: 0,
   InvoiceDate: '',
   isInvoiceSent: false,
   isEbarimtSent: false,
   IncomeDate: '',
+  AvgITASalary: 0,
+  ExpenseSalary: 0,
 });
 
 const emit = defineEmits(['saved']);
@@ -1189,6 +1297,13 @@ const emit = defineEmits(['saved']);
 const workingEmployees = computed(() => {
   return employeesStore.employees.filter(emp => emp.State === 'Ажиллаж байгаа');
 });
+
+function onResponsibleEmpSelect(event) {
+  const empId = event.target.value === '' ? '' : Number(event.target.value);
+  const emp = workingEmployees.value.find(e => Number(e.Id ?? e.NumID) === empId);
+  form.value.ResponsibleEmpId = empId === '' ? '' : empId;
+  form.value.ResponsibleEmp = emp ? emp.FirstName : '';
+}
 
 const filteredProjects = computed(() => {
   let items = [...projectsStore.projects];
@@ -1390,11 +1505,14 @@ function calculateFinancials() {
     form.value.OvertimeBounty = 0;
     form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-    const laborCost = form.value.EmployeeLaborCost || 0;
-    form.value.ProfitHR = Math.round(-((laborCost) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0)));
+    const laborCost = form.value.ExpenseSalary || 0;
+    form.value.ProfitHR = Math.round(-((laborCost) + (form.value.additionalValue || 0)));
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
+    form.value.PlannedReceive = 0;
+    form.value.TotalIncome = 0;
     form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
+    form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
     form.value.ReceivingIncome = 0;
     return;
   }
@@ -1410,17 +1528,23 @@ function calculateFinancials() {
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
     // OvertimeBounty is stored from server-side TA aggregation; use stored value
     form.value.OvertimeBounty = Math.round((form.value.OvertimeHours || 0) * 15000);
-    const laborCost = form.value.EmployeeLaborCost || 0;
+    const laborCost = form.value.ExpenseSalary || 0;
     form.value.ProfitHR = Math.round(
       (form.value.IncomeHR || 0) -
-      (laborCost + (form.value.OvertimeBounty || 0) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0))
+      (laborCost + (form.value.OvertimeBounty || 0) + (form.value.additionalValue || 0))
     );
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
-    form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
     const totalIncomeOT = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
     const remainPctOT = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
-    form.value.ReceivingIncome = Math.round(totalIncomeOT * remainPctOT);
+    form.value.PlannedReceive = totalIncomeOT;
+    form.value.TotalIncome = Math.round(totalIncomeOT * remainPctOT);
+    const totalExpenceOT = (form.value.ExpenseSalary || 0) + (form.value.OvertimeBounty || 0) +
+      (form.value.ExpenseHRFromTrx || 0) + (form.value.ExpenceCar || 0) +
+      (form.value.ExpenceMaterial || 0) + (form.value.ExpenceHSE || 0);
+    form.value.TotalProfit = Math.round(form.value.TotalIncome - totalExpenceOT);
+    form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
+    form.value.ReceivingIncome = form.value.TotalIncome;
     return;
   }
 
@@ -1432,14 +1556,14 @@ function calculateFinancials() {
   form.value.TeamBounty = Math.round((form.value.WosHour || 0) * 22500);
   // PlannedHour = WosHour * 3
   form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
-  // NonEngineerBounty = NonEngineerWorkHour * 5000
-  form.value.NonEngineerBounty = Math.round((form.value.NonEngineerWorkHour || 0) * 5000);
+  // NonEngineerBounty = ManualBountyHours * 5000 (manual non-engineer assignment)
+  form.value.NonEngineerBounty = Math.round((form.value.ManualBountyHours || 0) * 5000);
   // HourPerformance = (RealHour / PlannedHour) * 100
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-  // EngineerHand = Performance-adjusted bounty (BaseAmount * (200 - performance%) / 100)
-  form.value.EngineerHand = calculateAdjustedBounty(form.value.RealHour, form.value.PlannedHour, form.value.BaseAmount);
-  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + additionalValue + ExpenceHR)
-  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.additionalValue || 0) + (form.value.ExpenceHR || 0);
+  // EngineerHand = TeamBounty − NonEngineerBounty
+  form.value.EngineerHand = Math.max(0, form.value.TeamBounty - form.value.NonEngineerBounty);
+  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + ExpenseSalary + ExpenseHRFromTrx + additionalValue)
+  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.ExpenseSalary || 0) + (form.value.ExpenseHRFromTrx || 0) + (form.value.additionalValue || 0);
   form.value.ProfitHR = Math.round((form.value.IncomeHR || 0) - totalExpenseHR);
   // ProfitCar = IncomeCar - ExpenceCar
   form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
@@ -1447,10 +1571,19 @@ function calculateFinancials() {
   form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
   // TotalProfit = ProfitHR + ProfitCar + ProfitMaterial - ExpenceHSE
   form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
-  // ReceivingIncome = TotalIncome × RemainPercent / 100
+  form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
+  // PlannedReceive = gross income; TotalIncome = PlannedReceive × RemainPercent/100
   const totalIncome = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
   const remainPct = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
-  form.value.ReceivingIncome = Math.round(totalIncome * remainPct);
+  form.value.PlannedReceive = totalIncome;
+  form.value.TotalIncome = Math.round(totalIncome * remainPct);
+  // TotalProfit = actual income − total expenses
+  const totalExpence = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) +
+    (form.value.ExpenseSalary || 0) + (form.value.ExpenseHRFromTrx || 0) +
+    (form.value.ExpenceCar || 0) + (form.value.ExpenceMaterial || 0) + (form.value.ExpenceHSE || 0);
+  form.value.TotalProfit = Math.round(form.value.TotalIncome - totalExpence);
+  form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
+  form.value.ReceivingIncome = form.value.TotalIncome;
 }
 
 function handleAddItem() {
@@ -1494,12 +1627,14 @@ function editItem(project) {
     StartDate: excelSerialToDate(project.StartDate),
     EndDate: excelSerialToDate(project.EndDate),
     bountyPayDate: project.bountyPayDate || '',
+    bountyRatesVersion: project.bountyRatesVersion ?? null,
     InvoiceDate: project.InvoiceDate || '',
     isInvoiceSent: project.isInvoiceSent || false,
     isEbarimtSent: project.isEbarimtSent || false,
     IncomeDate: project.IncomeDate || '',
     statusDates: project.statusDates || {},
     ResponsibleEmp: project.ResponsibleEmp || '',
+    ResponsibleEmpId: project.ResponsibleEmpId ?? '',
     Detail: project.Detail || '',
     Comment: project.Comment || '',
     referenceIdfromCustomer: project.referenceIdfromCustomer || '',
@@ -1512,6 +1647,7 @@ function editItem(project) {
     RealHour: project.RealHour || 0,
     EngineerWorkHour: project.EngineerWorkHour || 0,
     NonEngineerWorkHour: project.NonEngineerWorkHour || 0,
+    ManualBountyHours: project.ManualBountyHours || 0,
     NonEngineerBounty: project.NonEngineerBounty || 0,
     HourPerformance: project.HourPerformance || 0,
     additionalHour: project.additionalHour || 0,
@@ -1522,7 +1658,6 @@ function editItem(project) {
     OvertimeHours: project.OvertimeHours || 0,
     WorkingHours: project.WorkingHours || 0,
     IncomeHR: project.IncomeHR || 0,
-    ExpenceHR: project.ExpenceHR || 0,
     ExpenseHRFromTrx: project.ExpenseHRFromTrx || 0,
     IncomeCar: project.IncomeCar || 0,
     ExpenceCar: project.ExpenceCar || 0,
@@ -1533,8 +1668,15 @@ function editItem(project) {
     ProfitCar: project.ProfitCar || 0,
     ProfitMaterial: project.ProfitMaterial || 0,
     TotalProfit: project.TotalProfit || 0,
+    TotalIncome: project.TotalIncome || 0,
+    TotalExpence: project.TotalExpence || 0,
+    TeamBounty: project.TeamBounty || 0,
+    ManagerSalary: project.ManagerSalary || 0,
     RemainPercent: project.RemainPercent != null ? project.RemainPercent : 100,
     ReceivingIncome: project.ReceivingIncome || 0,
+    PlannedReceive: project.PlannedReceive || project.ReceivingIncome || 0,
+    AvgITASalary: project.AvgITASalary || 0,
+    ExpenseSalary: project.ExpenseSalary || 0,
   };
 }
 
@@ -1571,6 +1713,7 @@ function closeModal() {
     StartDate: new Date().toISOString().slice(0, 10),
     EndDate: '',
     bountyPayDate: '',
+    bountyRatesVersion: null,
     statusDates: {},
     ResponsibleEmp: '',
     Detail: '',
@@ -1585,6 +1728,7 @@ function closeModal() {
     RealHour: 0,
     EngineerWorkHour: 0,
     NonEngineerWorkHour: 0,
+    ManualBountyHours: 0,
     NonEngineerBounty: 0,
     HourPerformance: 0,
     additionalHour: 0,
@@ -1595,7 +1739,6 @@ function closeModal() {
     OvertimeHours: 0,
     WorkingHours: 0,
     IncomeHR: 0,
-    ExpenceHR: 0,
     ExpenseHRFromTrx: 0,
     IncomeCar: 0,
     ExpenceCar: 0,
@@ -1608,10 +1751,13 @@ function closeModal() {
     TotalProfit: 0,
     RemainPercent: 100,
     ReceivingIncome: 0,
+    PlannedReceive: 0,
     InvoiceDate: '',
     isInvoiceSent: false,
     isEbarimtSent: false,
     IncomeDate: '',
+    AvgITASalary: 0,
+    ExpenseSalary: 0,
   };
 }
 
@@ -2717,6 +2863,42 @@ defineExpose({
 .profit-neg-bg input {
   background-color: #fee2e2 !important;
   color: #dc2626 !important;
+}
+
+/* ── Profit Summary Table ──────────────────────────────────────────────────── */
+.profit-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.profit-summary-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.profit-summary-table tr:last-child td {
+  border-bottom: none;
+}
+.pst-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pst-total-row td {
+  font-weight: 700;
+  background: #f8fafc;
+  border-top: 2px solid #e2e8f0;
+}
+.pst-total-val {
+  font-size: 15px;
+}
+.pst-profit-pos td {
+  background: #dcfce7;
+  color: #15803d;
+}
+.pst-profit-neg td {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 /* ── Misc ─────────────────────────────────────────────────── */

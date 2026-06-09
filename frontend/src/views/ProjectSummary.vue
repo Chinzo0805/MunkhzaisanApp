@@ -165,15 +165,21 @@
               <td v-for="col in activeColumns" :key="col.key" :class="tdClass(col)">
                 <!-- EDIT MODE inputs -->
                 <template v-if="tableEditMode && rowForms[project.id] && EDITABLE_KEYS.includes(col.key)">
-                  <select v-if="col.key === 'ResponsibleEmp'"
-                    v-model="rowForms[project.id].ResponsibleEmp" class="edit-input">
+                  <select v-if="col.key === 'Status'"
+                    v-model="rowForms[project.id].Status" class="edit-input">
+                    <option v-for="s in STATUS_OPTIONS" :key="s" :value="s">{{ s }}</option>
+                  </select>
+                  <select v-else-if="col.key === 'ResponsibleEmp'"
+                    :value="rowForms[project.id].ResponsibleEmpId ?? ''"
+                    class="edit-input"
+                    @change="(e) => onSummaryResponsibleEmpSelect(project.id, e)">
                     <option value="">-- Сонгох --</option>
                     <option
-                      v-if="rowForms[project.id].ResponsibleEmp && !employeesStore.employees.some(e => (e.FirstName + ' ' + (e.EmployeeLastName || '')).trim() === rowForms[project.id].ResponsibleEmp)"
-                      :value="rowForms[project.id].ResponsibleEmp">{{ rowForms[project.id].ResponsibleEmp }}</option>
-                    <option v-for="emp in employeesStore.employees" :key="emp.id"
-                      :value="(emp.FirstName + ' ' + (emp.EmployeeLastName || '')).trim()">
-                      {{ (emp.FirstName + ' ' + (emp.EmployeeLastName || '')).trim() }}
+                      v-if="rowForms[project.id].ResponsibleEmp && !employeesStore.employees.some(e => Number(e.Id ?? e.NumID) === rowForms[project.id].ResponsibleEmpId)"
+                      :value="rowForms[project.id].ResponsibleEmpId">{{ rowForms[project.id].ResponsibleEmp }}</option>
+                    <option v-for="emp in employeesStore.employees.filter(e => e.State === 'Ажиллаж байгаа')" :key="emp.id"
+                      :value="emp.Id ?? emp.NumID">
+                      {{ emp.FirstName }} {{ emp.EmployeeLastName || '' }}
                     </option>
                   </select>
                   <input v-else-if="col.key === 'referenceIdfromCustomer'"
@@ -317,9 +323,10 @@ const ALL_COLUMNS = [
   { key: 'IncomeDate',              label: 'Орлогын огноо' },
   { key: 'isEbarimtSent',           label: 'E-баримт' },
   { key: 'TotalIncome',             label: 'Нийт орлого' },
+  { key: 'PlannedReceive',          label: 'Төлөвлөсөн орлого' },
   { key: 'TotalExpence',            label: 'Нийт зарлага' },
   { key: 'TotalProfit',             label: 'Нийт ашиг' },
-  { key: 'TotalHRExpence',          label: 'Нийт цалин' },
+  { key: 'TotalHRExpence',          label: 'Нийт цалингийн зардал' },
   { key: 'ExpenceHSE',              label: 'ХАБЭА зардал' },
   { key: 'additionalValue',         label: 'Нэмэлт үнэ' },
   // HR financial + Bounty detail (29-38)
@@ -330,10 +337,12 @@ const ALL_COLUMNS = [
   { key: 'EngineerHand',            label: 'Инженерийн урамшуулал' },
   { key: 'NonEngineerBounty',       label: 'Инженер биш урамшуулал' },
   { key: 'OvertimeBounty',          label: 'Ашиглалтын урамшуулал' },
-  { key: 'EmployeeLaborCost',       label: 'Суурь цалин' },
+  { key: 'ExpenseSalary',           label: 'Цалингийн зардал' },
+  { key: 'ExpenceManagementSalary', label: 'Удирдлагын цалингийн зардал' },
+  { key: 'ExpenceTripSalary',       label: 'Томилолтын зардал' },
   { key: 'ExpenseHRFromTrx',        label: 'Хоол/Томилолт зардал' },
   { key: 'ProfitHR',                label: 'Ашиг HR' },
-  // Car financial (39-41)
+  // Car financial (41-43)
   { key: 'IncomeCar',               label: 'Орлого Car' },
   { key: 'ExpenceCar',              label: 'Зарлага Car' },
   { key: 'ProfitCar',               label: 'Ашиг Car' },
@@ -346,22 +355,31 @@ const ALL_COLUMNS = [
 // Column groups for the toggle bar
 const COL_GROUP_BASIC    = ALL_COLUMNS.slice(0, 11);  // id..lastTADay
 const COL_GROUP_HOURS    = ALL_COLUMNS.slice(11, 20); // WosHour..HourPerformance
-const COL_GROUP_SUMMARY  = ALL_COLUMNS.slice(20, 31); // RemainPercent..additionalValue
-const COL_GROUP_HR       = ALL_COLUMNS.slice(31, 41); // IncomeHR..ProfitHR
-const COL_GROUP_CARM     = ALL_COLUMNS.slice(41);     // Car + Material
+const COL_GROUP_SUMMARY  = ALL_COLUMNS.slice(20, 32); // RemainPercent..additionalValue
+const COL_GROUP_HR       = ALL_COLUMNS.slice(32, 44); // IncomeHR..ProfitHR
+const COL_GROUP_CARM     = ALL_COLUMNS.slice(44);     // Car + Material
 
 // Keys that render as money-profit (colored)
 const PROFIT_KEYS = ['ProfitHR', 'ProfitCar', 'ProfitMaterial', 'TotalProfit'];
 // Keys that render as plain money
 const MONEY_KEYS  = [
   'IncomeHR', 'BaseAmount', 'TeamBounty', 'ExpenceHRBonus', 'EngineerHand',
-  'NonEngineerBounty', 'OvertimeBounty', 'EmployeeLaborCost', 'ExpenseHRFromTrx',
+  'NonEngineerBounty', 'OvertimeBounty', 'ExpenseSalary', 'ExpenceManagementSalary', 'ExpenceTripSalary',
+  'ExpenseHRFromTrx',
   'IncomeCar', 'ExpenceCar', 'IncomeMaterial', 'ExpenceMaterial',
-  'additionalValue', 'TotalIncome', 'TotalExpence', 'TotalHRExpence', 'ExpenceHSE',
+  'additionalValue', 'TotalIncome', 'PlannedReceive', 'TotalExpence', 'TotalHRExpence', 'ExpenceHSE',
 ];
 // Keys that are editable in table edit mode
-const EDITABLE_KEYS = ['ResponsibleEmp', 'referenceIdfromCustomer', 'bountyPayDate',
+const EDITABLE_KEYS = ['Status', 'ResponsibleEmp', 'referenceIdfromCustomer', 'bountyPayDate',
   'isInvoiceSent', 'InvoiceDate', 'IncomeDate', 'isEbarimtSent', 'RemainPercent'];
+const STATUS_OPTIONS = [
+  'Төлөвлсөн',
+  'Ажиллаж байгаа',
+  'Ажил хүлээлгэн өгөх',
+  'Нэхэмжлэх өгөх ба Шалгах',
+  'Урамшуулал олгох',
+  'Дууссан',
+];
 
 const DEFAULT_VISIBLE = [
   'id', 'customer', 'siteLocation', 'Status', 'ResponsibleEmp',
@@ -392,7 +410,7 @@ function fmtProjectDate(val) {
 }
 
 function colHeaderClass(col) {
-  if (['IncomeHR','ExpenceHRBonus','EmployeeLaborCost','ExpenseHRFromTrx','ProfitHR'].includes(col.key)) return 'financial-hr';
+  if (['IncomeHR','ExpenceHRBonus','ExpenseSalary','ExpenceManagementSalary','ExpenceTripSalary','ExpenseHRFromTrx','ProfitHR'].includes(col.key)) return 'financial-hr';
   if (['IncomeCar','ExpenceCar','ProfitCar'].includes(col.key)) return 'financial-car';
   if (['IncomeMaterial','ExpenceMaterial','ProfitMaterial'].includes(col.key)) return 'financial-material';
   if (['TotalIncome','TotalExpence','TotalProfit'].includes(col.key)) return 'financial-total';
@@ -521,11 +539,20 @@ const tableEditMode = ref(false);
 const rowForms      = ref({});
 const saving        = ref(false);
 
+function onSummaryResponsibleEmpSelect(projectId, event) {
+  const empId = event.target.value === '' ? '' : Number(event.target.value);
+  const emp = employeesStore.employees.find(e => Number(e.Id ?? e.NumID) === empId);
+  rowForms.value[projectId].ResponsibleEmpId = empId === '' ? '' : empId;
+  rowForms.value[projectId].ResponsibleEmp = emp ? emp.FirstName : '';
+}
+
 function enterEditMode() {
   rowForms.value = {};
   sortedProjects.value.forEach(p => {
     rowForms.value[p.id] = {
+      Status:                  p.Status                  || '',
       ResponsibleEmp:          p.ResponsibleEmp          || '',
+      ResponsibleEmpId:        p.ResponsibleEmpId        ?? '',
       referenceIdfromCustomer: p.referenceIdfromCustomer || '',
       bountyPayDate:           p.bountyPayDate           || '',
       isInvoiceSent:           p.isInvoiceSent           || false,
@@ -558,9 +585,12 @@ async function saveAllEdits() {
       if (!project?.docId) return;
       const clampedPct = Math.min(100, Math.max(0, form.RemainPercent != null ? form.RemainPercent : 100));
       const totalIncome    = (project.IncomeHR || 0) + (project.IncomeCar || 0) + (project.IncomeMaterial || 0);
+      const plannedReceive  = totalIncome;
       const receivingIncome = Math.round(totalIncome * clampedPct / 100);
       await updateDoc(doc(db, 'projects', project.docId), {
+        Status:                  form.Status,
         ResponsibleEmp:          form.ResponsibleEmp,
+        ResponsibleEmpId:        form.ResponsibleEmpId ?? '',
         referenceIdfromCustomer: form.referenceIdfromCustomer,
         bountyPayDate:           form.bountyPayDate,
         isInvoiceSent:           form.isInvoiceSent,
@@ -568,7 +598,9 @@ async function saveAllEdits() {
         IncomeDate:              form.IncomeDate,
         isEbarimtSent:           form.isEbarimtSent,
         RemainPercent:           clampedPct,
+        PlannedReceive:          plannedReceive,
         ReceivingIncome:         receivingIncome,
+        TotalIncome:             receivingIncome,
         updatedAt:               new Date().toISOString(),
       });
       const idx = projectsStore.projects.findIndex(p => String(p.id) === String(projectId));
@@ -576,6 +608,7 @@ async function saveAllEdits() {
         projectsStore.projects[idx] = {
           ...projectsStore.projects[idx], ...form,
           RemainPercent: clampedPct, ReceivingIncome: receivingIncome,
+          Status: form.Status,
         };
       }
     }));

@@ -13,12 +13,12 @@ const { calculateProjectMetrics } = require('./projectCalculations');
  *   - BaseAmount = WosHour × 12,500
  *   - EngineerHand = performance-adjusted bounty (BaseAmount × (200 − performance%) / 100)
  *   - NonEngineerBounty = NonEngineerWorkHour × 5,000
- *   - ProfitHR = IncomeHR − (EngineerHand + NonEngineerBounty + ExpenseHRFromTrx + ExpenceHR + additionalValue)
+ *   - ProfitHR = IncomeHR − (EngineerHand + NonEngineerBounty + ExpenseSalary + ExpenseHRFromTrx + additionalValue)
  *
  * projectType = "unpaid":
  *   - IncomeHR = 0, BaseAmount = 0, EngineerHand = 0, NonEngineerBounty = 0
- *   - EmployeeLaborCost = Σ (employee.Salary / 160h × hours on project) from TA records
- *   - ProfitHR = −(EmployeeLaborCost + ExpenseHRFromTrx + ExpenceHR + additionalValue)
+ *   - ExpenseSalary = AvgITASalary × 1.3 / 168 × RealHour
+ *   - ProfitHR = −(ExpenseSalary + ExpenseHRFromTrx + additionalValue)
  */
 exports.recalculateAllProjects = functions.runWith({
   timeoutSeconds: 540,

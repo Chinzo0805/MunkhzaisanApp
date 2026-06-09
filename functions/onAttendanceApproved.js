@@ -62,7 +62,13 @@ async function updateProjectMetricsForSingleProject(projectId) {
     if (!projectQuery.empty) {
       const projectDoc = projectQuery.docs[0];
       const projectData = projectDoc.data();
-      
+
+      // Finished projects are frozen — never recalculate bounty
+      if (projectData.Status === 'Дууссан') {
+        console.log(`Project ${projectId} is Дууссан — skipping recalculation (frozen)`);
+        return;
+      }
+
       // Use centralized calculation function
       const calculations = await calculateProjectMetrics(projectId, projectData, db);
       

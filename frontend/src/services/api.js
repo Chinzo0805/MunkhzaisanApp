@@ -455,4 +455,14 @@ export async function syncBankTransactionsFromExcel(token, folderName = 'Dansnii
   }
 }
 
+export async function manageBountyRates(action, rateData = null) {
+  try {
+    const response = await api.post('/manageBountyRates', { action, rateData });
+    return response.data;
+  } catch (error) {
+    console.error('Error managing bounty rates:', error);
+    throw error;
+  }
+}
+
 export default api;

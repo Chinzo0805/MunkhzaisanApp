@@ -125,7 +125,9 @@
                     {{ emp.Salary ? Number(emp.Salary).toLocaleString() + '₮' : '—' }}
                   </template>
                   <template v-else-if="col.key === 'isNDS'">
-                    {{ emp.isNDS !== false ? '✅' : '✖️' }}
+                    <span v-if="emp.ndsSalary === 0">НДШ-гүй</span>
+                    <span v-else-if="emp.ndsSalary > 0">Хэсэгчилсэн {{ Number(emp.ndsSalary).toLocaleString() }}₮</span>
+                    <span v-else>{{ emp.isNDS !== false ? '✅ Бүрэн' : '✖️ НДШ-гүй' }}</span>
                   </template>
                   <template v-else-if="col.key === 'autoTA'">
                     {{ emp.autoTA ? '✅' : '—' }}

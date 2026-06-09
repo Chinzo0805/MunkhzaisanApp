@@ -6,6 +6,59 @@
 const { getFirestore } = require("firebase-admin/firestore");
 
 /**
+ * Default bounty rates — used as fallback when no version is stored on a project.
+ * These match the original hardcoded values.
+ */
+const DEFAULT_BOUNTY_RATES = {
+  baseRate:            12500,   // WosHour × baseRate = BaseAmount
+  teamRate:            22500,   // WosHour × teamRate = TeamBounty
+  nonEngineerRate:      5000,   // NonEngineerHour × nonEngineerRate = NonEngineerBounty
+  overtimeRate:        15000,   // OvertimeHour × overtimeRate = OvertimeBounty
+  incomeRate:         110000,   // (WosHour + additionalHour) × incomeRate = IncomeHR (paid)
+  overtimeIncomeRate:  20000,   // WosHour × overtimeIncomeRate = IncomeHR (overtime)
+};
+
+/**
+ * Fetch bounty rates for a given version ID.
+ * Falls back to DEFAULT_BOUNTY_RATES if version is not set or document not found.
+ * @param {string|null} version  e.g. "v1", "v2"
+ * @param {Object} db
+ * @returns {Object} rates
+ */
+async function fetchBountyRates(version, db) {
+  if (!version) return { ...DEFAULT_BOUNTY_RATES };
+  try {
+    const snap = await db.collection('bountyRates').doc(version).get();
+    if (snap.exists) {
+      const d = snap.data();
+      return {
+        baseRate:            d.baseRate            ?? DEFAULT_BOUNTY_RATES.baseRate,
+        teamRate:            d.teamRate            ?? DEFAULT_BOUNTY_RATES.teamRate,
+        nonEngineerRate:     d.nonEngineerRate     ?? DEFAULT_BOUNTY_RATES.nonEngineerRate,
+        overtimeRate:        d.overtimeRate        ?? DEFAULT_BOUNTY_RATES.overtimeRate,
+        incomeRate:          d.incomeRate          ?? DEFAULT_BOUNTY_RATES.incomeRate,
+        overtimeIncomeRate:  d.overtimeIncomeRate  ?? DEFAULT_BOUNTY_RATES.overtimeIncomeRate,
+      };
+    }
+  } catch (e) {
+    console.warn(`fetchBountyRates: could not load version "${version}", using defaults`, e.message);
+  }
+  return { ...DEFAULT_BOUNTY_RATES };
+}
+
+/**
+ * Fetch the latest bounty rates version ID (ordered by effectiveFrom desc).
+ * Returns the version doc ID (e.g. "v1") or null if collection is empty.
+ * @param {Object} db
+ * @returns {string|null}
+ */
+async function fetchLatestBountyRatesVersion(db) {
+  const snap = await db.collection('bountyRates').orderBy('effectiveFrom', 'desc').limit(1).get();
+  if (snap.empty) return null;
+  return snap.docs[0].id;
+}
+
+/**
  * Calculate all project metrics including time attendance aggregation
  * @param {string} projectId - The numeric project ID (e.g., "1", "2")
  * @param {Object} projectData - Current project data
@@ -30,7 +83,7 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   let overtimeHours = 0;
   let engineerHours = 0;
   let nonEngineerHours = 0;
-  const empHoursMap = new Map(); // employeeId (int) -> total hours, for labor cost
+  let tripCount = 0;
 
   taSnapshot.forEach(doc => {
     const record = doc.data();
@@ -42,10 +95,6 @@ async function calculateProjectMetrics(projectId, projectData, db) {
     overtimeHours += overtimeHour;
     totalHours += totalHour;
 
-    // Track per-employee hours for labor cost calculation
-    const empId = parseInt(record.EmployeeID);
-    if (empId) empHoursMap.set(empId, (empHoursMap.get(empId) || 0) + totalHour);
-
     // Use Role field directly from the timeAttendance record
     // Role is already stored in each record (e.g., "Инженер", "Жолооч")
     const role = record.Role || '';
@@ -55,30 +104,54 @@ async function calculateProjectMetrics(projectId, projectData, db) {
     } else {
       nonEngineerHours += totalHour;
     }
+
+    // Count business trip (Томилолт) records
+    if ((record.Status || '').toLowerCase().trim() === 'томилолт') {
+      tripCount++;
+    }
   });
 
   console.log(`Project ${projectId} aggregation: Total=${totalHours}, Engineer=${engineerHours}, NonEngineer=${nonEngineerHours}`);
 
-  // Calculate EmployeeLaborCost: sum of (salary/160h * hours) per employee from TA records
-  // Used as the HR cost for unpaid projects (no client income, no bounty)
-  let employeeLaborCostFromTA = 0;
-  if (empHoursMap.size > 0) {
-    const empIds = Array.from(empHoursMap.keys());
-    // Firestore 'in' supports up to 30; batch if needed
-    for (let i = 0; i < empIds.length; i += 30) {
-      const batch = empIds.slice(i, i + 30);
-      const empSnap = await db.collection('employees').where('Id', 'in', batch).get();
-      empSnap.forEach(doc => {
-        const emp = doc.data();
-        const empId = parseInt(emp.Id);
-        const salary = parseFloat(emp.Salary) || 0;
-        const hours = empHoursMap.get(empId) || 0;
-        employeeLaborCostFromTA += (salary / 160) * hours; // 160h = standard mo baseline
-      });
-    }
+  // Fetch projectBountyHours for paid bounty calculation
+  const bountyHoursSnap = await db.collection('projectBountyHours')
+    .where('projectID', '==', parseInt(projectId))
+    .get();
+  let totalManualBountyHours = 0;
+  bountyHoursSnap.forEach(d => {
+    totalManualBountyHours += parseFloat(d.data().bountyHours) || 0;
+  });
+
+  // Calculate ExpenseSalary: average salary of active ИТА dept employees × 1.3 / 168 × RealHour
+  let avgITASalary = 0;
+  let maxSalaryAllEmp = 0;
+  const itaSnap = await db.collection('employees')
+    .where('Department', '==', 'ИТА')
+    .where('State', '==', 'Ажиллаж байгаа')
+    .get();
+  if (!itaSnap.empty) {
+    let itaSalarySum = 0;
+    itaSnap.forEach(doc => { itaSalarySum += parseFloat(doc.data().Salary) || 0; });
+    avgITASalary = itaSalarySum / itaSnap.size;
   }
-  calculations.EmployeeLaborCost = Math.round(employeeLaborCostFromTA);
-  
+  // Find MAX salary across ALL active employees (for management salary calculation)
+  const allEmpSnap = await db.collection('employees')
+    .where('State', '==', 'Ажиллаж байгаа')
+    .get();
+  allEmpSnap.forEach(doc => {
+    const sal = parseFloat(doc.data().Salary) || 0;
+    if (sal > maxSalaryAllEmp) maxSalaryAllEmp = sal;
+  });
+  calculations.AvgITASalary = Math.round(avgITASalary);
+  calculations.MaxSalary = Math.round(maxSalaryAllEmp);
+  calculations.TripCount = tripCount;
+  calculations.ExpenseSalary = Math.round((avgITASalary * 1.3 / 168) * totalHours);
+  // Management salary overhead: max employee salary × 1.3 / 168 × RealHour × 30%
+  calculations.ExpenceManagementSalary = Math.round((maxSalaryAllEmp * 1.3 / 168) * totalHours * 0.3);
+  // Trip (Томилолт) expense: number of trip TA records × 15,000
+  calculations.ExpenceTripSalary = Math.round(tripCount * 15000);
+
+
   // Store aggregated hours - rounded to whole numbers
   calculations.RealHour = Math.round(totalHours);
   calculations.WorkingHours = Math.round(workingHours);
@@ -95,32 +168,27 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   const isUnpaid = projectData.projectType === 'unpaid';
   const isOvertime = projectData.projectType === 'overtime';
 
-  // Calculate base amount (WosHour * 12500) - 0 for unpaid/overtime
-  calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 12500);
+  // Fetch bounty rates frozen on this project (or defaults if not stamped yet)
+  const rates = await fetchBountyRates(projectData.bountyRatesVersion || null, db);
+
+  // Calculate base amount (WosHour * baseRate) - 0 for unpaid/overtime
+  calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * rates.baseRate);
 
   // Calculate TeamBounty - 0 for unpaid/overtime
-  calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 22500);
+  calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * rates.teamRate);
 
-  // NonEngineerBounty — always from projectBountyHours (manually assigned by engineer).
-  // No fallback to TA hours — engineer must explicitly assign. Defaults to 0 until assigned.
+  // NonEngineerBounty — uses pre-fetched totalManualBountyHours (paid projects only)
   let bountyHoursForCalc = 0;
   if (!isUnpaid && !isOvertime) {
-    const manualBountySnap = await db.collection('projectBountyHours')
-      .where('projectID', '==', parseInt(projectId))
-      .get();
-    if (!manualBountySnap.empty) {
-      let manualTotal = 0;
-      manualBountySnap.docs.forEach(d => { manualTotal += parseFloat(d.data().bountyHours) || 0; });
-      bountyHoursForCalc = manualTotal;
-    }
+    bountyHoursForCalc = totalManualBountyHours;
     calculations.ManualBountyHours = Math.round(bountyHoursForCalc * 10) / 10;
   }
 
   // Calculate NonEngineerBounty - 0 for unpaid/overtime
-  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(bountyHoursForCalc * 5000);
+  calculations.NonEngineerBounty = (isUnpaid || isOvertime) ? 0 : Math.round(bountyHoursForCalc * rates.nonEngineerRate);
 
-  // Calculate OvertimeBounty (ашиглалтын илүү цаг): overtimeHours * 15,000 - only for overtime type
-  calculations.OvertimeBounty = isOvertime ? Math.round(overtimeHours * 15000) : 0;
+  // Calculate OvertimeBounty (ашиглалтын илүү цаг): overtimeHours × overtimeRate - only for overtime type
+  calculations.OvertimeBounty = isOvertime ? Math.round(overtimeHours * rates.overtimeRate) : 0;
 
   // Calculate HourPerformance (RealHour / PlannedHour * 100)
   if (plannedHour > 0) {
@@ -153,13 +221,17 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   ftSnapshot.forEach(doc => {
     const trx = doc.data();
     const amount = parseFloat(trx.amount) || 0;
-    const type = trx.type || '';
-    
-    if (type === 'Бусдад өгөх ажлын хөлс' || type === 'Томилолт' || type === 'Хоолны мөнгө') {
+    const bankType = trx.bankType || trx.purpose || '';
+    const bankSubType = trx.bankSubType || trx.type || '';
+
+    // Only count Шууд зардал transactions in project expense buckets
+    if (bankType !== 'Шууд зардал') return;
+
+    if (bankSubType === 'Хоолны мөнгө' || bankSubType === 'Томилолт' || bankSubType === 'Урамшуулал' || bankSubType === 'Бусдад өгөх ажлын хөлс') {
       expenseHRFromTrx += amount;
-    } else if (type === 'Түлш') {
+    } else if (bankSubType === 'Тээвэр, шатахуун' || bankSubType === 'Түлш') {
       expenceCar += amount;
-    } else if (type === 'Бараа материал') {
+    } else if (bankSubType === 'Бараа материал') {
       expenceMaterial += amount;
     }
   });
@@ -169,20 +241,20 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   calculations.ExpenceMaterial = Math.round(expenceMaterial);
   
   // Calculate Profit HR
-  const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
   if (isUnpaid) {
-    // No income, no bounty — actual labor cost + direct expenses
-    calculations.ProfitHR = Math.round(-(calculations.EmployeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
+    // No income, no bounty — ITA average salary cost + direct expenses
+    calculations.ProfitHR = Math.round(-(calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + expenseHRFromTrx + additionalValue));
   } else if (isOvertime) {
-    // Overtime projects: income exists, but expense = labor cost + overtime bounty
+    // Overtime projects: income exists, but expense = ITA salary cost + overtime bounty
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR -
-      (calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenseHRFromTrx + expenceHR + additionalValue)
+      (calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + calculations.OvertimeBounty + expenseHRFromTrx + additionalValue)
     );
   } else {
+    // paid: IncomeHR − (EngineerHand + NonEngineerBounty + ExpenseSalary + ManagementSalary + TripSalary + ExpenseHRFromTrx + additionalValue)
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
-      (calculations.EngineerHand + calculations.NonEngineerBounty + calculations.ExpenseHRFromTrx + expenceHR + additionalValue)
+      (calculations.EngineerHand + calculations.NonEngineerBounty + calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + calculations.ExpenseHRFromTrx + additionalValue)
     );
   }
   
@@ -191,27 +263,48 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   const incomeMaterial = parseFloat(projectData.IncomeMaterial) || 0;
   const expenceHSE = parseFloat(projectData.ExpenceHSE) || 0;
   
-  calculations.TotalIncome = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
-  if (isUnpaid) {
-    calculations.TotalExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx);
-    calculations.TotalHRExpence = Math.round(calculations.EmployeeLaborCost + expenceHR + calculations.ExpenseHRFromTrx);
-  } else if (isOvertime) {
-    calculations.TotalExpence = Math.round(calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx);
-    calculations.TotalHRExpence = Math.round(calculations.EmployeeLaborCost + calculations.OvertimeBounty + expenceHR + calculations.ExpenseHRFromTrx);
-  } else {
-    calculations.TotalExpence = Math.round(expenceHR + calculations.ExpenceCar + calculations.ExpenceMaterial + expenceHSE + additionalValue + calculations.ExpenseHRFromTrx + calculations.ExpenceHRBonus);
-    calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + calculations.ExpenseHRFromTrx);
-  }
+  // TotalHRExpence: all HR-related expenses + all bounties
+  calculations.TotalHRExpence = Math.round(
+    calculations.ExpenseSalary +
+    calculations.ExpenceManagementSalary +
+    calculations.ExpenceTripSalary +
+    calculations.ExpenseHRFromTrx +
+    calculations.EngineerHand +
+    calculations.NonEngineerBounty +
+    calculations.OvertimeBounty
+  );
+
+  // PlannedReceive = gross income (for reference)
+  calculations.PlannedReceive = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
+  // TotalIncome = PlannedReceive × RemainPercent/100 (actual adjusted income)
+  const remainPct = (parseFloat(projectData.RemainPercent) != null && !isNaN(parseFloat(projectData.RemainPercent))
+    ? parseFloat(projectData.RemainPercent) : 100) / 100;
+  calculations.TotalIncome = Math.round(calculations.PlannedReceive * remainPct);
+  calculations.TotalExpence = Math.round(
+    calculations.TotalHRExpence +
+    calculations.ExpenceCar +
+    calculations.ExpenceMaterial +
+    expenceHSE
+  );
   
   // Calculate Car and Material profits
   const profitCar = incomeCar - calculations.ExpenceCar;
   const profitMaterial = incomeMaterial - calculations.ExpenceMaterial;
   calculations.ProfitCar = Math.round(profitCar);
   calculations.ProfitMaterial = Math.round(profitMaterial);
+
+  // TotalProfit = actual income − total expenses
+  calculations.TotalProfit = Math.round(calculations.TotalIncome - calculations.TotalExpence);
+
+  // Manager salary: 2% of TotalProfit (0 if profit is negative)
+  calculations.ManagerSalary = calculations.TotalProfit > 0 ? Math.round(calculations.TotalProfit * 0.02) : 0;
   
-  // Calculate Total Profit
-  calculations.TotalProfit = Math.round(calculations.ProfitHR + calculations.ProfitCar + calculations.ProfitMaterial - expenceHSE);
-  
+  // Build HR expense breakdown (single source of truth — frontend renders this directly)
+  calculations.hrExpenseBreakdown = buildHrExpenseBreakdown(
+    projectData.projectType,
+    { ...calculations, additionalValue: parseFloat(projectData.additionalValue) || 0 }
+  );
+
   // Add timestamp
   calculations.lastCalculationUpdate = new Date().toISOString();
   
@@ -273,23 +366,33 @@ function calculateBasicMetrics(projectData) {
   const expenseHRFromTrx = parseFloat(projectData.ExpenseHRFromTrx) || 0;
   const expenceCar = parseFloat(projectData.ExpenceCar) || 0;
   const expenceMaterial = parseFloat(projectData.ExpenceMaterial) || 0;
-  // For unpaid/overtime: use stored EmployeeLaborCost (calculated by full recalc from TA)
-  const employeeLaborCost = (isUnpaid || isOvertime) ? (parseFloat(projectData.EmployeeLaborCost) || 0) : 0;
-  calculations.EmployeeLaborCost = Math.round(employeeLaborCost);
+
+  // ExpenseSalary: use stored AvgITASalary (set by full recalc) × 1.3 / 168 × RealHour
+  const avgITASalary = parseFloat(projectData.AvgITASalary) || 0;
+  const maxSalary = parseFloat(projectData.MaxSalary) || 0;
+  const tripCount = parseFloat(projectData.TripCount) || 0;
+  calculations.AvgITASalary = Math.round(avgITASalary);
+  calculations.MaxSalary = Math.round(maxSalary);
+  calculations.TripCount = tripCount;
+  calculations.ExpenseSalary = Math.round((avgITASalary * 1.3 / 168) * realHour);
+  // Management salary overhead: max employee salary × 1.3 / 168 × RealHour × 30%
+  calculations.ExpenceManagementSalary = Math.round((maxSalary * 1.3 / 168) * realHour * 0.3);
+  // Trip (Томилолт) expense: stored trip count × 15,000
+  calculations.ExpenceTripSalary = Math.round(tripCount * 15000);
   
   // Calculate Profit HR
-  const expenceHR = parseFloat(projectData.ExpenceHR) || 0;
   if (isUnpaid) {
-    calculations.ProfitHR = Math.round(-(employeeLaborCost + expenseHRFromTrx + expenceHR + additionalValue));
+    calculations.ProfitHR = Math.round(-(calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + expenseHRFromTrx + additionalValue));
   } else if (isOvertime) {
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR -
-      (employeeLaborCost + calculations.OvertimeBounty + expenseHRFromTrx + expenceHR + additionalValue)
+      (calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + calculations.OvertimeBounty + expenseHRFromTrx + additionalValue)
     );
   } else {
+    // paid: IncomeHR − (EngineerHand + NonEngineerBounty + ExpenseSalary + ManagementSalary + TripSalary + ExpenseHRFromTrx + additionalValue)
     calculations.ProfitHR = Math.round(
       calculations.IncomeHR - 
-      (calculations.EngineerHand + calculations.NonEngineerBounty + expenseHRFromTrx + expenceHR + additionalValue)
+      (calculations.EngineerHand + calculations.NonEngineerBounty + calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + expenseHRFromTrx + additionalValue)
     );
   }
   
@@ -297,32 +400,88 @@ function calculateBasicMetrics(projectData) {
   const incomeCar = parseFloat(projectData.IncomeCar) || 0;
   const incomeMaterial = parseFloat(projectData.IncomeMaterial) || 0;
   const expenceHSE = parseFloat(projectData.ExpenceHSE) || 0;
-  
-  calculations.TotalIncome = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
-  if (isUnpaid) {
-    calculations.TotalExpence = Math.round(employeeLaborCost + expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx);
-    calculations.TotalHRExpence = Math.round(employeeLaborCost + expenceHR + expenseHRFromTrx);
-  } else if (isOvertime) {
-    calculations.TotalExpence = Math.round(employeeLaborCost + calculations.OvertimeBounty + expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx);
-    calculations.TotalHRExpence = Math.round(employeeLaborCost + calculations.OvertimeBounty + expenceHR + expenseHRFromTrx);
-  } else {
-    calculations.TotalExpence = Math.round(expenceHR + expenceCar + expenceMaterial + expenceHSE + additionalValue + expenseHRFromTrx + calculations.ExpenceHRBonus);
-    calculations.TotalHRExpence = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + expenceHR + expenseHRFromTrx);
-  }
+
+  // TotalHRExpence: all HR-related expenses + all bounties
+  calculations.TotalHRExpence = Math.round(
+    calculations.ExpenseSalary +
+    calculations.ExpenceManagementSalary +
+    calculations.ExpenceTripSalary +
+    expenseHRFromTrx +
+    calculations.EngineerHand +
+    calculations.NonEngineerBounty +
+    calculations.OvertimeBounty
+  );
+
+  // PlannedReceive = gross income (for reference)
+  calculations.PlannedReceive = Math.round(calculations.IncomeHR + incomeCar + incomeMaterial);
+  // TotalIncome = PlannedReceive × RemainPercent/100 (actual adjusted income)
+  const remainPctBasic = (parseFloat(projectData.RemainPercent) != null && !isNaN(parseFloat(projectData.RemainPercent))
+    ? parseFloat(projectData.RemainPercent) : 100) / 100;
+  calculations.TotalIncome = Math.round(calculations.PlannedReceive * remainPctBasic);
+  calculations.TotalExpence = Math.round(
+    calculations.TotalHRExpence +
+    expenceCar +
+    expenceMaterial +
+    expenceHSE
+  );
   
   // Calculate Car and Material profits
   const profitCar = incomeCar - expenceCar;
   const profitMaterial = incomeMaterial - expenceMaterial;
   calculations.ProfitCar = Math.round(profitCar);
   calculations.ProfitMaterial = Math.round(profitMaterial);
+
+  // TotalProfit = actual income − total expenses
+  calculations.TotalProfit = Math.round(calculations.TotalIncome - calculations.TotalExpence);
+
+  // Manager salary: 2% of TotalProfit (0 if profit is negative)
+  calculations.ManagerSalary = calculations.TotalProfit > 0 ? Math.round(calculations.TotalProfit * 0.02) : 0;
   
-  // Calculate Total Profit
-  calculations.TotalProfit = Math.round(calculations.ProfitHR + calculations.ProfitCar + calculations.ProfitMaterial - expenceHSE);
-  
+  // Build HR expense breakdown (single source of truth — frontend renders this directly)
+  calculations.hrExpenseBreakdown = buildHrExpenseBreakdown(
+    projectData.projectType,
+    { ...calculations, additionalValue }
+  );
+
   // Add timestamp
   calculations.lastCalculationUpdate = new Date().toISOString();
   
   return calculations;
+}
+
+/**
+ * Build the salary expense breakdown array for a project.
+ * This is the SINGLE SOURCE OF TRUTH for how HR salary costs are labelled and grouped.
+ * The frontend renders this array directly — no business logic in Vue.
+ *
+ * @param {string} projectType - 'paid' | 'overtime' | 'unpaid'
+ * @param {Object} c - Calculated fields (EngineerHand, NonEngineerBounty, ExpenseSalary, OvertimeBounty, additionalValue)
+ * @returns {Array<{label: string, amount: number}>}
+ */
+function buildHrExpenseBreakdown(projectType, c) {
+  const rows = [];
+  const push = (label, amount) => { if (amount > 0) rows.push({ label, amount }); };
+
+  if (projectType === 'paid') {
+    push('Инженер урамшуулал',       c.EngineerHand               || 0);
+    push('Инженер бус урамшуулал',   c.NonEngineerBounty          || 0);
+    push('Нийт цалингийн зардал',    c.ExpenseSalary              || 0);
+    push('Удирдлагын цалингийн зардал', c.ExpenceManagementSalary || 0);
+    push('Томилолтын зардал',        c.ExpenceTripSalary          || 0);
+  } else if (projectType === 'overtime') {
+    push('Илүү цагийн урамшуулал',   c.OvertimeBounty             || 0);
+    push('Цалингийн зардал',         c.ExpenseSalary              || 0);
+    push('Удирдлагын цалингийн зардал', c.ExpenceManagementSalary || 0);
+    push('Томилолтын зардал',        c.ExpenceTripSalary          || 0);
+  } else {
+    // unpaid
+    push('Цалингийн зардал',         c.ExpenseSalary              || 0);
+    push('Удирдлагын цалингийн зардал', c.ExpenceManagementSalary || 0);
+    push('Томилолтын зардал',        c.ExpenceTripSalary          || 0);
+  }
+
+  push('Нэмэлт зардал', c.additionalValue || 0);
+  return rows;
 }
 
 /**
@@ -337,7 +496,8 @@ function needsRecalculation(oldData, newData) {
     'EngineerWorkHour', 'NonEngineerWorkHour',
     'additionalHour', 'additionalValue', 'projectType',
     'IncomeHR', 'IncomeCar', 'IncomeMaterial',
-    'ExpenceHR', 'ExpenceCar', 'ExpenceMaterial', 'ExpenceHSE'
+    'ExpenceCar', 'ExpenceMaterial', 'ExpenceHSE',
+    'AvgITASalary'
   ];
   
   for (const field of calculationFields) {
@@ -371,5 +531,8 @@ module.exports = {
   calculateProjectMetrics,
   calculateBasicMetrics,
   needsRecalculation,
-  getChangedFields
+  getChangedFields,
+  buildHrExpenseBreakdown,
+  fetchLatestBountyRatesVersion,
+  DEFAULT_BOUNTY_RATES,
 };

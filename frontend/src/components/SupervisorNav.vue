@@ -9,6 +9,7 @@
       <router-link to="/supervisor-salary"      class="sup-nav-link" active-class="active-link">💰 Цалин</router-link>
       <router-link to="/confirmed-salary"       class="sup-nav-link" active-class="active-link">✅ Батлагдсан</router-link>
       <router-link to="/supervisor-bounty"      class="sup-nav-link" active-class="active-link">🏆 Урамшуулал</router-link>
+      <router-link to="/bounty-rates"           class="sup-nav-link" active-class="active-link">⚙️ Тариф</router-link>
       <router-link to="/transaction-report"     class="sup-nav-link" active-class="active-link">💵 Гүйлгээ</router-link>
       <router-link to="/financial-planning"     class="sup-nav-link" active-class="active-link">💰 Санхүү</router-link>
       <router-link to="/transaction-check"      class="sup-nav-link" active-class="active-link">🧾 eBarimt/НӨАТ</router-link>

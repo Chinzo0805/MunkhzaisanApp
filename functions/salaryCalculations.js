@@ -118,15 +118,23 @@ function recalcEmployeeRow(row, workingDays) {
   // Нийт бодогдсон цалин (unpaidOvertimePay and recurringAdditions are taxable gross)
   const totalGross = calculatedSalary + additionalPay + annualLeavePay + unpaidOvertimePay + recurringAdditions;
 
-  // НДШ ажилтан 11.5% — deducted from employee netPay
-  // НДШ байгааллага 12.5% — reference only for managers (NOT deducted from netPay)
-  // If employee's isNDS flag is false, both NDS values are 0.
-  const applyNDS = row.isNDS !== false; // default true
-  const employeeNDS = applyNDS ? Math.round(totalGross * 0.115) : 0;
-  const employerNDS = applyNDS ? Math.round(totalGross * 0.125) : 0;
+  // НДШ / ХХОАТ — controlled by ndsSalary field on the row:
+  //   ndsSalary = null/undefined  → full NDS on totalGross (legacy isNDS=true)
+  //   ndsSalary = 0               → no NDS, no HHОАТ (Гарт олгох = Нийт − advance − суутгал)
+  //   ndsSalary > 0               → partial: НДШ/ХХОАТ on min(totalGross, ndsSalary) only
+  // Falls back to legacy isNDS boolean if ndsSalary is not set.
+  let ndsBase;
+  if (row.ndsSalary !== undefined && row.ndsSalary !== null) {
+    ndsBase = Math.min(totalGross, Math.max(0, row.ndsSalary));
+  } else {
+    ndsBase = (row.isNDS !== false) ? totalGross : 0;  // backward compat
+  }
 
-  // ТНО = Нийт бодогдсон − НДШ ажилтан
-  const tno = totalGross - employeeNDS;
+  const employeeNDS = Math.round(ndsBase * 0.115);
+  const employerNDS = Math.round(ndsBase * 0.125);
+
+  // ТНО = НДШ-тэй хэсгээс НДШ хасах
+  const tno = ndsBase - employeeNDS;
   // ХХОАТ = ТНО × 10%
   const hhoat = Math.round(tno * 0.10);
 
@@ -377,10 +385,13 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     const name     = (first + ' ' + last).trim() || `ID:${empId}`;
     const position = emp?.Position || '';
     const type     = emp?.Type || '';
-    const isNDS    = emp?.isNDS !== false;
-    // isNDS=false employees are bounty-only — force baseSalary to 0 so labour cost is 0.
-    // They still appear in the list so their salary adjustments (bounty) can be managed.
-    const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
+    // ndsSalary: null/undefined = full NDS, 0 = no NDS/HHOAT, >0 = partial (fixed amount subject to НДШ).
+    // Falls back to legacy isNDS boolean when ndsSalary is not set.
+    const ndsSalary  = (emp?.ndsSalary !== undefined && emp?.ndsSalary !== null)
+      ? (parseFloat(emp.ndsSalary) || 0)
+      : null;
+    const isNDS      = emp?.isNDS !== false;  // backward compat
+    const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
     // effectiveHours comes from aggregateTA; fall back to inline formula for cached rows without it
     const effectiveHours = ta.effectiveHours ?? Math.max(0, (ta.normalHours || 0) - (ta.absentHours || 0) * 2);
     const unpaidOvertimeHours   = ta.unpaidOvertimeHours   || 0;
@@ -413,7 +424,8 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     return recalcEmployeeRow({
       employeeId: empId,
       name, position, type, baseSalary,
-      isNDS,  // propagate to row so recalc after overrides stays correct
+      isNDS,      // backward compat for recalc after manual overrides
+      ndsSalary,  // null=full, 0=none, >0=partial
       workingDaysMonth,  // full-month denominator for salary formula
       workedDays:            ta.workedDays,
       normalHours:           Math.round(ta.normalHours),
@@ -449,12 +461,15 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   for (const [empId, emp] of empMap.entries()) {
     if (empTA.has(empId)) continue; // already processed above
     const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-    const isNDSFalse = emp?.isNDS === false;
-    // Skip trainees/unconfigured employees with no salary — but always include isNDS=false
-    // (bounty-only) employees so they appear in the salary list with their adjustments.
-    if (!baseSalary && !isNDSFalse) continue;
+    const empNdsSalary = (emp?.ndsSalary !== undefined && emp?.ndsSalary !== null)
+      ? (parseFloat(emp.ndsSalary) || 0) : null;
+    const empIsNDS = emp?.isNDS !== false;
+    // Determine if this employee has a real NDS-based salary (full or partial).
+    // Employees with ndsSalary=0 (or legacy isNDS=false) and no baseSalary have nothing to show.
+    const hasNdsPortion = (empNdsSalary !== null) ? empNdsSalary > 0 : empIsNDS;
+    if (!baseSalary && !hasNdsPortion) continue;
     const state = (emp?.State || '').trim();
-    if (state && state !== 'Ажиллаж байгаа') continue; // skip inactive/left employees with no attendance
+    if (state && state !== 'Ажиллаж байгаа') continue;
     result.push(buildRow(empId, emptyTA, emp));
   }
 

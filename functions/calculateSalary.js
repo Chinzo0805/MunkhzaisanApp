@@ -190,12 +190,16 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
         const last       = emp?.LastName || emp?.EmployeeLastName || '';
         const name       = (first + ' ' + last).trim() || `ID:${empId}`;
         const isNDS      = emp?.isNDS !== false;
-        const baseSalary = isNDS ? (parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0) : 0;
+        const ndsSalary  = (emp?.ndsSalary !== undefined && emp?.ndsSalary !== null)
+          ? (parseFloat(emp.ndsSalary) || 0) : null;
+        const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
         const effectiveHours = Math.max(0, Math.round((ta.normalHours || 0) - (ta.absentHours || 0) * 2));
         const hourlyRate = (workingDaysMonth > 0 && baseSalary > 0)
           ? baseSalary / (workingDaysMonth * 8)
           : 0;
-        const advancePay = (isNDS && effectiveHours > 0 && hourlyRate > 0)
+        // Advance only for employees with an NDS portion (full or partial)
+        const hasNds = (ndsSalary !== null) ? ndsSalary > 0 : isNDS;
+        const advancePay = (hasNds && effectiveHours > 0 && hourlyRate > 0)
           ? Math.min(Math.round(hourlyRate * ADVANCE_RATE * effectiveHours), ADVANCE_MAX)
           : 0;
         return {
@@ -222,7 +226,10 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
         if (empTA.has(empId)) continue;
         const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
         const isNDS = emp?.isNDS !== false;
-        if (!baseSalary && isNDS) continue;
+        const empNdsSal = (emp?.ndsSalary !== undefined && emp?.ndsSalary !== null)
+          ? (parseFloat(emp.ndsSalary) || 0) : null;
+        const hasNds = (empNdsSal !== null) ? empNdsSal > 0 : isNDS;
+        if (!baseSalary && hasNds) continue;
         const state = (emp?.State || '').trim();
         if (state && state !== 'Ажиллаж байгаа') continue;
         rows.push(buildAdvanceRow(empId, { workedDays: 0, normalHours: 0, absentHours: 0 }, emp));

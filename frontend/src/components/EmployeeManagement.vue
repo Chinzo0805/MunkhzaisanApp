@@ -238,12 +238,21 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label>НДШ тооцох</label>
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="form.isNDS" />
-                <span>НДШ тооцох (Нийгмийн даатгал)</span>
-              </label>
-              <small style="color:#6b7280;font-size:11px;">Тэмдэглэгдсэн бол НДШ 11.5% / 12.5% тооцогдоно</small>
+              <label>НДШ горим</label>
+              <select v-model="form.ndsType" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;">
+                <option value="full">Бүрэн НДШ (нийт цалингаас)</option>
+                <option value="none">НДШ-гүй (суутгал байхгүй)</option>
+                <option value="partial">Хэсэгчилсэн НДШ (тогтоосон дүн)</option>
+              </select>
+              <div v-if="form.ndsType === 'partial'" style="margin-top:6px;">
+                <label style="font-size:12px;color:#374151;">НДШ-д хамрагдах дүн (₮)</label>
+                <input v-model.number="form.ndsSalary" type="number" min="0" placeholder="Жишээ: 1500000" style="width:100%;" />
+              </div>
+              <small style="color:#6b7280;font-size:11px;">
+                Бүрэн: НДШ 11.5%/12.5% + ХХОАТ |
+                НДШ-гүй: гарт олгох = нийт бодогдсон |
+                Хэсэгчилсэн: тогтоосон дүнгээс НДШ/ХХОАТ тооцно
+              </small>
             </div>
             <div class="form-group">
               <label>Автомат TA</label>
@@ -319,6 +328,8 @@ const form = ref({
   Email: '',
   Salary: 1500000,
   isNDS: true,
+  ndsType: 'full',
+  ndsSalary: null,
   autoTA: false,
   BankName: '',
   BankAccountNumber: '',
@@ -433,7 +444,12 @@ function editItem(employee) {
     Role: validRole,
     Email: employee.Email || '',
     Salary: parseFloat(employee.Salary) || 1500000,
-    isNDS: employee.isNDS !== false,  // default true if not set
+    isNDS: employee.isNDS !== false,  // backward compat
+    ndsType: (employee.ndsSalary !== undefined && employee.ndsSalary !== null)
+      ? (employee.ndsSalary === 0 ? 'none' : 'partial')
+      : (employee.isNDS !== false ? 'full' : 'none'),
+    ndsSalary: (employee.ndsSalary !== undefined && employee.ndsSalary !== null)
+      ? (parseFloat(employee.ndsSalary) || 0) : null,
     autoTA: !!employee.autoTA,
     BankName: employee.BankName || '',
     BankAccountNumber: employee.BankAccountNumber || '',
@@ -469,6 +485,8 @@ function closeModal() {
     Email: '',
     Salary: 1500000,
     isNDS: true,
+    ndsType: 'full',
+    ndsSalary: null,
     autoTA: false,
     BankName: '',
     BankAccountNumber: '',
@@ -486,8 +504,24 @@ async function handleSave() {
   try {
     const action = editingItem.value ? 'update' : 'add';
     const itemId = editingItem.value?.id || null;
-    
-    await manageEmployee(action, form.value, itemId);
+
+    // Derive ndsSalary and isNDS from ndsType before saving
+    const ndsType = form.value.ndsType;
+    const saveData = { ...form.value };
+    if (ndsType === 'full') {
+      saveData.ndsSalary = null;
+      saveData.isNDS = true;
+    } else if (ndsType === 'none') {
+      saveData.ndsSalary = 0;
+      saveData.isNDS = false;
+    } else {
+      // partial
+      saveData.ndsSalary = parseFloat(form.value.ndsSalary) || 0;
+      saveData.isNDS = true;
+    }
+    delete saveData.ndsType;  // UI-only field, don't store
+
+    await manageEmployee(action, saveData, itemId);
     await employeesStore.fetchEmployees();
     
     emit('saved', { success: true, action, type: 'employee' });

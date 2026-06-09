@@ -681,11 +681,6 @@ async function addFoodMoney() {
 
     const _acctRaw = String(emp?.BankAccountNumber || '').replace(/\D/g, '');
     const _empAcct = _acctRaw.length > 9 ? _acctRaw.slice(-9) : _acctRaw;
-    const _bankMap = {
-      'Хоол/томилолт|Хоолны мөнгө': { bankType: 'Шууд зардал', bankSubType: 'Хоолны мөнгө' },
-      'Хоол/томилолт|Томилолт':     { bankType: 'Шууд зардал', bankSubType: 'Томилолт' },
-    };
-    const _meta = _bankMap[`Хоол/томилолт|${conf.transactionType}`] || { bankType: '', bankSubType: '' };
 
     const transaction = {
       date: reportDate.value,
@@ -697,9 +692,9 @@ async function addFoodMoney() {
       employeeBankAccount: _empAcct,
       amount: getAmount(conf.transactionType),
       type: conf.transactionType,
-      purpose: _meta.bankType || 'Шууд зардал',
-      bankType: _meta.bankType,
-      bankSubType: _meta.bankSubType,
+      purpose: 'Шууд зардал',
+      bankType: 'Шууд зардал',
+      bankSubType: conf.transactionType,
       ebarimt: false,
       НӨАТ: false,
       comment: 'HSE баталгаажуулалт',

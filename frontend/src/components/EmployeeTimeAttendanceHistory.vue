@@ -527,17 +527,18 @@ async function loadMonthData() {
   try {
     const employeeLastName = authStore.effectiveLastName || authStore.userData?.LastName || authStore.userData?.employeeLastName;
     const employeeFirstName = authStore.effectiveFirstName || authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
+    const employeeId = authStore.effectiveEmployeeId;
     
     if (!employeeLastName) {
       console.error('Employee LastName not found');
       return;
     }
 
-    // Check employee's State - only show data if employee is currently working
-    if (employeeFirstName) {
+    // Check employee's State - query by EmployeeID (unique) to avoid matching same-named departed employees
+    if (employeeId) {
       const employeeQuery = query(
         collection(db, 'employees'),
-        where('FirstName', '==', employeeFirstName)
+        where('Id', '==', Number(employeeId))
       );
       const employeeSnapshot = await getDocs(employeeQuery);
       
@@ -546,6 +547,28 @@ async function loadMonthData() {
         const employeeState = employeeData.State;
         
         // Only allow access if employee is currently working (not departed)
+        if (employeeState !== 'Ажиллаж байгаа') {
+          console.log(`Employee state is "${employeeState}" - access restricted to current employees only`);
+          approvedRecords.value = [];
+          rejectedRecords.value = [];
+          monthStats.value = { approvedDays: 0, totalHours: 0, notRequestedDays: 0 };
+          loading.value = false;
+          return;
+        }
+      }
+    } else if (employeeFirstName) {
+      // Fallback: query by both FirstName and LastName to reduce ambiguity
+      const employeeQuery = query(
+        collection(db, 'employees'),
+        where('FirstName', '==', employeeFirstName),
+        where('LastName', '==', employeeLastName)
+      );
+      const employeeSnapshot = await getDocs(employeeQuery);
+      
+      if (!employeeSnapshot.empty) {
+        const employeeData = employeeSnapshot.docs[0].data();
+        const employeeState = employeeData.State;
+        
         if (employeeState !== 'Ажиллаж байгаа') {
           console.log(`Employee state is "${employeeState}" - access restricted to current employees only`);
           approvedRecords.value = [];
@@ -571,11 +594,12 @@ async function loadMonthData() {
     const endDate = `${year}-${month}-${String(endDayNum).padStart(2, '0')}`;
     const lastDay = endDayNum;
 
-    // Fetch approved records from timeAttendance - query by EmployeeLastName only
-    const approvedQuery = query(
-      collection(db, 'timeAttendance'),
-      where('EmployeeLastName', '==', employeeLastName)
-    );
+    // Fetch approved records from timeAttendance
+    // Prefer EmployeeID filter (unique) to avoid collisions with same-named employees
+    const approvedConstraints = employeeId
+      ? [where('EmployeeID', '==', Number(employeeId))]
+      : [where('EmployeeLastName', '==', employeeLastName)];
+    const approvedQuery = query(collection(db, 'timeAttendance'), ...approvedConstraints);
     
     const approvedSnapshot = await getDocs(approvedQuery);
     // Filter by month in JavaScript
@@ -589,34 +613,33 @@ async function loadMonthData() {
         return day >= startDate && day <= endDate;
       });
 
-    // Also check for records with LastName field (older format)
-    const approvedQuery2 = query(
-      collection(db, 'timeAttendance'),
-      where('LastName', '==', employeeLastName)
-    );
-    
-    const approvedSnapshot2 = await getDocs(approvedQuery2);
-    const moreRecords = approvedSnapshot2.docs
-      .map(doc => ({
-        docId: doc.id,
-        ...doc.data()
-      }))
-      .filter(record => {
-        const day = record.Day || record.Date;
-        return day >= startDate && day <= endDate;
-      });
-    
-    // Merge and deduplicate
-    const allApproved = [...approvedRecords.value, ...moreRecords];
-    const uniqueApproved = Array.from(new Map(allApproved.map(r => [r.docId, r])).values());
-    approvedRecords.value = uniqueApproved;
+    // Also check for records with LastName field (older format) — only when not already filtered by ID
+    if (!employeeId) {
+      const approvedQuery2 = query(
+        collection(db, 'timeAttendance'),
+        where('LastName', '==', employeeLastName)
+      );
+      const approvedSnapshot2 = await getDocs(approvedQuery2);
+      const moreRecords = approvedSnapshot2.docs
+        .map(doc => ({
+          docId: doc.id,
+          ...doc.data()
+        }))
+        .filter(record => {
+          const day = record.Day || record.Date;
+          return day >= startDate && day <= endDate;
+        });
+      
+      // Merge and deduplicate
+      const allApproved = [...approvedRecords.value, ...moreRecords];
+      approvedRecords.value = Array.from(new Map(allApproved.map(r => [r.docId, r])).values());
+    }
 
     // Fetch rejected requests from timeAttendanceRequests
-    const rejectedQuery = query(
-      collection(db, 'timeAttendanceRequests'),
-      where('EmployeeLastName', '==', employeeLastName),
-      where('status', '==', 'rejected')
-    );
+    const rejectedConstraints = employeeId
+      ? [where('EmployeeID', '==', Number(employeeId)), where('status', '==', 'rejected')]
+      : [where('EmployeeLastName', '==', employeeLastName), where('status', '==', 'rejected')];
+    const rejectedQuery = query(collection(db, 'timeAttendanceRequests'), ...rejectedConstraints);
     
     const rejectedSnapshot = await getDocs(rejectedQuery);
     rejectedRecords.value = rejectedSnapshot.docs
@@ -630,11 +653,10 @@ async function loadMonthData() {
       });
 
     // Fetch pending requests for this month
-    const pendingQuery = query(
-      collection(db, 'timeAttendanceRequests'),
-      where('EmployeeLastName', '==', employeeLastName),
-      where('status', '==', 'pending')
-    );
+    const pendingConstraints = employeeId
+      ? [where('EmployeeID', '==', Number(employeeId)), where('status', '==', 'pending')]
+      : [where('EmployeeLastName', '==', employeeLastName), where('status', '==', 'pending')];
+    const pendingQuery = query(collection(db, 'timeAttendanceRequests'), ...pendingConstraints);
     const pendingSnapshot = await getDocs(pendingQuery);
     pendingRecords.value = pendingSnapshot.docs
       .map(doc => ({ docId: doc.id, ...doc.data() }))
@@ -772,18 +794,24 @@ async function loadProjectSummary() {
   loadingProjects.value = true;
   try {
     const employeeFirstName = authStore.effectiveFirstName || authStore.userData?.FirstName || authStore.userData?.employeeFirstName;
+    const employeeLastName = authStore.effectiveLastName || authStore.userData?.LastName || authStore.userData?.employeeLastName;
+    const employeeId = authStore.effectiveEmployeeId;
     
     if (!employeeFirstName) {
       console.error('Employee FirstName not found');
       return;
     }
 
-    // Check employee's State - only show projects if employee is currently working
-    const employeeQuery = query(
-      collection(db, 'employees'),
-      where('FirstName', '==', employeeFirstName)
-    );
-    const employeeSnapshot = await getDocs(employeeQuery);
+    // Check employee's State - use EmployeeID (unique) to avoid matching same-named departed employees
+    let stateQuery;
+    if (employeeId) {
+      stateQuery = query(collection(db, 'employees'), where('Id', '==', Number(employeeId)));
+    } else if (employeeLastName) {
+      stateQuery = query(collection(db, 'employees'), where('FirstName', '==', employeeFirstName), where('LastName', '==', employeeLastName));
+    } else {
+      stateQuery = query(collection(db, 'employees'), where('FirstName', '==', employeeFirstName));
+    }
+    const employeeSnapshot = await getDocs(stateQuery);
     
     if (employeeSnapshot.empty) {
       console.error('Employee not found in employees collection');
@@ -816,8 +844,11 @@ async function loadProjectSummary() {
     
     allProjectsSnapshot.docs.forEach(doc => {
       const projectData = doc.data();
-      // Only show projects where employee is the Responsible Employee
-      if (projectData.ResponsibleEmp === employeeFirstName) {
+      // Match by ID when available (prevents same-name collisions), else fall back to name
+      const isResponsible = employeeId && projectData.ResponsibleEmpId != null
+        ? Number(projectData.ResponsibleEmpId) === Number(employeeId)
+        : projectData.ResponsibleEmp === employeeFirstName;
+      if (isResponsible) {
         const plannedHour = parseFloat(projectData['Planned Hour']) || parseFloat(projectData.PlannedHour) || 0;
         const realHour = parseFloat(projectData.RealHour) || 0;
         const wosHour = parseFloat(projectData.WosHour) || 0;

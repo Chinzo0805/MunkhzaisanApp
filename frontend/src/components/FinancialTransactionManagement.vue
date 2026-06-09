@@ -1,12 +1,12 @@
 ﻿<template>
   <div class="management-section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <h4 style="margin:0;">💵 Шууд зардлын бүртгэл</h4>
+      <h4 style="margin:0;">💵 Санхүүгийн гүйлгээ</h4>
       <button @click="$router.back()" class="btn-back">← Буцах</button>
     </div>
     <div class="management-buttons">
       <button @click="handleAddItem" class="action-btn add-btn">
-        + Зардал нэмэх
+        + Add Transaction
       </button>
       <button @click="handleBulkFoodTrip" class="action-btn add-btn">
         + Хоол/томилолтын зардал
@@ -18,35 +18,81 @@
     
     <!-- Transaction List -->
     <div class="item-list">
-      <h5>Шууд зардал</h5>
+      <h5>Financial Transactions</h5>
       
-      <div class="list-controls">
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          placeholder="Search by project, employee, comment..." 
-          class="search-input"
-        />
-        <select v-model="filterPurpose" class="filter-select">
-          <option value="">All Purposes</option>
-          <option value="Төсөлд">Төсөлд</option>
-          <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-          <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-          <option value="хувийн зарлага">хувийн зарлага</option>
-          <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
-          <option value="Хоол/томилолт">Хоол/томилолт</option>
-        </select>
-        <select v-model="filterType" class="filter-select">
-          <option value="">All Types</option>
-          <option value="Бараа материал">Бараа материал</option>
-          <option value="Түлш">Түлш</option>
-          <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
-          <option value="Хоолны мөнгө">Хоолны мөнгө</option>
-          <option value="Томилолт">Томилолт</option>
-          <option value="Машин засварын зардал">Машин засварын зардал</option>
-        </select>
-        <div class="sum-display">
-          <strong>Total:</strong> {{ formatNumber(totalAmount) }}₮
+      <!-- Column toggle -->
+      <div class="fin-col-toggle-bar">
+        <span class="fin-col-toggle-label">🔧 Багана:</span>
+        <label v-for="col in ALL_FIN_COLUMNS" :key="col.key" class="fin-col-toggle-item">
+          <input type="checkbox" v-model="visibleFinCols" :value="col.key" />
+          {{ col.label }}
+        </label>
+      </div>
+
+      <!-- Multi-search -->
+      <div class="fin-multi-search">
+        <div v-for="(sf, idx) in searchFilters" :key="idx" class="fin-search-row">
+          <input
+            v-model="sf.text"
+            type="text"
+            placeholder="Хайх: төсөл, ажилтан, ангилал, дэд ангилал, тайлбар..."
+            class="fin-search-input"
+          />
+          <button
+            class="fin-btn-excl"
+            :class="{ active: sf.exclude }"
+            @click="sf.exclude = !sf.exclude"
+            :title="sf.exclude ? 'Агуулаагүй горим' : 'Агуулсан горим'"
+          >{{ sf.exclude ? '≠ Агуулаагүй' : '= Агуулсан' }}</button>
+          <button v-if="searchFilters.length > 1" class="fin-btn-rm" @click="searchFilters.splice(idx, 1)">&#10005;</button>
+        </div>
+        <button class="fin-btn-add" @click="searchFilters.push({ text: '', exclude: false })">+ Хайлт нэмэх</button>
+      </div>
+
+      <!-- Filters + totals -->
+      <div class="fin-filters-row">
+        <div class="fin-filter-group">
+          <label>Эхлэх:</label>
+          <input type="date" v-model="filterFrom" class="fin-sel" />
+        </div>
+        <div class="fin-filter-group">
+          <label>Дуусах:</label>
+          <input type="date" v-model="filterTo" class="fin-sel" />
+        </div>
+        <div class="fin-filter-group">
+          <label>Ангилал:</label>
+          <select v-model="filterPurpose" class="fin-sel" @change="filterType = ''">
+            <option value="">Бүгд</option>
+            <option value="Шууд зардал">Шууд зардал</option>
+            <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+            <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+            <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+            <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+            <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+            <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+            <option value="Бусад зардал">Бусад зардал</option>
+            <option value="Орлого">Орлого</option>
+            <option value="Дотоод шилжүүлэг">Дотоод шилжүүлэг</option>
+          </select>
+        </div>
+        <div class="fin-filter-group" v-if="filterPurpose && typesForPurpose(filterPurpose).length">
+          <label>Дэд ангилал:</label>
+          <select v-model="filterType" class="fin-sel">
+            <option value="">Бүгд</option>
+            <option v-for="t in typesForPurpose(filterPurpose)" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="fin-pills">
+          <span class="fin-pill-count">{{ filteredTransactions.length }} мөр</span>
+          <span class="fin-pill-total">∑ {{ formatNumber(totalAmount) }}₮</span>
+        </div>
+        <div class="fin-filter-group">
+          <label>Банк холбоо:</label>
+          <select v-model="filterLinked" class="fin-sel">
+            <option value="">Бүгд</option>
+            <option value="linked">✅ Холбоосон</option>
+            <option value="unlinked">❌ Холбоогүй</option>
+          </select>
         </div>
       </div>
       
@@ -54,49 +100,51 @@
         <table class="transactions-table">
           <thead>
             <tr>
-              <th @click="sortByColumn('date')" class="sortable">
-                Date {{ getSortIcon('date') }}
+              <th v-for="col in activeFinColumns" :key="col.key"
+                  :class="['th-fin', col.sortKey ? 'sortable' : '', col.num ? 'fin-num' : '', col.center ? 'center-th' : '']"
+                  :style="col.minWidth ? { minWidth: col.minWidth } : {}"
+                  @click="col.sortKey ? sortByColumn(col.sortKey) : null">
+                <span v-html="col.label"></span>
+                <template v-if="col.sortKey"> {{ getSortIcon(col.sortKey) }}</template>
               </th>
-              <th @click="sortByColumn('project')" class="sortable">
-                Project {{ getSortIcon('project') }}
-              </th>
-              <th @click="sortByColumn('employee')" class="sortable">
-                Employee {{ getSortIcon('employee') }}
-              </th>
-              <th @click="sortByColumn('amount')" class="sortable">
-                Amount {{ getSortIcon('amount') }}
-              </th>
-              <th @click="sortByColumn('type')" class="sortable">
-                Type {{ getSortIcon('type') }}
-              </th>
-              <th @click="sortByColumn('purpose')" class="sortable">
-                Purpose {{ getSortIcon('purpose') }}
-              </th>
-              <th>ebarimt</th>
-              <th>НӨАТ</th>
-              <th class="center-th">eBarimt<br/>авсан</th>
-              <th class="center-th">НӨАТ<br/>системд</th>
-              <th>Comment</th>
-              <th>Action</th>
+              <th style="width:36px"></th>
             </tr>
           </thead>
           <tbody>
-            <tr 
-              v-for="transaction in filteredTransactions" 
-              :key="transaction.id"
-            >
-              <td>{{ formatDate(transaction.date) }}</td>
-              <td>{{ transaction.projectID }}<br/><small>{{ transaction.projectLocation }}</small></td>
-              <td>{{ transaction.employeeID }}<br/><small>{{ transaction.employeeFirstName }}</small></td>
-              <td class="amount">{{ formatNumber(transaction.amount) }}₮</td>
-              <td>{{ transaction.type }}</td>
-              <td>{{ transaction.purpose }}</td>
-              <td>{{ transaction.ebarimt ? '✓' : '' }}</td>
-              <td>{{ transaction.НӨАТ ? '✓' : '' }}</td>
-              <td class="center-cell">{{ transaction.isEbarimtReceived ? '✓' : '–' }}</td>
-              <td class="center-cell">{{ transaction.isNOATinSystem ? '✓' : '–' }}</td>
-              <td><small>{{ transaction.comment }}</small></td>
-              <td><button @click="editItem(transaction)" class="btn-edit-small">Edit</button></td>
+            <tr v-for="transaction in filteredTransactions" :key="transaction.id">
+              <td v-for="col in activeFinColumns" :key="col.key"
+                  :class="[col.num ? 'fin-amount' : '', col.center ? 'center-cell' : '']">
+                <template v-if="col.key === 'date'">{{ formatDate(transaction.date) }}</template>
+                <template v-else-if="col.key === 'project'">
+                  <span class="fin-proj-cell">{{ transaction.projectID }}<br/><small>{{ transaction.projectLocation }}</small></span>
+                </template>
+                <template v-else-if="col.key === 'employee'">
+                  <span class="fin-emp-cell">{{ transaction.employeeFirstName || '—' }}<br/><small class="fin-emp-id">{{ transaction.employeeID }}</small></span>
+                </template>
+                <template v-else-if="col.key === 'bankType'">
+                  <span v-if="transaction.bankType || transaction.purpose" class="fin-tag-type">{{ transaction.bankType || transaction.purpose }}</span>
+                  <span v-else class="fin-tag-none">—</span>
+                </template>
+                <template v-else-if="col.key === 'bankSubType'">
+                  <span v-if="transaction.bankSubType || transaction.type" class="fin-tag-sub">{{ transaction.bankSubType || transaction.type }}</span>
+                  <span v-else class="fin-tag-none">—</span>
+                </template>
+                <template v-else-if="col.key === 'amount'">{{ formatNumber(transaction.amount) }}₮</template>
+                <template v-else-if="col.key === 'bankLink'">
+                  <span v-if="transaction.bankTransactionId" class="fin-badge-linked" :title="transaction.bankTransactionId">✅ Холбоосон</span>
+                  <span v-else class="fin-badge-unlinked">❌ Холбоогүй</span>
+                </template>
+                <template v-else-if="col.key === 'purpose'">{{ transaction.purpose || '—' }}</template>
+                <template v-else-if="col.key === 'type'">{{ transaction.type || '—' }}</template>
+                <template v-else-if="col.key === 'employeeBankAcc'"><small>{{ transaction.employeeBankAccount || '—' }}</small></template>
+                <template v-else-if="col.key === 'bankTxnId'"><small class="fin-mono">{{ transaction.bankTransactionId || '—' }}</small></template>
+                <template v-else-if="col.key === 'ebarimt'">{{ transaction.ebarimt ? '✓' : '' }}</template>
+                <template v-else-if="col.key === 'noat'">{{ transaction.НӨАТ ? '✓' : '' }}</template>
+                <template v-else-if="col.key === 'ebarimtReceived'">{{ transaction.isEbarimtReceived ? '✓' : '–' }}</template>
+                <template v-else-if="col.key === 'noatSystem'">{{ transaction.isNOATinSystem ? '✓' : '–' }}</template>
+                <template v-else-if="col.key === 'comment'"><small>{{ transaction.comment }}</small></template>
+              </td>
+              <td><button @click="editItem(transaction)" class="btn-edit-small">✏️</button></td>
             </tr>
           </tbody>
         </table>
@@ -139,22 +187,27 @@
               <label>Purpose *</label>
               <select v-model="formData.purpose" required class="form-input" @change="onPurposeChange">
                 <option value="">Select Purpose</option>
-                <option value="Төсөлд">Төсөлд</option>
-                <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-                <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-                <option value="хувийн зарлага">хувийн зарлага</option>
-                <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
+                <option value="Шууд зардал">Шууд зардал</option>
+                <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+                <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+                <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+                <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+                <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+                <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+                <option value="Бусад зардал">Бусад зардал</option>
+                <option value="Орлого">Орлого</option>
+                <option value="Дотоод шилжүүлэг">Дотоод шилжүүлэг</option>
               </select>
             </div>
             
             <div class="form-group">
-              <label>Project {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <label>Project {{ formData.purpose === 'Шууд зардал' ? '*' : '' }}</label>
               <select 
                 v-model="formData.projectID" 
-                :required="formData.purpose === 'Төсөлд'" 
+                :required="formData.purpose === 'Шууд зардал'" 
                 class="form-input" 
                 @change="onProjectChange"
-                :disabled="formData.purpose !== 'Төсөлд'"
+                :disabled="formData.purpose !== 'Шууд зардал'"
               >
                 <option value="">Select Project</option>
                 <option v-for="project in activeProjects" :key="project.id" :value="project.id">
@@ -177,18 +230,15 @@
             </div>
             
             <div class="form-group">
-              <label>Type {{ formData.purpose === 'Төсөлд' ? '*' : '' }}</label>
+              <label>Type {{ formData.purpose === 'Шууд зардал' ? '*' : '' }}</label>
               <select 
                 v-model="formData.type" 
-                :required="formData.purpose === 'Төсөлд'" 
+                :required="formData.purpose === 'Шууд зардал'" 
                 class="form-input"
-                :disabled="formData.purpose !== 'Төсөлд'"
+                :disabled="!formData.purpose"
               >
                 <option value="">Select Type</option>
-                <option value="Бараа материал">Бараа материал</option>
-                <option value="Түлш">Түлш</option>
-                <option value="Бусдад өгөх ажлын хөлс">Бусдад өгөх ажлын хөлс</option>
-                <option value="Машин засварын зардал">Машин засварын зардал</option>
+                <option v-for="t in typesForPurpose(formData.purpose)" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
           </div>
@@ -387,7 +437,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
@@ -395,9 +445,104 @@ import { useProjectsStore } from '../stores/projects';
 import { useEmployeesStore } from '../stores/employees';
 import { manageFinancialTransaction } from '../services/api';
 
+// ── Type / subtype definitions — identical to bankTransactions taxonomy ───────
+const CATEGORY_SUBTYPES = {
+  'Шууд зардал': [
+    'Хоолны мөнгө',
+    'Томилолт',
+    'Урамшуулал',
+    'Тээвэр, шатахуун',
+    'Бараа материал',
+    'Бусдад өгөх ажлын хөлс',
+  ],
+  'Хүний нөөцтэй холбоотой зардал': [
+    'Цалин, нэмэгдэл, урамшуулал',
+    'Нийгмийн даатгал, эрүүл мэндийн даатгал',
+    'Сургалт, хөгжлийн зардал',
+    'Ажилд авах (сонгон шалгаруулалт, зар)',
+    'Ажилтны хангамж (ажлын хувцас, хоол, унаа)',
+  ],
+  'Үйл ажиллагааны зардал': [
+    'Түрээс (оффис, агуулах, талбай)',
+    'Цахилгаан, дулаан, ус, интернет, холбоо',
+    'Аж ахуй болон бичиг хэргийн хэрэгсэл',
+    'Тээвэр, шатахуун',
+    'Засвар үйлчилгээ',
+    'Бараа материал татах',
+  ],
+  'Захиргаа, удирдлагын зардал': [
+    'Менежментийн цалин',
+    'Хууль, аудит, зөвлөх үйлчилгээ',
+    'Банкны шимтгэл, санхүүгийн үйлчилгээ',
+    'Лиценз, зөвшөөрөл',
+  ],
+  'Борлуулалт, маркетингийн зардал': [
+    'Зар сурталчилгаа (онлайн/оффлайн)',
+    'Борлуулалтын урамшуулал',
+    'Үзэсгэлэн, арга хэмжээ',
+  ],
+  'Мэдээллийн технологийн зардал': [
+    'Програм хангамжийн лиценз',
+    'Сервер, cloud үйлчилгээ',
+    'Тоног төхөөрөмж (компьютер, принтер)',
+  ],
+  'Санхүү, татварын зардал': [
+    'Татвар, НӨАТ',
+    'Зээлийн төлөлт',
+    'Торгууль, алданги',
+    'Валютын ханшийн зөрүү',
+  ],
+  'Бусад зардал': [
+    'Даатгал',
+    'Хандив, нийгмийн хариуцлага',
+    'Гэнэтийн/нөөц зардал',
+  ],
+  'Орлого': [
+    'Борлуулалтын орлого',
+    'Үйлчилгээний орлого',
+    'Дансны орлого / хүү',
+    'Буцаалт, эргэн төлбөр',
+    'Бусад орлого',
+  ],
+  'Дотоод шилжүүлэг': [
+    'Дансаас данснаас шилжүүлэг',
+    'Касс шилжүүлэг',
+  ],
+};
+
+function typesForPurpose(purpose) {
+  return CATEGORY_SUBTYPES[purpose] || [];
+}
+
 const transactionsStore = useFinancialTransactionsStore();
 const projectsStore = useProjectsStore();
 const employeesStore = useEmployeesStore();
+
+// ── Column visibility ─────────────────────────────────────────────────────────
+const ALL_FIN_COLUMNS = [
+  { key: 'date',             label: 'Огноо',              sortKey: 'date',         minWidth: '90px' },
+  { key: 'project',          label: 'Төсөл',             sortKey: 'project',      minWidth: '90px' },
+  { key: 'employee',         label: 'Ажилтан',           sortKey: 'employee',     minWidth: '110px' },
+  { key: 'bankType',         label: 'Ангилал',           sortKey: 'bankType',     minWidth: '130px' },
+  { key: 'bankSubType',      label: 'Дэд ангилал',       sortKey: 'bankSubType',  minWidth: '120px' },
+  { key: 'amount',           label: 'Дүн',               sortKey: 'amount',       minWidth: '90px',  num: true },
+  { key: 'bankLink',         label: 'Банк холбоо',       sortKey: null,           minWidth: '70px',  center: true },
+  { key: 'purpose',          label: 'purpose (legacy)', sortKey: null,           minWidth: '140px' },
+  { key: 'type',             label: 'type (legacy)',    sortKey: null,           minWidth: '120px' },
+  { key: 'employeeBankAcc',  label: 'Дансны дугаар',     sortKey: null,           minWidth: '130px' },
+  { key: 'bankTxnId',        label: 'Банк гүйлгээний ID', sortKey: null,      minWidth: '160px' },
+  { key: 'ebarimt',          label: 'eBarimt',          sortKey: null,           minWidth: '60px',  center: true },
+  { key: 'noat',             label: 'НӨАТ',              sortKey: null,           minWidth: '50px',  center: true },
+  { key: 'ebarimtReceived',  label: 'eBarimt авсан', sortKey: null,           minWidth: '80px',  center: true },
+  { key: 'noatSystem',       label: 'НӨАТ системд',  sortKey: null,           minWidth: '80px',  center: true },
+  { key: 'comment',          label: 'Тайлбар',            sortKey: null,           minWidth: '160px' },
+];
+const FIN_DEFAULT_COLS = ['date','project','employee','bankType','bankSubType','amount','bankLink','comment'];
+const FIN_COL_KEY = 'finTxnCols_v2';
+const _storedFinCols = localStorage.getItem(FIN_COL_KEY);
+const visibleFinCols = ref(_storedFinCols ? JSON.parse(_storedFinCols) : [...FIN_DEFAULT_COLS]);
+watch(visibleFinCols, v => localStorage.setItem(FIN_COL_KEY, JSON.stringify(v)), { deep: true });
+const activeFinColumns = computed(() => ALL_FIN_COLUMNS.filter(c => visibleFinCols.value.includes(c.key)));
 
 const showList = ref(false);
 const showForm = ref(false);
@@ -405,10 +550,13 @@ const showBulkForm = ref(false);
 const showSettings = ref(false);
 const isEditMode = ref(false);
 const isSubmitting = ref(false);
-const searchQuery = ref('');
+const searchFilters = ref([{ text: '', exclude: false }]);
 const employeeSearchQuery = ref('');
+const filterFrom = ref('');
+const filterTo = ref('');
 const filterType = ref('');
 const filterPurpose = ref('');
+const filterLinked = ref('');  // '' | 'linked' | 'unlinked'
 const sortBy = ref('date');
 const sortOrder = ref('desc');
 const message = ref('');
@@ -492,28 +640,38 @@ const filteredEmployeesForBulk = computed(() => {
 const filteredTransactions = computed(() => {
   let result = [...transactionsStore.transactions];
 
-  // Apply search filter
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(t =>
-      String(t.projectID ?? '').toLowerCase().includes(query) ||
-      String(t.projectLocation ?? '').toLowerCase().includes(query) ||
-      String(t.employeeID ?? '').toLowerCase().includes(query) ||
-      String(t.employeeFirstName ?? '').toLowerCase().includes(query) ||
-      String(t.comment ?? '').toLowerCase().includes(query) ||
-      String(t.type ?? '').toLowerCase().includes(query)
-    );
+  // Multi-search filters
+  for (const sf of searchFilters.value) {
+    if (!sf.text.trim()) continue;
+    const q = sf.text.toLowerCase();
+    const match = (t) =>
+      String(t.projectID ?? '').toLowerCase().includes(q) ||
+      String(t.projectLocation ?? '').toLowerCase().includes(q) ||
+      String(t.employeeID ?? '').toLowerCase().includes(q) ||
+      String(t.employeeFirstName ?? '').toLowerCase().includes(q) ||
+      String(t.comment ?? '').toLowerCase().includes(q) ||
+      String(t.bankType ?? t.purpose ?? '').toLowerCase().includes(q) ||
+      String(t.bankSubType ?? t.type ?? '').toLowerCase().includes(q);
+    result = sf.exclude ? result.filter(t => !match(t)) : result.filter(t => match(t));
   }
 
-  // Apply purpose filter
+  // Date range
+  if (filterFrom.value) result = result.filter(t => (t.date || '') >= filterFrom.value);
+  if (filterTo.value)   result = result.filter(t => (t.date || '') <= filterTo.value);
+
+  // Ангилал (bankType / legacy purpose)
   if (filterPurpose.value) {
-    result = result.filter(t => t.purpose === filterPurpose.value);
+    result = result.filter(t => (t.bankType || t.purpose) === filterPurpose.value);
   }
 
-  // Apply type filter
+  // Дэд ангилал (bankSubType / legacy type)
   if (filterType.value) {
-    result = result.filter(t => t.type === filterType.value);
+    result = result.filter(t => (t.bankSubType || t.type) === filterType.value);
   }
+
+  // Банк холбоосон
+  if (filterLinked.value === 'linked')   result = result.filter(t => !!t.bankTransactionId);
+  if (filterLinked.value === 'unlinked') result = result.filter(t => !t.bankTransactionId);
 
   // Apply sorting
   result.sort((a, b) => {
@@ -540,16 +698,16 @@ const filteredTransactions = computed(() => {
         return sortOrder.value === 'asc' 
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
-      case 'type':
-        aVal = (a.type || '').toLowerCase();
-        bVal = (b.type || '').toLowerCase();
-        return sortOrder.value === 'asc' 
+      case 'bankType':
+        aVal = (a.bankType || a.purpose || '').toLowerCase();
+        bVal = (b.bankType || b.purpose || '').toLowerCase();
+        return sortOrder.value === 'asc'
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
-      case 'purpose':
-        aVal = (a.purpose || '').toLowerCase();
-        bVal = (b.purpose || '').toLowerCase();
-        return sortOrder.value === 'asc' 
+      case 'bankSubType':
+        aVal = (a.bankSubType || a.type || '').toLowerCase();
+        bVal = (b.bankSubType || b.type || '').toLowerCase();
+        return sortOrder.value === 'asc'
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
       default:
@@ -599,7 +757,7 @@ function sortByColumn(column) {
 }
 
 function getSortIcon(column) {
-  if (sortBy.value !== column) return '⇅';
+  if (sortBy.value !== column) return '↕';
   return sortOrder.value === 'asc' ? '↑' : '↓';
 }
 
@@ -642,12 +800,12 @@ function onEmployeeChange() {
 }
 
 function onPurposeChange() {
-  // Clear project and type if purpose is not "Төсөлд"
-  if (formData.value.purpose !== 'Төсөлд') {
+  // Clear project and type if purpose is not "Шууд зардал"
+  if (formData.value.purpose !== 'Шууд зардал') {
     formData.value.projectID = '';
     formData.value.projectLocation = '';
-    formData.value.type = '';
   }
+  formData.value.type = '';
 }
 
 function handleAddItem() {
@@ -818,7 +976,7 @@ async function handleBulkSubmit() {
         employeeFirstName: employee.FirstName || '',
         amount: amount,
         type: bulkFormData.value.type,
-        purpose: 'Хоол/томилолт',
+        purpose: 'Шууд зардал',
         ebarimt: false,
         НӨАТ: false,
         comment: '',
@@ -959,6 +1117,40 @@ onMounted(async () => {
 .btn-back { padding: 7px 16px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-back:hover { background: #4b5563; }
 
+/* ── Multi-search ─────────────────────────────────────── */
+.fin-multi-search { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.fin-search-row { display: flex; gap: 6px; align-items: center; }
+.fin-search-input { flex: 1; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; background: #f8fafc; outline: none; }
+.fin-search-input:focus { border-color: #94a3b8; box-shadow: 0 0 0 2px #e2e8f0; }
+.fin-btn-excl { padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #374151; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.fin-btn-excl.active { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.fin-btn-rm { padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; color: #6b7280; cursor: pointer; }
+.fin-btn-add { align-self: flex-start; padding: 6px 12px; border: 1px dashed #cbd5e1; border-radius: 6px; background: transparent; color: #475569; font-size: 12px; cursor: pointer; }
+.fin-btn-add:hover { background: #f1f5f9; }
+
+/* ── Filters row ──────────────────────────────────────── */
+.fin-filters-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+.fin-filter-group { display: flex; flex-direction: column; gap: 3px; }
+.fin-filter-group label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; }
+.fin-sel { padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #fff; color: #1f2937; }
+
+/* ── Pills ────────────────────────────────────────────── */
+.fin-pills { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.fin-pill-count { padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; background: #e2e8f0; color: #334155; }
+.fin-pill-total { padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; background: #475569; color: #fff; }
+
+/* ── Table cells ──────────────────────────────────────── */
+.fin-proj-cell small, .fin-emp-id { color: #9ca3af; font-size: 11px; }
+.fin-emp-cell { white-space: nowrap; }
+.fin-amount { text-align: right; font-weight: 600; color: #b91c1c; }
+.fin-num { text-align: right; }
+.fin-tag-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.fin-tag-sub { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.fin-tag-none { color: #9ca3af; }
+.fin-badge-linked { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.fin-badge-unlinked { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+.fin-mono { font-family: monospace; font-size: 11px; color: #6b7280; }
+
 .center-th { text-align: center; white-space: nowrap; }
 .center-cell { text-align: center; }
 
@@ -1010,7 +1202,7 @@ onMounted(async () => {
 
 .management-section {
   padding: 20px;
-  max-width: 1400px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -1436,79 +1628,78 @@ textarea.form-input {
   color: white;
 }
 
-/* Table Styles */
+/* ── Column toggle bar ─────────────────────────────────────────── */
+.fin-col-toggle-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 0.79rem;
+}
+.fin-col-toggle-label { font-weight: 600; color: #475569; margin-right: 4px; white-space: nowrap; }
+.fin-col-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+  user-select: none;
+  color: #374151;
+}
+.fin-col-toggle-item:hover { background: #f1f5f9; }
+.fin-col-toggle-item input { cursor: pointer; }
+
+/* ── Table container: horizontal scroll, sticky header ──── */
 .transactions-table-container {
   overflow-x: auto;
-  margin-top: 20px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  -webkit-overflow-scrolling: touch;
 }
-
 .transactions-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  table-layout: auto;
+  min-width: 900px;
 }
-
 .transactions-table th,
 .transactions-table td {
-  padding: 12px;
+  padding: 9px 11px;
   text-align: left;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  font-size: 13px;
 }
-
-.transactions-table th {
-  background-color: #3498db;
-  color: white;
+.transactions-table td:last-child { white-space: nowrap; }
+/* comment column can wrap */
+.transactions-table td small { white-space: normal; max-width: 220px; display: block; color: #6b7280; }
+.th-fin {
+  background: #475569;
+  color: #f8fafc;
   font-weight: 600;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 2;
 }
-
-.transactions-table th.sortable {
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.2s;
-}
-
-.transactions-table th.sortable:hover {
-  background-color: #2980b9;
-}
-
-.transactions-table tbody tr:hover {
-  background-color: #f5f5f5;
-}
-
-.transactions-table .amount {
-  text-align: right;
-  font-weight: 600;
-  color: #27ae60;
-}
-
-.btn-edit-small {
-  padding: 5px 12px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.btn-edit-small:hover {
-  background-color: #2980b9;
-}
-
-.sum-display {
-  padding: 8px 15px;
-  background-color: #27ae60;
-  color: white;
-  border-radius: 5px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.th-fin.sortable { cursor: pointer; user-select: none; }
+.th-fin.sortable:hover { background: #334155; }
+.transactions-table tbody tr:hover { background: #f8fafc; }
+.btn-edit-small { padding: 4px 8px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; font-size: 14px; }
+.btn-edit-small:hover { background: #e2e8f0; }
+.fin-badge-linked { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.fin-badge-unlinked { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+.fin-mono { font-family: monospace; font-size: 11px; color: #6b7280; }
 
 @keyframes slideIn {
   from {

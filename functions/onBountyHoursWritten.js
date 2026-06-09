@@ -43,6 +43,12 @@ exports.onBountyHoursWritten = onDocumentWritten(
     const projectDoc  = projectQuery.docs[0];
     const projectData = projectDoc.data();
 
+    // Finished projects are frozen — never recalculate bounty
+    if (projectData.Status === 'Дууссан') {
+      console.log(`onBountyHoursWritten: project ${projectID} is Дууссан — skipping (frozen)`);
+      return;
+    }
+
     // Full recalculation (reads all TA + all projectBountyHours)
     const calculations = await calculateProjectMetrics(String(projectID), projectData, db);
 

@@ -549,6 +549,30 @@ exports.manageBankTransaction = functions
         });
       }
 
+      // ── RESET RECONCILIATION (ghost-linked fix) ──────────────────────────────
+      // Resets a bank transaction's reconciliationStatus to 'unlinked' when
+      // it is flagged as linked but no financialTransaction actually points to it.
+      if (action === "resetReconciliation") {
+        const { bankTxnId } = req.body;
+        if (!bankTxnId) return res.status(400).json({ success: false, error: "Missing bankTxnId" });
+        const bankRef = db.collection("bankTransactions").doc(bankTxnId);
+        const bankDoc = await bankRef.get();
+        if (!bankDoc.exists) return res.status(404).json({ success: false, error: "Bank transaction not found" });
+        // Verify there are truly no linked financial transactions before resetting
+        const linkedSnap = await db.collection("financialTransactions")
+          .where("bankTransactionId", "==", bankTxnId)
+          .get();
+        if (linkedSnap.size > 0) {
+          return res.status(400).json({ success: false, error: "Bank transaction still has linked financial transactions" });
+        }
+        await bankRef.update({
+          reconciledAmount: 0,
+          reconciliationStatus: "unlinked",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.status(200).json({ success: true, reconciledAmount: 0, reconciliationStatus: "unlinked" });
+      }
+
       // ── UNLINK FINANCIAL TRANSACTION ─────────────────────────────────────────
       // Removes the bankTransactionId from a single financial transaction,
       // then recomputes reconciliation status on the bank transaction.
@@ -626,9 +650,20 @@ exports.manageBankTransaction = functions
           };
         }
 
+        // Build employee account → employeeID map for fallback matching
+        const empSnap = await db.collection("employees").get();
+        const acctToEmpId = {}; // last9(BankAccountNumber) → employeeID
+        empSnap.forEach(doc => {
+          const e = doc.data();
+          const a9 = last9Digits(e.BankAccountNumber);
+          if (a9 && e.Id) acctToEmpId[a9] = String(e.Id);
+        });
+
         // Group unlinked finTxns by date+amount+last9acct for fast lookup
         // key: "YYYY-MM-DD|amount|last9acct"  → [{id, amount, date, acct9, ...meta}]
         const byDateAmt = {};
+        // Secondary index by employee: "YYYY-MM-DD|amount|employeeID" → [{...}]
+        const byDateAmtEmp = {};
         finSnap.docs.forEach(doc => {
           const d = doc.data();
           if (d.bankTransactionId) return; // already linked — skip
@@ -638,6 +673,13 @@ exports.manageBankTransaction = functions
           const key = `${date}|${parseFloat(d.amount) || 0}|${acct9}`;
           if (!byDateAmt[key]) byDateAmt[key] = [];
           byDateAmt[key].push({ id: doc.id, amount: parseFloat(d.amount) || 0, date, acct9, ...finMeta(d) });
+          // Also index by employeeID for fallback
+          const empId = d.employeeID ? String(d.employeeID) : '';
+          if (empId) {
+            const empKey = `${date}|${parseFloat(d.amount) || 0}|${empId}`;
+            if (!byDateAmtEmp[empKey]) byDateAmtEmp[empKey] = [];
+            byDateAmtEmp[empKey].push({ id: doc.id, amount: parseFloat(d.amount) || 0, date, acct9, ...finMeta(d) });
+          }
         });
 
         // Also build a map for split-matching: date → [{id, amount, acct9, ...meta}]
@@ -677,7 +719,8 @@ exports.manageBankTransaction = functions
           // --- Case 1: exact single match ---
           const btAcct9 = last9Digits(bt.relatedAccount);
           const exactKey = `${btDate}|${bankExpense}|${btAcct9}`;
-          const exactMatches = byDateAmt[exactKey] || [];
+          // If account is empty on both sides the key collision is a false positive — skip
+          const exactMatches = btAcct9 ? (byDateAmt[exactKey] || []) : [];
 
           if (exactMatches.length === 1) {
             // Perfect 1-to-1 match
@@ -723,57 +766,53 @@ exports.manageBankTransaction = functions
             continue;
           }
 
-          // --- Case 2: split match (sum of same-day finTxns == bankExpense) ---
-          const sameDayFins = (byDate[btDate] || []).filter(x => x.amount > 0 && x.acct9 === btAcct9);
-          if (sameDayFins.length > 0) {
-            const total = sameDayFins.reduce((s, x) => s + x.amount, 0);
-            if (total === bankExpense) {
-              // All same-day unlinked finTxns sum exactly to bank expense
-              const finIds = sameDayFins.map(x => x.id);
-              for (let i = 0; i < finIds.length; i += 400) {
-                const batch = db.batch();
-                finIds.slice(i, i + 400).forEach(fid => {
-                  batch.update(db.collection("financialTransactions").doc(fid), {
-                    bankTransactionId: bankDoc.id,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-                });
-                await batch.commit();
-              }
-              const splitBankUpdate = {
-                reconciledAmount: bankExpense,
-                reconciliationStatus: "matched",
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              };
-              // Copy classification from first finTxn (always overrides auto-classification)
-              const first = sameDayFins[0];
-              if (first.type)          splitBankUpdate.type          = first.type;
-              if (first.subtype)       splitBankUpdate.subtype       = first.subtype;
-              if (first.requesterID)   splitBankUpdate.requesterID   = first.requesterID;
-              if (first.requesterName) splitBankUpdate.requesterName = first.requesterName;
-              if (first.projectID)     splitBankUpdate.projectID     = first.projectID;
-              if (first.projectName)   splitBankUpdate.projectName   = first.projectName;
+          // --- Case 2: fallback — match by employee ID (acct9 → employee lookup) ---
+          // Useful when fin txn has no employeeBankAccount but has employeeID,
+          // and bank txn account maps to that employee.
+          const btEmpId = btAcct9 ? (acctToEmpId[btAcct9] || '') : (bt.requesterID ? String(bt.requesterID) : '');
+          const empKey = btEmpId ? `${btDate}|${bankExpense}|${btEmpId}` : '';
+          const empMatches = empKey ? (byDateAmtEmp[empKey] || []) : [];
 
-              if (!splitBankUpdate.type) {
-                const matched = applyRulesToTransaction(bt, classificationRules);
-                if (matched) Object.assign(splitBankUpdate, matched.updates);
-              }
-              await bankDoc.ref.update(splitBankUpdate);
-              // Remove used finTxns from lookup
-              finIds.forEach(fid => {
-                sameDayFins.forEach(x => {
-                  const key2 = `${btDate}|${x.amount}`;
-                  if (byDateAmt[key2]) {
-                    const idx = byDateAmt[key2].findIndex(y => y.id === fid);
-                    if (idx !== -1) byDateAmt[key2].splice(idx, 1);
-                  }
-                });
-              });
-              byDate[btDate] = [];
-              linked++;
-              results.push({ bankId: bankDoc.id, finIds, type: "split", amount: bankExpense, date: btDate });
-              continue;
+          if (empMatches.length === 1) {
+            const fin = empMatches[0];
+            await db.collection("financialTransactions").doc(fin.id).update({
+              bankTransactionId: bankDoc.id,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            const bankUpdate = {
+              reconciledAmount: bankExpense,
+              reconciliationStatus: "matched",
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            if (fin.type)          bankUpdate.type          = fin.type;
+            if (fin.subtype)       bankUpdate.subtype       = fin.subtype;
+            if (fin.requesterID)   bankUpdate.requesterID   = fin.requesterID;
+            if (fin.requesterName) bankUpdate.requesterName = fin.requesterName;
+            if (fin.projectID)     bankUpdate.projectID     = fin.projectID;
+            if (fin.projectName)   bankUpdate.projectName   = fin.projectName;
+            if (!bankUpdate.type) {
+              const matched = applyRulesToTransaction(bt, classificationRules);
+              if (matched) Object.assign(bankUpdate, matched.updates);
             }
+            await bankDoc.ref.update(bankUpdate);
+            // Remove from both indexes
+            delete byDateAmtEmp[empKey];
+            const exactKeyFin = `${fin.date}|${fin.amount}|${fin.acct9}`;
+            delete byDateAmt[exactKeyFin];
+            const dateArr = byDate[btDate];
+            if (dateArr) {
+              const idx = dateArr.findIndex(x => x.id === fin.id);
+              if (idx !== -1) dateArr.splice(idx, 1);
+            }
+            linked++;
+            results.push({ bankId: bankDoc.id, finIds: [fin.id], type: "1-to-1-by-employee", amount: bankExpense, date: btDate });
+            continue;
+          }
+
+          if (empMatches.length > 1) {
+            ambiguous++;
+            results.push({ bankId: bankDoc.id, finIds: [], type: "ambiguous-by-employee", amount: bankExpense, date: btDate });
+            continue;
           }
 
           // No match found
@@ -1099,10 +1138,10 @@ exports.manageBankTransaction = functions
           await finRef.set({
             date:               bt.date,
             amount:             expense,
-            purpose:            "Төсөлд",
+            purpose:            "Шууд зардал",
             type:               "Тээвэр, шатахуун",
-            bankType:           "Тээвэр, шатахуун",
-            bankSubType:        "",
+            bankType:           "Шууд зардал",
+            bankSubType:        "Тээвэр, шатахуун",
             employeeID:         emp.NumID,
             employeeFirstName:  emp.FirstName,
             projectID:          projectID,
@@ -1123,8 +1162,8 @@ exports.manageBankTransaction = functions
           await bankDoc.ref.update({
             reconciledAmount:     expense,
             reconciliationStatus: "matched",
-            type:                 "Тээвэр, шатахуун",
-            subtype:              "",
+            type:                 "Шууд зардал",
+            subtype:              "Тээвэр, шатахуун",
             requesterID:          String(emp.NumID),
             requesterName:        emp.FirstName,
             projectID:            projectID,
@@ -1142,6 +1181,108 @@ exports.manageBankTransaction = functions
           skippedNoTA:          skippedNoTA.length,
           skippedAlreadyLinked: skippedAlreadyLinked.length,
           details: { created, skippedNoEmployee, skippedNoTA },
+        });
+      }
+
+      // ── BULK CREATE FINANCIAL TXNS FROM CLASSIFIED BANK TXNS ──────────────
+      // One-time (safe to re-run) backfill: for every bank transaction that is
+      // already classified (has type + subtype) AND has an employee (requesterID)
+      // AND has a project (projectID), create a linked financial transaction.
+      // Skips any bank txn that is already matched or already has a linked
+      // financial transaction pointing at it.
+      if (action === "bulkCreateFromClassified") {
+        const { fromDate } = req.body; // optional – omit to process all dates
+
+        // Load qualifying bank txns (in-memory filter; Firestore can't do "field exists")
+        let bankQuery = db.collection("bankTransactions");
+        if (fromDate) bankQuery = bankQuery.where("date", ">=", fromDate);
+        const bankSnap = await bankQuery.get();
+
+        // Project location cache (populated on-demand)
+        const projLocationCache = {};
+        async function getProjectLoc(projectID) {
+          if (!projectID) return '';
+          if (projLocationCache[projectID] !== undefined) return projLocationCache[projectID];
+          const snap = await db.collection("projects").where("id", "==", projectID).limit(1).get();
+          const loc  = snap.empty ? '' : (snap.docs[0].data().Location || snap.docs[0].data().location || snap.docs[0].data().projectLocation || snap.docs[0].data().siteLocation || '');
+          projLocationCache[projectID] = loc;
+          return loc;
+        }
+
+        const created              = [];
+        const skippedAlreadyLinked = [];
+        const skippedMissingFields = [];
+
+        for (const bankDoc of bankSnap.docs) {
+          const bt      = bankDoc.data();
+          const expense = parseFloat(bt.expense) || 0;
+
+          // Must be an expense
+          if (expense <= 0) continue;
+
+          // Must be classified with employee and project
+          if (!bt.type || !bt.subtype || !bt.requesterID || !bt.projectID) {
+            skippedMissingFields.push(bankDoc.id);
+            continue;
+          }
+
+          // Skip if already fully matched
+          if (bt.reconciliationStatus === "matched") {
+            skippedAlreadyLinked.push(bankDoc.id);
+            continue;
+          }
+
+          // Skip if a financial txn already linked to this bank txn exists
+          const existingFin = await db.collection("financialTransactions")
+            .where("bankTransactionId", "==", bankDoc.id)
+            .limit(1).get();
+          if (!existingFin.empty) {
+            skippedAlreadyLinked.push(bankDoc.id);
+            continue;
+          }
+
+          const projectLocation = await getProjectLoc(bt.projectID);
+
+          // Create financial transaction
+          const finRef = db.collection("financialTransactions").doc();
+          await finRef.set({
+            date:               bt.date,
+            amount:             expense,
+            purpose:            bt.type,        // bank txn type → financial purpose
+            type:               bt.subtype,     // bank txn subtype → financial type
+            bankType:           bt.type,
+            bankSubType:        bt.subtype,
+            employeeID:         bt.requesterID,
+            employeeFirstName:  bt.requesterName || '',
+            projectID:          bt.projectID,
+            projectLocation:    projectLocation,
+            bankTransactionId:  bankDoc.id,
+            source:             "classified-auto",
+            ebarimt:            bt.ebarimt    || false,
+            НӨАТ:               bt.NOAT       || false,
+            comment:            bt.description || '',
+            isEbarimtReceived:  false,
+            isNOATinSystem:     false,
+            createdAt:          admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt:          admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Mark bank txn as matched
+          await bankDoc.ref.update({
+            reconciledAmount:     expense,
+            reconciliationStatus: "matched",
+            updatedAt:            admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          created.push({ bankId: bankDoc.id, finId: finRef.id, date: bt.date, amount: expense, projectID: bt.projectID, employee: bt.requesterName || bt.requesterID });
+        }
+
+        return res.status(200).json({
+          success:              true,
+          created:              created.length,
+          skippedAlreadyLinked: skippedAlreadyLinked.length,
+          skippedMissingFields: skippedMissingFields.length,
+          details:              { created },
         });
       }
 

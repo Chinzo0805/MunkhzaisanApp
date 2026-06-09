@@ -15,6 +15,7 @@
 
 exports.onAttendanceApproved = require("./onAttendanceApproved").onAttendanceApproved;
 exports.onBountyHoursWritten = require("./onBountyHoursWritten").onBountyHoursWritten;
+exports.onProjectFinished = require("./onProjectFinished").onProjectFinished;
 exports.submitAttendance = require("./submitAttendance").submitAttendance;
 
 // Employee functions
@@ -35,6 +36,7 @@ exports.manageProject = require("./manageProject").manageProject;
 exports.updateProjectRealHours = require("./updateProjectRealHours").updateProjectRealHours;
 exports.recalculateAllProjects = require("./recalculateAllProjects").recalculateAllProjects;
 exports.mergeProjects = require("./mergeProjects").mergeProjects;
+exports.manageBountyRates = require("./manageBountyRates").manageBountyRates;
 
 // Salary functions
 exports.manageSalaryPeriod = require("./manageSalaryPeriod").manageSalaryPeriod;

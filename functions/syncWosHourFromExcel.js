@@ -92,11 +92,12 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
     const carIdx = headers.findIndex(h => h === 'Унаа');
     const matIdx = headers.findIndex(h => h === 'Материалын дүн');
     const ajilbarIdx = headers.findIndex(h => h === 'Ажилбар');
+    const remainIdx = headers.findIndex(h => h === 'Төлбөр %');
 
     if (refIdx === -1) throw new Error(`"ВОС дугаар" column not found. Headers: ${headers.join(', ')}`);
     if (wosIdx === -1) throw new Error(`"Хүн/цаг" column not found. Headers: ${headers.join(', ')}`);
 
-    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}, "Ажилбар" at ${ajilbarIdx}`);
+    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}, "Ажилбар" at ${ajilbarIdx}, "Төлбөр %" at ${remainIdx}`);
 
     // 6. Process each data row
     const updated = [];
@@ -112,6 +113,7 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
       const wosHourRaw = row[wosIdx];
       const incomeCarRaw = carIdx !== -1 ? row[carIdx] : null;
       const incomeMaterialRaw = matIdx !== -1 ? row[matIdx] : null;
+      const remainRaw = remainIdx !== -1 ? row[remainIdx] : null;
       const ajilbar = ajilbarIdx !== -1 ? (row[ajilbarIdx] || '').toString().trim() : '';
 
       if (!refId) continue;
@@ -160,6 +162,10 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
         const fieldUpdates = { WosHour: wosHour };
         if (incomeCar !== null && !isNaN(incomeCar)) fieldUpdates.IncomeCar = incomeCar;
         if (incomeMaterial !== null && !isNaN(incomeMaterial)) fieldUpdates.IncomeMaterial = incomeMaterial;
+        if (remainRaw !== null && remainRaw !== '') {
+          const remainPct = parseFloat(remainRaw);
+          if (!isNaN(remainPct)) fieldUpdates.RemainPercent = Math.min(100, Math.max(0, remainPct));
+        }
 
         // If Ажилбар is "Нягтлан хүлээн авах", advance project status to "Нэхэмжлэх өгөх ба Шалгах"
         // — but never go backwards: skip if project is already at "Урамшуулал олгох" or "Дууссан"

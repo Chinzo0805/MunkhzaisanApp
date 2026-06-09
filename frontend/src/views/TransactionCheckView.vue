@@ -17,12 +17,16 @@
         <label>Зориулалт:</label>
         <select v-model="filterPurpose" @change="applyFilters">
           <option value="">Бүгд</option>
-          <option value="Төсөлд">Төсөлд</option>
-          <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-          <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-          <option value="хувийн зарлага">хувийн зарлага</option>
-          <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
-          <option value="Хоол/томилолт">Хоол/томилолт</option>
+          <option value="Шууд зардал">Шууд зардал</option>
+          <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+          <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+          <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+          <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+          <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+          <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+          <option value="Бусад зардал">Бусад зардал</option>
+          <option value="Орлого">Орлого</option>
+          <option value="Дотоод шилжүӿлэг">Дотоод шилжүӿлэг</option>
         </select>
       </div>
       <div class="filter-group">
@@ -37,16 +41,12 @@
         <label>Хасахаас зориулалт:</label>
         <div class="exclude-checks">
           <label class="excl-label">
-            <input type="checkbox" v-model="excludePurposes" value="Цалингийн урьдчилгаа" />
-            <span>Цалингийн урьдчилгаа</span>
+            <input type="checkbox" v-model="excludePurposes" value="Хүний нөөцтэй холбоотой зардал" />
+            <span>Хүний нөөцтэй холбоотой зардал</span>
           </label>
           <label class="excl-label">
-            <input type="checkbox" v-model="excludePurposes" value="хувийн зарлага" />
-            <span>хувийн зарлага</span>
-          </label>
-          <label class="excl-label">
-            <input type="checkbox" v-model="excludePurposes" value="Хоол/томилолт" />
-            <span>Хоол/Томилолт</span>
+            <input type="checkbox" v-model="excludePurposes" value="Дотоод шилжүӿлэг" />
+            <span>Дотоод шилжүӿлэг</span>
           </label>
         </div>
       </div>

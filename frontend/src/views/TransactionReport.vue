@@ -17,12 +17,16 @@
         <label>Зориулалт:</label>
         <select v-model="filterPurpose">
           <option value="">Бүгд</option>
-          <option value="Төсөлд">Төсөлд</option>
-          <option value="Цалингийн урьдчилгаа">Цалингийн урьдчилгаа</option>
-          <option value="Бараа материал/Хангамж авах">Бараа материал/Хангамж авах</option>
-          <option value="хувийн зарлага">хувийн зарлага</option>
-          <option value="Оффис хэрэглээний зардал">Оффис хэрэглээний зардал</option>
-          <option value="Хоол/томилолт">Хоол/томилолт</option>
+          <option value="Шууд зардал">Шууд зардал</option>
+          <option value="Хүний нөөцтэй холбоотой зардал">Хүний нөөцтэй холбоотой зардал</option>
+          <option value="Үйл ажиллагааны зардал">Үйл ажиллагааны зардал</option>
+          <option value="Захиргаа, удирдлагын зардал">Захиргаа, удирдлагын зардал</option>
+          <option value="Борлуулалт, маркетингийн зардал">Борлуулалт, маркетингийн зардал</option>
+          <option value="Мэдээллийн технологийн зардал">Мэдээллийн технологийн зардал</option>
+          <option value="Санхүү, татварын зардал">Санхүү, татварын зардал</option>
+          <option value="Бусад зардал">Бусад зардал</option>
+          <option value="Орлого">Орлого</option>
+          <option value="Дотоод шилжүүлэг">Дотоод шилжүүлэг</option>
         </select>
       </div>
       <button @click="generateReport" class="btn-refresh" :disabled="loading">

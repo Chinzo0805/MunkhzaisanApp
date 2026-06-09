@@ -29,6 +29,7 @@ import PublicProjects from '../views/PublicProjects.vue';
 import BankTransactionsView from '../views/BankTransactionsView.vue';
 import ReconcileView from '../views/ReconcileView.vue';
 import BankReportView from '../views/BankReportView.vue';
+import BountyRatesPanel from '../views/BountyRatesPanel.vue';
 
 
 const routes = [
@@ -129,6 +130,12 @@ const routes = [
     path: '/supervisor-bounty',
     name: 'SupervisorBountyReport',
     component: SupervisorBountyReport,
+    meta: { requiresAuth: true, requiresRegistration: true },
+  },
+  {
+    path: '/bounty-rates',
+    name: 'BountyRatesPanel',
+    component: BountyRatesPanel,
     meta: { requiresAuth: true, requiresRegistration: true },
   },
   {

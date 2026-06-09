@@ -81,9 +81,16 @@
       </div>
       <div class="filter-group">
         <label>Ангилал:</label>
-        <select v-model="filterType">
+        <select v-model="filterType" @change="filterSubtype = ''">
           <option value="">Бүгд</option>
           <option v-for="t in typeList" :key="t" :value="t">{{ t }}</option>
+        </select>
+      </div>
+      <div class="filter-group" v-if="filterType && subtypesFor(filterType).length">
+        <label>Дэд ангилал:</label>
+        <select v-model="filterSubtype">
+          <option value="">Бүгд</option>
+          <option v-for="s in subtypesFor(filterType)" :key="s" :value="s">{{ s }}</option>
         </select>
       </div>
       <button @click="loadTransactions" class="btn-refresh" :disabled="loading">
@@ -98,6 +105,12 @@
       </div>
       <button @click="runBulkAutoLink" class="btn-automatch" :disabled="autoLinkRunning || !autoLinkFromDate" title="Дансны зардал тааруулах + Petrovis зардал үүсгэх + Ангиллыг нөхөх">
         {{ autoLinkRunning ? '⏳ Боловсруулж байна...' : '🔗 Авто холбох + Ангилах' }}
+      </button>
+      <button @click="runCreateFromClassified" class="btn-automatch" :disabled="classifiedCreating" title="Ажилтан + Төсөл бүхий ангилагдсан дансны гүйлгээнүүдээс санхүүгийн бүртгэл үүсгэх">
+        {{ classifiedCreating ? '⏳ Боловсруулж байна...' : '🆕 Ангилагдсанаас үүсгэх' }}
+      </button>
+      <button @click="runAutoAssignIncome" class="btn-automatch" :disabled="incomeAssignRunning" title="Орлогын гүйлгээнд тохирох төсөл автоматаар холбох (Мобиком)">
+        {{ incomeAssignRunning ? '⏳ Боловсруулж байна...' : '💰 Орлого холбох' }}
       </button>
       <div class="total-pills">
         <span class="pill income">↑ {{ fmtMnt(totals.income) }}</span>
@@ -195,7 +208,10 @@
                 <template v-else-if="col.key === 'ebarimt'">{{ txn.ebarimt ? '✓' : '' }}</template>
                 <template v-else-if="col.key === 'NOAT'">{{ txn.NOAT ? '✓' : '' }}</template>
                 <template v-else-if="col.key === 'sourceFile'"><small class="source-file">{{ txn.sourceFile }}</small></template>
-                <template v-else-if="col.key === 'projectName'">{{ txn.projectName || txn.projectID || '' }}</template>
+                <template v-else-if="col.key === 'projectName'">
+                  <span>{{ txn.projectName || '' }}</span>
+                  <small v-if="txn.projectID" class="proj-id-sub">Т{{ txn.projectID }}</small>
+                </template>
                 <template v-else>{{ txn[col.key] || '' }}</template>
               </td>
               <td class="td-actions">
@@ -508,6 +524,21 @@
               <div class="alr-row alr-done" v-if="autoLinkResult.petrovis.skippedAlreadyLinked > 0"><span>🔁 Аль хэдийн холбоотой</span><strong>{{ autoLinkResult.petrovis.skippedAlreadyLinked }}</strong></div>
             </template>
           </template>
+          <template v-if="autoLinkResult.classified">
+            <div class="alr-section-title" style="margin-top:10px">🆕 Ангилагдсан гүйлгээнүүд</div>
+            <div v-if="autoLinkResult.classified.error" class="alr-row alr-amb"><span>⚠️ Алдаа</span><strong>{{ autoLinkResult.classified.error }}</strong></div>
+            <template v-else>
+              <div class="alr-row alr-ok"><span>✅ Санхүүгийн бүртгэл үүсгэгдсэн</span><strong>{{ autoLinkResult.classified.created }}</strong></div>
+              <div class="alr-row alr-done" v-if="autoLinkResult.classified.skippedAlreadyLinked > 0"><span>🔁 Аль хэдийн холбоотой</span><strong>{{ autoLinkResult.classified.skippedAlreadyLinked }}</strong></div>
+            </template>
+          </template>
+          <template v-if="autoLinkResult.incomeAssign">
+            <div class="alr-section-title" style="margin-top:10px">💰 Орлого холбох</div>
+            <div class="alr-row alr-ok"><span>✅ Төсөл оноогдсон</span><strong>{{ autoLinkResult.incomeAssign.assigned }}</strong></div>
+            <div class="alr-row alr-skip" v-if="autoLinkResult.incomeAssign.skipped > 0"><span>⏭ Төсөл олдсонгүй</span><strong>{{ autoLinkResult.incomeAssign.skipped }}</strong></div>
+            <div class="alr-row alr-amb" v-if="autoLinkResult.incomeAssign.ambiguous > 0"><span>⚠️ Хоёрдмол (гараар хийнэ)</span><strong>{{ autoLinkResult.incomeAssign.ambiguous }}</strong></div>
+            <div class="alr-row alr-done" v-if="autoLinkResult.incomeAssign.alreadyLinked > 0"><span>🔁 Өмнө холбоотой</span><strong>{{ autoLinkResult.incomeAssign.alreadyLinked }}</strong></div>
+          </template>
         </div>
         <div class="match-modal-footer">
           <button @click="showAutoLinkResult = false; loadTransactions()" class="btn-save-sm">✔ Хаах & Шинэчлэх</button>
@@ -710,11 +741,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useEmployeesStore } from '../stores/employees';
 import { useProjectsStore } from '../stores/projects';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
-import { manageBankTransaction, syncBankTransactionsFromExcel, manageFinancialTransaction } from '../services/api';
+import { manageBankTransaction, syncBankTransactionsFromExcel, manageFinancialTransaction, manageProject } from '../services/api';
 import { db } from '../config/firebase';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 
@@ -722,6 +754,7 @@ const authStore          = useAuthStore();
 const employeesStore     = useEmployeesStore();
 const projectsStore      = useProjectsStore();
 const financialTxnStore  = useFinancialTransactionsStore();
+const route              = useRoute();
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const transactions = ref([]);
@@ -734,10 +767,11 @@ const filterAccount     = ref('');
 const filterFrom        = ref('');
 const filterTo          = ref('');
 const filterType        = ref('');
+const filterSubtype     = ref('');
 const filterUnclassified = ref(false);
-const filterUntyped  = ref(false);
-const filterUnlinked = ref(false);
-const filterMatched  = ref(false);
+const filterUntyped            = ref(false);
+const filterUnlinked           = ref(false);
+const filterMatched            = ref(false);
 const searchFilters = ref([{ text: '', exclude: false }]);
 
 const sortField = ref('documentDate');
@@ -787,7 +821,9 @@ const autoLinkRunning    = ref(false);
 const autoLinkResult     = ref(null);
 const showAutoLinkResult = ref(false);
 const autoLinkFromDate   = ref('2026-02-01');
+const incomeAssignRunning = ref(false);
 const unlinkingId        = ref(null);
+const classifiedCreating = ref(false);
 
 // ── Petrovis bulk-create state ──────────────────────────────────
 const petrovisModal = ref({
@@ -1165,6 +1201,90 @@ async function runBulkAutoLink() {
   }
 }
 
+async function runCreateFromClassified() {
+  if (!confirm('Ажилтан + Төсөл бүхий, ангилагдсан бүх дансны гүйлгээнүүдээс санхүүгийн бүртгэл үүсгэх үү?\n\nАль хэдийн холбоотой гүйлгээнүүд алгасагдана.')) return;
+  classifiedCreating.value = true;
+  try {
+    const res = await manageBankTransaction({ action: 'bulkCreateFromClassified' });
+    autoLinkResult.value     = { classified: res.success ? res : { error: res.error } };
+    showAutoLinkResult.value = true;
+  } catch (e) {
+    alert('Алдаа: ' + e.message);
+  } finally {
+    classifiedCreating.value = false;
+  }
+}
+
+// ── Auto-assign income bank transactions to projects ─────────────────────────
+// Rule: description contains "mobi" (case-insensitive) → look for a Мобиком project
+// whose TotalIncome matches the bank transaction income amount exactly.
+async function runAutoAssignIncome() {
+  if (!confirm('Орлогын дансны гүйлгээнд тохирох Мобиком төсөл автоматаар хайж холбох уу?\n\nТааралдсан гүйлгээнд төсөл онооно + Орлогын огноо шинэчлэгдэнэ.')) return;
+  incomeAssignRunning.value = true;
+  let assigned = 0, skipped = 0, ambiguous = 0, alreadyLinked = 0;
+  try {
+    // Income transactions without a project, description contains "mobi"
+    const candidates = transactions.value.filter(t =>
+      (t.income || 0) > 0 &&
+      (t.description || '').toLowerCase().includes('mobi')
+    );
+
+    // Мобиком projects (customer field contains "мобиком", case-insensitive)
+    const mobiProjects = projectsStore.projects.filter(p =>
+      (p.customer || '').toLowerCase().includes('мобиком')
+    );
+
+    for (const txn of candidates) {
+      // Already has a project — count and skip
+      if (txn.projectID) {
+        alreadyLinked++;
+        continue;
+      }
+
+      const amount = parseFloat(txn.income);
+      // Find projects whose TotalIncome matches within 1₮ tolerance
+      const matches = mobiProjects.filter(p => Math.abs((parseFloat(p.TotalIncome) || 0) - amount) < 1);
+
+      if (matches.length === 0) {
+        skipped++;
+        continue;
+      }
+      if (matches.length > 1) {
+        ambiguous++;
+        continue;
+      }
+
+      const proj = matches[0];
+      const projId   = String(proj.id);
+      const projName = proj.siteLocation || projId;
+      const txnDate  = (typeof txn.date === 'string' ? txn.date : (txn.date?.toDate?.()?.toISOString?.() || '')).slice(0, 10);
+
+      // Update bank transaction — assign projectID + projectName
+      await manageBankTransaction({
+        action:  'update',
+        id:      txn.id,
+        updates: { projectID: projId, projectName: projName },
+      });
+
+      // Update project — set IncomeDate from bank transaction date
+      if (txnDate && !proj.IncomeDate) {
+        await manageProject('update', { IncomeDate: txnDate }, proj.docId);
+      }
+
+      // Update local state so UI reflects change immediately
+      Object.assign(txn, { projectID: projId, projectName: projName });
+      assigned++;
+    }
+
+    autoLinkResult.value     = { incomeAssign: { assigned, skipped, ambiguous, alreadyLinked } };
+    showAutoLinkResult.value = true;
+  } catch (e) {
+    alert('Алдаа: ' + e.message);
+  } finally {
+    incomeAssignRunning.value = false;
+  }
+}
+
 async function loadClassificationRules() {
   ruleLoading.value = true;
   try {
@@ -1393,10 +1513,11 @@ const filtered = computed(() => {
   if (filterFrom.value)         list = list.filter(t => (t.date || t.documentDate || '') >= filterFrom.value);
   if (filterTo.value)           list = list.filter(t => (t.date || t.documentDate || '') <= filterTo.value);
   if (filterType.value)         list = list.filter(t => t.type === filterType.value);
+  if (filterSubtype.value)      list = list.filter(t => t.subtype === filterSubtype.value);
   if (filterUntyped.value || filterUnlinked.value || filterMatched.value) {
     list = list.filter(t => {
       if (filterUntyped.value  && !t.type) return true;
-      if (filterUnlinked.value && t.expense > 0 && (!t.reconciliationStatus || t.reconciliationStatus === 'unlinked' || t.reconciliationStatus === 'partial')) return true;
+      if (filterUnlinked.value && t.expense > 0 && (t.type === 'Шууд зардал' || !t.type) && (!t.reconciliationStatus || t.reconciliationStatus === 'unlinked' || t.reconciliationStatus === 'partial')) return true;
       if (filterMatched.value  && t.reconciliationStatus === 'matched') return true;
       return false;
     });
@@ -1684,6 +1805,9 @@ onMounted(async () => {
     projectsStore.subscribeToProjects(),
     financialTxnStore.fetchTransactions(),
   ]);
+  // Apply URL query params if present (e.g. from bank-report page links)
+  if (route.query.type)    filterType.value    = route.query.type;
+  if (route.query.subtype) filterSubtype.value = route.query.subtype;
 });
 </script>
 
@@ -1926,6 +2050,7 @@ onMounted(async () => {
 .tag-none { color: #d1d5db; font-size: 0.8rem; }
 .center { text-align: center; }
 .source-file { color: #9ca3af; font-size: 0.72rem; }
+.proj-id-sub { display: block; color: #9ca3af; font-size: 11px; }
 .empty-msg { text-align: center; color: #9ca3af; padding: 32px; }
 
 /* Edit row */

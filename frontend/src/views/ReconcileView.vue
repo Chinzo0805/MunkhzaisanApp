@@ -7,11 +7,24 @@
       <div class="recon-header-stats" v-if="!loadingBank">
         <span class="stat-badge unlinked">❌ {{ unlinkedCount }} холбоогүй</span>
         <span
+          class="stat-badge classified-unlinked"
+          style="cursor:pointer"
+          @click="filterStatus = 'classified_unlinked'"
+          title="Шууд зардал ангилсан боловч холбоогүй"
+        >🏷️ {{ classifiedUnlinkedCount }} ангилсан·холбоогүй</span>
+        <span
           class="stat-badge mismatched"
           style="cursor:pointer"
           @click="filterStatus = 'linked'"
           :title="'Зөрөөтэй холбоот - шүүгээд дараагүй дараа'"
         >🔗 {{ mismatchedCount }} зөрөөтэй</span>
+        <span
+          v-if="ghostLinkedCount > 0"
+          class="stat-badge ghost-linked"
+          style="cursor:pointer"
+          @click="filterStatus = 'ghost_linked'"
+          title="Холбоотой гэж тэмдэглэгдсэн боловч бодит гүйлгээ байхгүй"
+        >👻 {{ ghostLinkedCount }} алдаатай тулгалт</span>
         <span class="stat-badge matched">✅ {{ matchedCount }} тулгарсан</span>
         <span class="stat-badge total">📊 {{ expenseTransactions.length }} нийт зарлага</span>
       </div>
@@ -36,12 +49,23 @@
       </div>
       <div class="rf-group">
         <select v-model="filterStatus" class="sel-sm">
-          <option value="unlinked">❌ Холбоогүй</option>
+          <option value="unlinked">❌ Холбоогүй (ангилаагүй)</option>
+          <option value="classified_unlinked">🏷️ Шууд зардал·холбоогүй</option>
           <option value="linked">🔗 Зөрөөтэй (холбоотой боловч таараагүй)</option>
+          <option value="ghost_linked">👻 Алдаатай тулгалт (ghost)</option>
           <option value="">Бүгд</option>
           <option value="matched">✅ Тулгарсан</option>
         </select>
       </div>
+      <button
+        v-if="filterStatus === 'ghost_linked' && ghostLinkedCount > 0"
+        @click="fixGhostLinked"
+        class="btn-fix-ghost"
+        :disabled="fixingGhost"
+        title="Бүх алдаатай тулгалтыг засах (reconciliationStatus → unlinked)"
+      >
+        {{ fixingGhost ? '⏳ Засаж байна...' : `🔧 Бүгдийг засах (${ghostLinkedCount})` }}
+      </button>
       <button @click="loadBankTransactions" class="btn-refresh" :disabled="loadingBank">
         {{ loadingBank ? '⏳' : '🔄 Шинэчлэх' }}
       </button>
@@ -83,6 +107,7 @@
           <div
             v-for="bt in filteredBankTxns"
             :key="bt.id"
+            :id="'bank-row-' + bt.id"
             class="bank-row"
             :class="{
               'bank-row-selected': selectedBankId === bt.id,
@@ -93,6 +118,7 @@
           >
             <div class="br-top">
               <span class="br-date">{{ fmtDateTime(bt.documentDate || bt.date) }}</span>
+              <span :class="['day-badge', isWeekend(bt.documentDate || bt.date) ? 'day-weekend' : '']">{{ dayOfWeek(bt.documentDate || bt.date) }}</span>
               <span class="br-amt">{{ fmtMnt(bt.expense) }}₮</span>
               <span class="br-badge" :title="reconTitle(bt)">{{ reconIcon(bt) }}</span>
             </div>
@@ -102,6 +128,9 @@
             <div class="br-bot">
               <span class="br-acct">{{ bt.relatedAccount }}</span>
               <span class="br-type" v-if="bt.type">{{ bt.type }}</span>
+            </div>
+            <div v-if="bt.projectID" class="br-proj">
+              📁 #{{ bt.projectID }}<span v-if="bt.projectName"> · {{ bt.projectName }}</span>
             </div>
             <div v-if="empNameByAcct(bt.relatedAccount) || bt.relatedAccountName" class="br-emp-match">
               👤 {{ empNameByAcct(bt.relatedAccount) || bt.relatedAccountName }}
@@ -212,20 +241,24 @@
             <div class="fr-body">
               <div class="fr-top">
                 <span class="fr-date">{{ ft.date }}</span>
+                <span :class="['day-badge', isWeekend(ft.date) ? 'day-weekend' : '']">{{ dayOfWeek(ft.date) }}</span>
                 <span class="fr-emp">{{ ft.employeeFirstName || ft.employeeID || '—' }}</span>
                 <span class="fr-amt">{{ fmtMnt(ft.amount) }}₮</span>
               </div>
               <div class="fr-bot">
                 <span class="fr-type">{{ ft.bankType || ft.purpose }}</span>
                 <span class="fr-sub">{{ ft.bankSubType || ft.type }}</span>
-                <span class="fr-proj" v-if="ft.projectID">Т{{ ft.projectID }}</span>
+                <span class="fr-proj" v-if="ft.projectID">#{{ ft.projectID }}<span v-if="ft.projectLocation"> · {{ ft.projectLocation }}</span></span>
                 <span v-if="ft.source === 'reconcile'" class="fr-src" title="Тулгалтын хуудаснаас үүсгэсэн">🔗R</span>
                 <template v-if="ft.bankTransactionId && ft.bankTransactionId !== selectedBankId">
-                  <span class="fr-warn">🔗 {{ fmtDate(bankTxnMap[ft.bankTransactionId]?.date) || ft.bankTransactionId.slice(-8) }}</span>
-                  <span class="fr-warn-amt" v-if="bankTxnMap[ft.bankTransactionId]?.expense">{{ fmtMnt(bankTxnMap[ft.bankTransactionId].expense) }}₮</span>
-                  <span class="fr-warn-desc" v-if="bankTxnMap[ft.bankTransactionId]?.description">{{ bankTxnMap[ft.bankTransactionId].description }}</span>
+                  <button class="fr-warn-btn" @click.prevent="selectLinkedBank(ft.bankTransactionId)" title="Холбоотой банкны гүйлгээ харах">
+                    🏦 {{ fmtDate(bankTxnMap[ft.bankTransactionId]?.date) || ft.bankTransactionId.slice(-8) }}
+                    <span v-if="bankTxnMap[ft.bankTransactionId]?.expense"> · {{ fmtMnt(bankTxnMap[ft.bankTransactionId].expense) }}₮</span>
+                    <span v-if="bankTxnMap[ft.bankTransactionId]?.description" class="fr-warn-desc"> · {{ bankTxnMap[ft.bankTransactionId].description }}</span>
+                    🔍
+                  </button>
                 </template>
-                <span v-if="ft.bankTransactionId === selectedBankId" class="fr-this">✅ Энэ гүйлгээтэй холбоотой</span>
+                <span v-if="ft.bankTransactionId === selectedBankId" class="fr-this" style="cursor:pointer" @click.prevent="scrollToBankRow(selectedBankId)">✅ Энэ гүйлгээтэй холбоотой ↑</span>
               </div>
             </div>
             <button class="btn-edit-fin" @click.prevent="openEditModal(ft)" title="Засварлах">✏️</button>
@@ -385,18 +418,22 @@
           <table class="ta-table">
             <thead>
               <tr>
-                <th>Огноо</th>
-                <th>Ажилтан</th>
-                <th>Төсөл</th>
-                <th>Төлөв</th>
+                <th @click="taSortBy('Day')" class="ta-th-sort">Огноо <span class="ta-sort-icon">{{ taSortKey==='Day' ? (taSortDir==='asc'?'↑':'↓') : '↕' }}</span></th>
+                <th @click="taSortBy('EmployeeFirstName')" class="ta-th-sort">Ажилтан <span class="ta-sort-icon">{{ taSortKey==='EmployeeFirstName' ? (taSortDir==='asc'?'↑':'↓') : '↕' }}</span></th>
+                <th @click="taSortBy('ProjectID')" class="ta-th-sort">Төсөл ID <span class="ta-sort-icon">{{ taSortKey==='ProjectID' ? (taSortDir==='asc'?'↑':'↓') : '↕' }}</span></th>
+                <th @click="taSortBy('ProjectName')" class="ta-th-sort">Төсөл нэр <span class="ta-sort-icon">{{ taSortKey==='ProjectName' ? (taSortDir==='asc'?'↑':'↓') : '↕' }}</span></th>
+                <th @click="taSortBy('Status')" class="ta-th-sort">Төлөв <span class="ta-sort-icon">{{ taSortKey==='Status' ? (taSortDir==='asc'?'↑':'↓') : '↕' }}</span></th>
+                <th>Тайлбар</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in filteredTARecords" :key="r.docId" :class="'ta-row-' + (r.Status || '').toLowerCase()">
+              <tr v-for="r in sortedTARecords" :key="r.docId" :class="'ta-row-' + (r.Status || '').toLowerCase()">
                 <td>{{ r.Day }}</td>
                 <td>{{ r.EmployeeFirstName }} {{ r.EmployeeLastName || '' }}</td>
-                <td>{{ r.ProjectName || r.ProjectID || '—' }}</td>
+                <td class="ta-proj-id">{{ r.ProjectID || '—' }}</td>
+                <td>{{ r.ProjectName || '—' }}</td>
                 <td class="ta-status">{{ r.Status }}</td>
+                <td class="ta-comment">{{ r.Comment || r.comment || '' }}</td>
               </tr>
             </tbody>
           </table>
@@ -408,7 +445,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { manageBankTransaction, manageFinancialTransaction } from '../services/api';
 import { db } from '../config/firebase';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -434,6 +471,7 @@ const filterFrom    = ref('');
 const filterTo      = ref('');
 const filterAccount = ref('');
 const filterStatus  = ref('unlinked');
+const fixingGhost   = ref(false);
 const extraFilters  = ref([]);
 let   _filterId     = 0;
 function addExtraFilter()        { extraFilters.value.push({ id: ++_filterId, field: 'description', op: 'contains', value: '' }); }
@@ -462,13 +500,30 @@ const editErrors    = ref([]);
 const showTAModal = ref(false);
 const taLoading   = ref(false);
 
+const taSortKey = ref('ProjectID');
+const taSortDir = ref('asc');
+function taSortBy(key) {
+  if (taSortKey.value === key) taSortDir.value = taSortDir.value === 'asc' ? 'desc' : 'asc';
+  else { taSortKey.value = key; taSortDir.value = 'asc'; }
+}
+
 const filteredTARecords = computed(() => {
   const from = finFilterFrom.value;
   const to   = finFilterTo.value;
   let recs = taStore.records;
   if (from) recs = recs.filter(r => (r.Day || '') >= from);
   if (to)   recs = recs.filter(r => (r.Day || '') <= to);
-  return recs.slice().sort((a, b) => (a.Day || '') < (b.Day || '') ? -1 : 1);
+  return recs.slice();
+});
+
+const sortedTARecords = computed(() => {
+  const key = taSortKey.value;
+  const dir = taSortDir.value === 'asc' ? 1 : -1;
+  return filteredTARecords.value.slice().sort((a, b) => {
+    const av = String(a[key] || '').toLowerCase();
+    const bv = String(b[key] || '').toLowerCase();
+    return av < bv ? -dir : av > bv ? dir : 0;
+  });
 });
 
 async function openTAModal() {
@@ -497,6 +552,24 @@ const mismatchedCount = computed(() =>
     return s && s !== 'unlinked' && s !== 'matched';
   }).length
 );
+const classifiedUnlinkedCount = computed(() =>
+  expenseTransactions.value.filter(bt =>
+    bt.type === 'Шууд зардал' &&
+    bt.subtype !== 'Урамшуулал' &&
+    (!bt.reconciliationStatus || bt.reconciliationStatus === 'unlinked')
+  ).length
+);
+// Ghost-linked: flagged as matched/partial/over but no actual financial transaction is linked
+const finLinkedIds = computed(() => new Set(
+  financialTxnStore.transactions.filter(ft => ft.bankTransactionId).map(ft => ft.bankTransactionId)
+));
+const ghostLinkedCount = computed(() =>
+  expenseTransactions.value.filter(bt => {
+    const s = bt.reconciliationStatus;
+    if (!s || s === 'unlinked') return false;
+    return !finLinkedIds.value.has(bt.id);
+  }).length
+);
 
 const HIDE_SUBTYPES = ['Банкны шимтгэл, санхүүгийн үйлчилгээ'];
 
@@ -509,11 +582,27 @@ const filteredBankTxns = computed(() => {
     list = list.filter(bt => !bt.type);
     list = list.filter(bt => !bt.reconciliationStatus || bt.reconciliationStatus === 'unlinked');
   }
+  // Шууд зардал classified but not yet connected (exclude Урамшуулал — no link needed)
+  if (filterStatus.value === 'classified_unlinked') {
+    list = list.filter(bt =>
+      bt.type === 'Шууд зардал' &&
+      bt.subtype !== 'Урамшуулал' &&
+      (!bt.reconciliationStatus || bt.reconciliationStatus === 'unlinked')
+    );
+  }
   // "Linked but not matched" — has linked fin txns but amounts don't balance
   if (filterStatus.value === 'linked') {
     list = list.filter(bt => {
       const s = bt.reconciliationStatus;
       return s && s !== 'unlinked' && s !== 'matched';
+    });
+  }
+  // Ghost-linked: flagged as linked but no actual financial transaction points to it
+  if (filterStatus.value === 'ghost_linked') {
+    list = list.filter(bt => {
+      const s = bt.reconciliationStatus;
+      if (!s || s === 'unlinked') return false;
+      return !finLinkedIds.value.has(bt.id);
     });
   }
   if (filterStatus.value === 'matched') list = list.filter(bt => bt.reconciliationStatus === 'matched');
@@ -704,18 +793,56 @@ async function saveCreate() {
   try {
     const res = await manageFinancialTransaction('create', { ...f, source: 'reconcile' });
     if (res.success) {
-      const linkRes = await manageBankTransaction({
-        action: 'linkFinancialTransactions',
-        bankTxnId: selectedBankId.value,
-        financialTxnIds: [res.transaction.id],
-      });
-      if (linkRes.success) {
-        const bt = bankTxns.value.find(t => t.id === selectedBankId.value);
-        if (bt) { bt.reconciledAmount = linkRes.reconciledAmount; bt.reconciliationStatus = linkRes.reconciliationStatus; }
+      const bankAmt = parseFloat(selectedBankTxn.value?.expense) || 0;
+      const finAmt  = parseFloat(f.amount) || 0;
+      const amountsMatch = Math.abs(bankAmt - finAmt) < 0.01;
+
+      if (amountsMatch) {
+        // Auto-connect only when amounts match exactly
+        const linkRes = await manageBankTransaction({
+          action: 'linkFinancialTransactions',
+          bankTxnId: selectedBankId.value,
+          financialTxnIds: [res.transaction.id],
+        });
+        if (linkRes.success) {
+          const bt = bankTxns.value.find(t => t.id === selectedBankId.value);
+          if (bt) { bt.reconciledAmount = linkRes.reconciledAmount; bt.reconciliationStatus = linkRes.reconciliationStatus; }
+        }
+        financialTxnStore.transactions.push({ ...res.transaction, bankTransactionId: selectedBankId.value });
+        showToast('✅ Гүйлгээ үүсгээд холболоо', true);
+      } else {
+        // Amounts differ — create only, no link
+        financialTxnStore.transactions.push({ ...res.transaction });
+        showToast('✅ Гүйлгээ үүсгэлээ (дүн таараагүй тул холбоогүй)', true);
       }
-      financialTxnStore.transactions.push({ ...res.transaction, bankTransactionId: selectedBankId.value });
       showCreateModal.value = false;
-      showToast('✅ Гүйлгээ үүсгээд холболоо', true);
+    } else if (res.error === 'DUPLICATE_FOOD_WARNING' && res.needsConfirmation) {
+      if (confirm(res.message)) {
+        const res2 = await manageFinancialTransaction('create', { ...f, source: 'reconcile', confirmDuplicate: true });
+        if (res2.success) {
+          const bankAmt = parseFloat(selectedBankTxn.value?.expense) || 0;
+          const finAmt  = parseFloat(f.amount) || 0;
+          if (Math.abs(bankAmt - finAmt) < 0.01) {
+            const linkRes = await manageBankTransaction({
+              action: 'linkFinancialTransactions',
+              bankTxnId: selectedBankId.value,
+              financialTxnIds: [res2.transaction.id],
+            });
+            if (linkRes.success) {
+              const bt = bankTxns.value.find(t => t.id === selectedBankId.value);
+              if (bt) { bt.reconciledAmount = linkRes.reconciledAmount; bt.reconciliationStatus = linkRes.reconciliationStatus; }
+            }
+            financialTxnStore.transactions.push({ ...res2.transaction, bankTransactionId: selectedBankId.value });
+            showToast('✅ Гүйлгээ үүсгээд холболоо', true);
+          } else {
+            financialTxnStore.transactions.push({ ...res2.transaction });
+            showToast('✅ Гүйлгээ үүсгэлээ (дүн таараагүй тул холбоогүй)', true);
+          }
+          showCreateModal.value = false;
+        } else {
+          createErrors.value = [res2.error || 'Алдаа гарлаа'];
+        }
+      }
     } else {
       createErrors.value = [res.error || 'Алдаа гарлаа'];
     }
@@ -786,6 +913,22 @@ async function saveEdit() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function scrollToBankRow(bankTxnId) {
+  nextTick(() => {
+    const el = document.getElementById('bank-row-' + bankTxnId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function selectLinkedBank(bankTxnId) {
+  if (!bankTxnId) return;
+  // If not visible under current filter, switch to show all
+  const isVisible = filteredBankTxns.value.some(bt => bt.id === bankTxnId);
+  if (!isVisible) filterStatus.value = '';
+  selectedBankId.value = bankTxnId;
+  selectedFinIds.value = [];
+  scrollToBankRow(bankTxnId);
+}
 function normDate(d) {
   if (!d) return null;
   if (typeof d === 'string') return d.slice(0, 10);
@@ -807,20 +950,26 @@ function fmtMnt(n) {
   if (!n) return '0';
   return Number(n).toLocaleString('mn-MN');
 }
-function fmtDate(val) {
-  if (!val) return '';
+const MN_DAYS = ['Ням','Даваа','Мягмар','Лхагва','Пүрэв','Баасан','Бямба'];
+function _toDate(val) {
+  if (!val) return null;
   let d;
   if (typeof val === 'string') d = new Date(val.length === 10 ? val + 'T00:00:00' : val);
   else { const secs = val._seconds ?? val.seconds; if (secs !== undefined) d = new Date(secs * 1000); }
-  if (!d || isNaN(d.getTime())) return String(val);
+  return d && !isNaN(d.getTime()) ? d : null;
+}
+function dayOfWeek(val) { const d = _toDate(val); return d ? MN_DAYS[d.getDay()] : ''; }
+function isWeekend(val)  { const d = _toDate(val); return d ? d.getDay() === 0 || d.getDay() === 6 : false; }
+function fmtDate(val) {
+  if (!val) return '';
+  const d = _toDate(val);
+  if (!d) return String(val);
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 function fmtDateTime(val) {
   if (!val) return '';
-  let d;
-  if (typeof val === 'string') d = new Date(val.length === 10 ? val + 'T00:00:00' : val);
-  else { const secs = val._seconds ?? val.seconds; if (secs !== undefined) d = new Date(secs * 1000); }
-  if (!d || isNaN(d.getTime())) return String(val);
+  const d = _toDate(val);
+  if (!d) return String(val);
   const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return `${date} ${time}`;
@@ -850,6 +999,35 @@ function selectBankTxn(bt) {
 
 async function connectSelected() {
   if (!selectedBankTxn.value || selectedFinIds.value.length === 0) return;
+
+  // Warn if selected fin txns don't sum to the bank transaction amount
+  const bankAmt = parseFloat(selectedBankTxn.value.expense) || 0;
+  const finSum  = selectedFinIds.value
+    .map(id => financialTxnStore.transactions.find(f => f.id === id))
+    .reduce((s, ft) => s + (parseFloat(ft?.amount) || 0), 0);
+  if (Math.abs(bankAmt - finSum) > 0.01) {
+    const diff = bankAmt - finSum;
+    const ok = confirm(
+      `⚠️ Дүн таарахгүй байна!\n\n` +
+      `Банк:   ${bankAmt.toLocaleString('mn-MN')}₮\n` +
+      `Санхүү: ${finSum.toLocaleString('mn-MN')}₮\n` +
+      `Зөрөө:  ${Math.abs(diff).toLocaleString('mn-MN')}₮ (${diff > 0 ? 'дутуу' : 'илүүдэл'})\n\n` +
+      `Дүн таарахгүй байхад холбох уу?`
+    );
+    if (!ok) return;
+  }
+
+  // Warn if any selected financial transaction has a different date from the bank transaction
+  const btDate = (selectedBankTxn.value.date || '').slice(0, 10);
+  const mismatchedFins = selectedFinIds.value
+    .map(id => financialTxnStore.transactions.find(f => f.id === id))
+    .filter(ft => ft && normDate(ft.date) !== btDate);
+  if (mismatchedFins.length > 0) {
+    const names = mismatchedFins.map(ft => `${ft.employeeFirstName || ft.employeeID} (${normDate(ft.date)})`).join(', ');
+    const ok = confirm(`⚠️ Огноо зөрөөтэй гүйлгээ байна:\n\nБанк: ${btDate}\nСанхүү: ${names}\n\nЭнэ огноо зөрөөтэй гүйлгээг холбох уу?`);
+    if (!ok) return;
+  }
+
   saving.value = true;
   try {
     const res = await manageBankTransaction({
@@ -902,6 +1080,35 @@ async function unlinkFin(bt, ft) {
 function showToast(text, ok) {
   saveMsg.value = { text, ok };
   setTimeout(() => { saveMsg.value = null; }, 3000);
+}
+
+// Fix ghost-linked records: reset reconciliationStatus to 'unlinked' for all
+// bank transactions flagged as linked but with no actual financialTransaction linked
+async function fixGhostLinked() {
+  const ghosts = expenseTransactions.value.filter(bt => {
+    const s = bt.reconciliationStatus;
+    if (!s || s === 'unlinked') return false;
+    return !finLinkedIds.value.has(bt.id);
+  });
+  if (ghosts.length === 0) return;
+  fixingGhost.value = true;
+  let fixed = 0;
+  try {
+    for (const bt of ghosts) {
+      await manageBankTransaction({
+        action: 'resetReconciliation',
+        bankTxnId: bt.id,
+      });
+      const local = bankTxns.value.find(t => t.id === bt.id);
+      if (local) { local.reconciliationStatus = 'unlinked'; local.reconciledAmount = 0; }
+      fixed++;
+    }
+    showToast(`✅ ${fixed} алдаатай тулгалт засагдлаа`, true);
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, false);
+  } finally {
+    fixingGhost.value = false;
+  }
 }
 
 async function loadBankTransactions() {
@@ -969,10 +1176,24 @@ onMounted(() => {
   font-size: 0.78rem;
   font-weight: 600;
 }
-.stat-badge.unlinked   { background: #fee2e2; color: #991b1b; }
-.stat-badge.mismatched { background: #fef3c7; color: #92400e; }
-.stat-badge.matched    { background: #d1fae5; color: #065f46; }
-.stat-badge.total      { background: #e0e7ff; color: #3730a3; }
+.stat-badge.unlinked            { background: #fee2e2; color: #991b1b; }
+.stat-badge.classified-unlinked { background: #ede9fe; color: #5b21b6; }
+.stat-badge.mismatched          { background: #fef3c7; color: #92400e; }
+.stat-badge.ghost-linked        { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+.stat-badge.matched             { background: #d1fae5; color: #065f46; }
+.stat-badge.total               { background: #e0e7ff; color: #3730a3; }
+.btn-fix-ghost {
+  padding: 5px 12px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-fix-ghost:hover:not(:disabled) { background: #e5e7eb; }
+.btn-fix-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Filters */
 .recon-filters {
@@ -1087,6 +1308,8 @@ onMounted(() => {
 .bank-row-linked   { border-left: 3px solid #f59e0b; }
 .br-top { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
 .br-date { color: #6b7280; font-size: 0.78rem; }
+.day-badge   { font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; background: #f3f4f6; color: #6b7280; font-weight: 500; }
+.day-weekend { background: #fee2e2 !important; color: #dc2626 !important; font-weight: 700; }
 .br-amt  { font-weight: 700; color: #dc2626; margin-left: auto; }
 .br-badge { font-size: 0.85rem; }
 .br-mid  { margin-bottom: 2px; }
@@ -1098,6 +1321,11 @@ onMounted(() => {
   font-size: 0.78rem; font-weight: 600; color: #1d4ed8;
   padding: 2px 6px; margin-top: 3px;
   background: #eff6ff; border-radius: 4px; display: inline-block;
+}
+.br-proj {
+  font-size: 0.75rem; color: #6d28d9;
+  padding: 2px 6px; margin-top: 2px;
+  background: #ede9fe; border-radius: 4px; display: inline-block;
 }
 .fin-search-row { display: flex; gap: 6px; align-items: center; padding: 4px 8px; }
 .fin-search-row .fin-search-input { flex: 1; }
@@ -1149,6 +1377,10 @@ onMounted(() => {
   background: #f3f4f6; padding: 7px 10px; text-align: left;
   border-bottom: 2px solid #e5e7eb; white-space: nowrap; position: sticky; top: 0;
 }
+.ta-th-sort { cursor: pointer; user-select: none; }
+.ta-th-sort:hover { background: #e5e7eb; }
+.ta-sort-icon { font-size: 0.7rem; color: #9ca3af; margin-left: 3px; }
+.ta-proj-id { font-weight: 600; color: #6d28d9; font-size: 0.78rem; }
 .ta-table td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; }
 .ta-table tr:hover td { background: #f9fafb; }
 .ta-row-present td { }
@@ -1302,6 +1534,13 @@ onMounted(() => {
 .fr-proj  { color: #92400e; font-size: 0.78rem; }
 .fr-src   { background: #dbeafe; color: #1e40af; font-size: 0.72rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
 .fr-warn      { color: #d97706; font-size: 0.74rem; font-weight: 500; }
+.fr-warn-btn  {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: #fff7ed; border: 1px solid #fdba74; border-radius: 4px;
+  color: #92400e; font-size: 0.73rem; font-weight: 500; padding: 2px 6px;
+  cursor: pointer; line-height: 1.3;
+}
+.fr-warn-btn:hover { background: #fed7aa; border-color: #f97316; }
 .fr-warn-amt  { color: #dc2626; font-size: 0.74rem; font-weight: 600; margin-left: 4px; }
 .fr-warn-desc { color: #6b7280; font-size: 0.73rem; font-style: italic; margin-left: 4px; }
 .fr-this  { color: #059669; font-size: 0.74rem; }

@@ -607,7 +607,11 @@ exports.syncBankTransactionsFromExcel = functions
           const existingMap = new Map();
           existingSnap.docs.forEach(doc => {
             const d = doc.data();
-            const fp = [d.date, d.income, d.expense, String(d.description||'').slice(0,80), d.relatedAccount].join('|');
+            // Support both new records (d.date string) and old records (d.documentDate string)
+            const dateStr = d.date ||
+              (typeof d.documentDate === 'string' ? d.documentDate.slice(0, 10) : null) ||
+              (d.documentDate && d.documentDate.toDate ? d.documentDate.toDate().toISOString().slice(0, 10) : null);
+            const fp = [dateStr, d.income, d.expense, String(d.description||'').slice(0,80), d.relatedAccount].join('|');
             // Keep first match if duplicates exist
             if (!existingMap.has(fp)) {
               existingMap.set(fp, {
@@ -642,25 +646,24 @@ exports.syncBankTransactionsFromExcel = functions
             const fp = rowFingerprint(mapped);
             const existing = existingMap.get(fp);
 
-            const manualFields = existing
-              ? existing.manual
-              : { type: '', subtype: '', requesterID: '', requesterName: '', projectID: '', projectName: '', ebarimt: false, NOAT: accountName === 'Petrovis account', reconciliationStatus: 'unlinked', reconciledAmount: 0 };
-
-            const docRef = existing
-              ? existing.ref
-              : db.collection("bankTransactions").doc();
-
-            if (existing) matchedRefs.add(fp);
+            // Already in Firestore — bank transactions never change, so skip entirely.
+            if (existing) {
+              skipped++;
+              continue;
+            }
 
             batchDocs.push({
-              ref: docRef,
+              ref: db.collection("bankTransactions").doc(),
               data: {
                 ...rest,
                 documentDate,
                 accountName,
                 sourceFile: fileName,
-                ...manualFields,
-                uploadedAt: (existing && existing.uploadedAt) ? existing.uploadedAt : syncedAt,
+                type: '', subtype: '', requesterID: '', requesterName: '',
+                projectID: '', projectName: '', ebarimt: false,
+                NOAT: accountName === 'Petrovis account',
+                reconciliationStatus: 'unlinked', reconciledAmount: 0,
+                uploadedAt: syncedAt,
                 updatedAt: syncedAt,
               },
             });

@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-const { calculateProjectMetrics, calculateBasicMetrics, needsRecalculation, getChangedFields } = require("./projectCalculations");
+const { calculateProjectMetrics, calculateBasicMetrics, needsRecalculation, getChangedFields, fetchLatestBountyRatesVersion } = require("./projectCalculations");
 
 try {
   initializeApp();
@@ -56,6 +56,7 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         ...enrichedData,
         StartDate: initialStartDate,
         statusDates: initialStatusDates,
+        bountyRatesVersion: await fetchLatestBountyRatesVersion(db),
         createdAt: nowIso,
       });
       
@@ -93,9 +94,12 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
       
       // Merge old and new data
       const mergedData = { ...oldProjectData, ...projectData };
-      
+
+      // Finished projects are frozen — skip all bounty recalculation
+      const isFrozen = mergedData.Status === 'Дууссан' && oldProjectData.Status === 'Дууссан';
+
       // Check if recalculation is needed
-      const shouldRecalculate = needsRecalculation(oldProjectData, projectData);
+      const shouldRecalculate = !isFrozen && needsRecalculation(oldProjectData, projectData);
       
       let calculations = {};
       if (shouldRecalculate) {

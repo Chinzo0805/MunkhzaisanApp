@@ -16,6 +16,13 @@
           <option value="advance">Урьдчилгаа</option>
         </select>
       </div>
+      <div v-if="reportType === 'full'" class="filter-group">
+        <label>Харах:</label>
+        <select v-model="ndsFilter" class="report-type-select">
+          <option value="all">Бүгд (цалингийн төсөв)</option>
+          <option value="nds">НДШ-тэй ажилтнууд (НДШ / ХХОАТ)</option>
+        </select>
+      </div>
       <button @click="fetchSavedData" class="btn-refresh" :disabled="loading">
         {{ loading ? 'Уншиж байна...' : '🔄 Шинэчлэх' }}
       </button>
@@ -51,7 +58,7 @@
     </div>
 
     <!-- Summary cards -->
-    <div v-if="!loading && salaryData.length > 0 && reportType === 'full'" class="stats-section">
+    <div v-if="!loading && displaySalaryData.length > 0 && reportType === 'full'" class="stats-section">
       <div class="stat-card">
         <div class="stat-icon">📅</div>
         <div class="stat-content">
@@ -67,7 +74,7 @@
         <div class="stat-icon">👥</div>
         <div class="stat-content">
           <div class="stat-label">Ажилтны тоо</div>
-          <div class="stat-value">{{ salaryData.length }}</div>
+          <div class="stat-value">{{ displaySalaryData.length }}<span v-if="ndsFilter === 'nds' && salaryData.length !== displaySalaryData.length" style="font-size:12px;color:#6b7280;"> / {{ salaryData.length }}</span></div>
         </div>
       </div>
       <div class="stat-card">
@@ -203,7 +210,7 @@
     </div>
 
     <!-- Table (full / Сүүл цалин) -->
-    <div v-else-if="salaryData.length > 0" class="table-container">
+    <div v-else-if="displaySalaryData.length > 0" class="table-container">
 
       <!-- Confirmed banner -->
       <!-- Fully confirmed -->
@@ -346,7 +353,7 @@
         </tbody>
         <tfoot>
           <tr class="total-row">
-            <td><strong>НИЙТ ({{ salaryData.length }})</strong></td>
+            <td><strong>НИЙТ ({{ displaySalaryData.length }})</strong></td>
             <td class="tc-r tc-info"><strong>{{ formatMnt(totalEmployerNDS) }}</strong></td>
             <td></td>
             <td></td>
@@ -737,6 +744,22 @@ async function updateInstallmentBalances(employees, yearMonth) {
 const savedReport = ref(null); // full document from salaries collection
 const salaryData  = computed(() => savedReport.value?.employees || []);
 
+// ── NDS filter ───────────────────────────────────────────────────
+// 'all' = everyone (for salary budget planning)
+// 'nds' = only employees with an NDS portion (НДШ/ХХОАТ view)
+const ndsFilter = ref('all');
+const displaySalaryData = computed(() => {
+  if (ndsFilter.value === 'nds') {
+    return salaryData.value.filter(e => {
+      // Has NDS if ndsSalary is null/undefined (full) or ndsSalary > 0 (partial)
+      // No NDS if ndsSalary === 0 or legacy isNDS === false
+      if (e.ndsSalary !== undefined && e.ndsSalary !== null) return e.ndsSalary > 0;
+      return e.isNDS !== false;
+    });
+  }
+  return salaryData.value;
+});
+
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const selectedMonth = ref(currentMonth);
@@ -844,7 +867,7 @@ const dateRangeText = computed(() => {
 
 // ── Sorting ──────────────────────────────────────────────────────
 const sortedData = computed(() => {
-  const data = [...salaryData.value];
+  const data = [...displaySalaryData.value];
   data.sort((a, b) => {
     const av = a[sortColumn.value];
     const bv = b[sortColumn.value];
@@ -882,15 +905,15 @@ function toggleExpand(id, emp) {
 }
 
 // ── Totals ───────────────────────────────────────────────────────
-const totalBaseSalary  = computed(() => salaryData.value.reduce((s, e) => s + (e.baseSalary       || 0), 0));
-const totalCalcSalary  = computed(() => salaryData.value.reduce((s, e) => s + (e.calculatedSalary || 0), 0));
-const totalTotalGross  = computed(() => salaryData.value.reduce((s, e) => s + (e.totalGross       || 0), 0));
-const totalEmployerNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employerNDS      || 0), 0));
-const totalEmployeeNDS = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS      || 0), 0));
-const totalHHOATNet    = computed(() => salaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
-const totalNetPay      = computed(() => salaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
-const totalAdditions   = computed(() => salaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
-const totalDeductions  = computed(() => salaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0) + (e.recurringDeductions||0), 0));
+const totalBaseSalary  = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.baseSalary       || 0), 0));
+const totalCalcSalary  = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.calculatedSalary || 0), 0));
+const totalTotalGross  = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.totalGross       || 0), 0));
+const totalEmployerNDS = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.employerNDS      || 0), 0));
+const totalEmployeeNDS = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.employeeNDS      || 0), 0));
+const totalHHOATNet    = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.hhoatNet         || 0), 0));
+const totalNetPay      = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.netPay           || 0), 0));
+const totalAdditions   = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
+const totalDeductions  = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0) + (e.recurringDeductions||0), 0));
 
 // ── Helpers ──────────────────────────────────────────────────────
 function formatMnt(n) {

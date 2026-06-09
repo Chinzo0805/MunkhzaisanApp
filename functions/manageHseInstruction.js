@@ -1,6 +1,8 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
+try { admin.initializeApp(); } catch (e) {}
+
 /**
  * Manage HSE (Health, Safety, Environment) instructions and daily employee confirmations.
  *
