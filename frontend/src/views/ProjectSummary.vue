@@ -61,7 +61,7 @@
     <div class="filters-section">
       <div class="filter-group">
         <label>Хайх:</label>
-        <input type="text" v-model="searchQuery" placeholder="Төслийн нэр эсвэл код..." />
+        <input type="text" v-model="searchQuery" placeholder="Нэр, харилцагч, байршил, лавлах дугаар, дүн..." />
       </div>
 
       <button @click="loadProjects" class="btn-refresh" :disabled="loading">
@@ -495,7 +495,17 @@ const filteredProjects = computed(() => {
     list = list.filter(p =>
       String(p.id || '').toLowerCase().includes(q) ||
       (p.name || '').toLowerCase().includes(q) ||
-      (p.customer || '').toLowerCase().includes(q)
+      (p.customer || '').toLowerCase().includes(q) ||
+      (p.siteLocation || '').toLowerCase().includes(q) ||
+      (p.ResponsibleEmp || '').toLowerCase().includes(q) ||
+      (p.referenceIdfromCustomer || '').toLowerCase().includes(q) ||
+      String(p.TotalIncome ?? '').includes(q) ||
+      String(p.PlannedReceive ?? '').includes(q) ||
+      String(p.BaseAmount ?? '').includes(q) ||
+      String(p.TotalExpence ?? '').includes(q) ||
+      String(p.TotalProfit ?? '').includes(q) ||
+      String(p.TotalHRExpence ?? '').includes(q) ||
+      String(p.additionalValue ?? '').includes(q)
     );
   }
   return list;

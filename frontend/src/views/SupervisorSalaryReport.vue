@@ -1096,7 +1096,7 @@ function exportToExcel() {
     'Үндсэн цалин', 'Бодогдсон цалин', 'Нэмэгдэл цалин', 'Ээлжийн амралт',
     'Нийт бодогдсон', 'Байгааллагаас НДШ (12.5%)', 'НДШ ажилтан (11.5%)',
     'ТНО', 'ХХОАТ (10%)', 'Хөнгөлөлт', 'ХХОАТ хөнгөлөлт хассан',
-    'Урьдчилгаа', 'Бусад суутгал', 'Гарт олгох',
+    'Урьдчилгаа', 'Бусад суутгал', 'Нэмэгдэл (тогтмол)', 'Суутгал (тогтмол)', 'Гарт олгох',
   ];
 
   const rows = sortedData.value.map(e => [
@@ -1115,6 +1115,8 @@ function exportToExcel() {
     e.hhoatNet         || 0,
     e.advance          || 0,
     e.otherDeductions  || 0,
+    e.recurringAdditions  || 0,
+    e.recurringDeductions || 0,
     e.netPay           || 0,
   ]);
 
@@ -1123,11 +1125,11 @@ function exportToExcel() {
     totalBaseSalary.value, totalCalcSalary.value, '', '',
     totalTotalGross.value, totalEmployerNDS.value, totalEmployeeNDS.value,
     '', '', '', totalHHOATNet.value,
-    '', '', totalNetPay.value,
+    '', '', '', '', totalNetPay.value,
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [20,14,10, 6,6,8,8, 14,14,14,14, 14,16,16, 14,14,14,18, 14,14,14].map(w => ({ wch: w }));
+  ws['!cols'] = [20,14,10, 6,6,8,8, 14,14,14,14, 14,16,16, 14,14,14,18, 14,14,14,14,14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Цалин');
   XLSX.writeFile(wb, `salary_${selectedMonth.value}.xlsx`);

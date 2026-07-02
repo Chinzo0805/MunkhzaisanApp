@@ -2,9 +2,60 @@
   <div class="attendance-approval">
     <div class="approval-header">
       <h3>Ирцний хүсэлтүүд</h3>
-      <button @click="refreshRequests" class="btn-refresh" :disabled="loading">
-        🔄 Шинэчлэх
-      </button>
+      <div class="header-actions">
+        <button
+          v-if="!isEngineerMode"
+          @click="openAbsentModal"
+          class="btn-add-absent"
+        >
+          ➕ Тасалсан нэмэх
+        </button>
+        <button @click="refreshRequests" class="btn-refresh" :disabled="loading">
+          🔄 Шинэчлэх
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal: supervisor manually adds тасалсан -->
+    <div v-if="showAbsentModal" class="absent-modal-overlay" @click.self="closeAbsentModal">
+      <div class="absent-modal">
+        <div class="absent-modal-header">
+          <h4>Тасалсан ирц нэмэх</h4>
+          <button class="absent-modal-close" @click="closeAbsentModal">✕</button>
+        </div>
+        <div class="absent-modal-body">
+          <div class="absent-field">
+            <label>Ажилтан <span class="req">*</span></label>
+            <select v-model="absentForm.employeeId" class="absent-input" @change="onAbsentEmployeeChange">
+              <option value="">— Ажилтан сонгох —</option>
+              <option
+                v-for="emp in activeEmployees"
+                :key="emp.id"
+                :value="emp.id"
+              >{{ emp.LastName }} {{ emp.FirstName }}</option>
+            </select>
+          </div>
+          <div class="absent-field">
+            <label>Огноо <span class="req">*</span></label>
+            <input type="date" v-model="absentForm.day" class="absent-input" />
+          </div>
+          <div class="absent-field">
+            <label>Тасалсан цаг</label>
+            <input type="number" v-model.number="absentForm.workingHour" class="absent-input" min="1" max="8" step="0.5" />
+          </div>
+          <div class="absent-field">
+            <label>Тэмдэглэл</label>
+            <textarea v-model="absentForm.comment" class="absent-input absent-textarea" rows="2" placeholder="Шалтгаан (заавал биш)"></textarea>
+          </div>
+          <div v-if="absentError" class="absent-error">{{ absentError }}</div>
+        </div>
+        <div class="absent-modal-footer">
+          <button @click="closeAbsentModal" class="btn-absent-cancel">Болих</button>
+          <button @click="submitAbsentTA" class="btn-absent-submit" :disabled="absentSubmitting || !absentForm.employeeId || !absentForm.day">
+            {{ absentSubmitting ? 'Хадгалж байна...' : '💾 Хадгалах' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="syncMessage" :class="['sync-message', syncMessageType]">
@@ -309,6 +360,7 @@
             <th v-if="activeTab === 'invalid' || activeTab === 'notSynced'">Өгөгдөл</th>
             <th v-if="activeTab === 'engineerApproved'">Зөвшөөрсөн инженер</th>
             <th>Тэмдэглэл</th>
+            <th>Хүсэлт огноо</th>
             <th v-if="activeTab === 'pending'">Үйлдэл</th>
           </tr>
         </thead>
@@ -382,6 +434,7 @@
               <textarea v-model="request.comment" class="edit-textarea" v-if="activeTab === 'pending' || (activeTab === 'approved' && editMode)" rows="2" @input="markDirty(request.docId)"></textarea>
               <span v-else>{{ request.comment }}</span>
             </td>
+            <td class="nowrap-cell">{{ formatDate(request.createdAt) }}</td>
             <td v-if="activeTab === 'pending'" class="action-buttons">
               <!-- Engineer mode: only approve Техникч, others need supervisor -->
               <template v-if="isEngineerMode">
@@ -437,6 +490,7 @@ import { useTimeAttendanceRequestsStore } from '../stores/timeAttendanceRequests
 import { useTimeAttendanceStore } from '../stores/timeAttendance';
 import { useAuthStore } from '../stores/auth';
 import { useProjectsStore } from '../stores/projects';
+import { useEmployeesStore } from '../stores/employees';
 import { approveTimeAttendanceRequest, manageTimeAttendanceRequest, syncTimeAttendanceToExcel, syncFromExcelToTimeAttendance, updateProjectRealHours } from '../services/api';
 import { db } from '../config/firebase';
 import { doc, updateDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
@@ -453,6 +507,66 @@ const requestsStore = useTimeAttendanceRequestsStore();
 const attendanceStore = useTimeAttendanceStore();
 const authStore = useAuthStore();
 const projectsStore = useProjectsStore();
+const employeesStore = useEmployeesStore();
+
+// ── Absent modal state ────────────────────────────────────────────────────────
+const showAbsentModal = ref(false);
+const absentSubmitting = ref(false);
+const absentError = ref('');
+const absentForm = ref({ employeeId: '', day: '', workingHour: 8, comment: '' });
+
+const activeEmployees = computed(() =>
+  employeesStore.employees
+    .filter(e => e.State === 'Ажиллаж байгаа' && e.Role !== 'Supervisor' && e.Role !== 'nonEmployee')
+    .sort((a, b) => (a.LastName || '').localeCompare(b.LastName || ''))
+);
+
+function openAbsentModal() {
+  const today = new Date();
+  absentForm.value = {
+    employeeId: '',
+    day: today.toISOString().slice(0, 10),
+    workingHour: 8,
+    comment: '',
+  };
+  absentError.value = '';
+  showAbsentModal.value = true;
+  if (employeesStore.employees.length === 0) employeesStore.fetchEmployees();
+}
+
+function closeAbsentModal() {
+  showAbsentModal.value = false;
+  absentError.value = '';
+}
+
+function onAbsentEmployeeChange() {
+  absentError.value = '';
+}
+
+async function submitAbsentTA() {
+  absentError.value = '';
+  const emp = employeesStore.employees.find(e => e.id === absentForm.value.employeeId);
+  if (!emp) { absentError.value = 'Ажилтан олдсонгүй'; return; }
+
+  absentSubmitting.value = true;
+  try {
+    await manageTimeAttendanceRequest('supervisorDirectAdd', {
+      EmployeeID: emp.Id || emp.NumID || emp.id,
+      EmployeeFirstName: emp.FirstName || '',
+      EmployeeLastName: emp.LastName || '',
+      Day: absentForm.value.day,
+      WorkingHour: absentForm.value.workingHour,
+      comment: absentForm.value.comment,
+    });
+    showSyncMessage(`${emp.LastName} ${emp.FirstName} — ${absentForm.value.day} тасалсан ирц нэмэгдлээ`, 'success');
+    closeAbsentModal();
+    await refreshRequests();
+  } catch (err) {
+    absentError.value = err.message || 'Алдаа гарлаа';
+  } finally {
+    absentSubmitting.value = false;
+  }
+}
 
 const activeTab = ref('pending');
 const loading = ref(false);
@@ -1463,6 +1577,12 @@ function showSyncMessage(text, type) {
   vertical-align: middle;
 }
 
+.nowrap-cell {
+  white-space: nowrap;
+  color: #888;
+  font-size: 0.85em;
+}
+
 .edit-input {
   width: 100%;
   padding: 4px 6px;
@@ -2206,5 +2326,143 @@ function showSyncMessage(text, type) {
     text-align: center;
     padding: 10px;
   }
+}
+
+/* ===== Add-absent button ===== */
+.btn-add-absent {
+  padding: 8px 16px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+.btn-add-absent:hover {
+  background: #bd2130;
+}
+
+/* ===== Absent modal ===== */
+.absent-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.absent-modal {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 420px;
+  overflow: hidden;
+}
+.absent-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #dc3545;
+  color: white;
+}
+.absent-modal-header h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.absent-modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.absent-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.absent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.absent-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #495057;
+}
+.req {
+  color: #dc3545;
+}
+.absent-input {
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  background: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+.absent-input:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.15);
+}
+.absent-textarea {
+  resize: vertical;
+  min-height: 58px;
+}
+.absent-error {
+  padding: 8px 12px;
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.absent-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+.btn-absent-cancel {
+  padding: 8px 18px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-absent-cancel:hover {
+  background: #5a6268;
+}
+.btn-absent-submit {
+  padding: 8px 18px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.btn-absent-submit:hover:not(:disabled) {
+  background: #bd2130;
+}
+.btn-absent-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

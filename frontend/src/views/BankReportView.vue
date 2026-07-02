@@ -125,6 +125,13 @@
 
         <!-- Controls bar -->
         <div class="project-filter-bar">
+          <span class="filter-label">Огноо:</span>
+          <div class="date-field-btns">
+            <button v-for="df in dateFields" :key="df.key"
+              :class="['df-btn', { active: projectDateField === df.key }]"
+              @click="projectDateField = df.key">{{ df.label }}</button>
+          </div>
+          <div class="ptype-divider"></div>
           <span class="filter-label">Төрөл:</span>
           <div class="date-field-btns">
             <button :class="['df-btn', { active: projTypeFilter === 'all' }]"      @click="projTypeFilter = 'all'">Бүгд</button>
@@ -741,9 +748,16 @@ const byExpenseType = computed(() => {
 
 // ── TAB 2: Project Dashboard ─────────────────────────────────────────────────
 const filteredProjects = computed(() => {
+  const field = projectDateField.value;
+  const from  = filterFrom.value;
+  const to    = filterTo.value;
   return projects.value.filter(p => {
     if (projTypeFilter.value !== 'all' && p.projectType !== projTypeFilter.value) return false;
     if (projStatusFilter.value !== 'all' && (p.Status || '') !== projStatusFilter.value) return false;
+    const d = p[field] || '';
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to   && d > to)   return false;
     return true;
   });
 });

@@ -123,10 +123,10 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
       }
       if (!workingDaysMonth) workingDaysMonth = autoWorkingDays(y, m, 'full');
 
-      // TA hours for 1–15: prefer cached taSummary, else aggregate raw records
-      let taSummaryEmployees = taSummarySnap.exists ? (taSummarySnap.data().employees || []) : null;
-      if (!taSummaryEmployees) {
-        console.log(`taSummaries/${yearMonth}_1-15 not found — calculating from raw TA`);
+      // Always recalculate from raw TA so updated records are reflected
+      let taSummaryEmployees = null;
+      {
+        console.log(`Calculating advance from raw TA for ${yearMonth}_1-15`);
         const taSnap = await db.collection('timeAttendance')
           .where('Day', '>=', startDate)
           .where('Day', '<=', endDate)
@@ -149,7 +149,7 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
           restDays:              e.restDays,
           missedDays:            e.missedDays,
         }));
-        // Cache for future calls (non-blocking)
+        // Overwrite cache so future reads are fresh
         db.collection('taSummaries').doc(`${yearMonth}_1-15`).set({
           yearMonth, range: '1-15', calculatedAt: new Date().toISOString(), employees: taSummaryEmployees,
         }).catch(err => console.error('Failed to save taSummaries:', err));

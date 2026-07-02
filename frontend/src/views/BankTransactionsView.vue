@@ -12,7 +12,7 @@
         </button>
         <button
           v-if="authStore.msalAccount"
-          @click="handleSync"
+          @click="syncConfirm.show = true"
           class="btn-sync"
           :disabled="syncing"
         >
@@ -666,7 +666,7 @@
     </div>
 
   <!-- ── Petrovis Зардал Үүсгэх Modal ── -->
-  <div v-if="petrovisModal.show" class="match-modal-overlay" @click.self="petrovisModal.show = false">
+  <div v-if="petrovisModal.show" class="match-overlay" @click.self="petrovisModal.show = false">
     <div class="match-modal" style="max-width:560px">
       <div class="match-modal-header">
         <span>⛽ Petrovis зардлаас шууд зардал үүсгэх</span>
@@ -737,6 +737,40 @@
   </div>
 
   </div>
+
+  <!-- ── OneDrive Sync Confirm Modal ── -->
+  <div v-if="syncConfirm.show" class="match-overlay" @click.self="syncConfirm.show = false">
+    <div class="match-modal" style="max-width:580px">
+      <div class="match-modal-header">
+        <span>📥 OneDrive-с татах — Файлын нэрийн дүрэм</span>
+        <button @click="syncConfirm.show = false" class="match-modal-close">✕</button>
+      </div>
+      <div class="match-modal-body" style="padding:16px 20px">
+        <p style="margin:0 0 12px;font-size:13px;color:#555">Файлын нэрт дараах үгс байвал тухайн данс автоматаар таних болно. Файлын нэрийг зөв нэрлэснийг шалгаад татна уу.</p>
+        <table class="sync-name-table">
+          <thead><tr><th>Файлын нэрт байвал зохих үг</th><th>Дансны нэр</th></tr></thead>
+          <tbody>
+            <tr><td><code>kass</code> эсвэл <code>касс</code></td><td>Кассын данс</td></tr>
+            <tr><td><code>main</code> · <code>харилцах</code> · <code>harilts</code></td><td>Байгууллагын харилцах</td></tr>
+            <tr><td><code>tsalin</code> · <code>цалин</code> · <code>salary</code></td><td>Цалингийн данс</td></tr>
+            <tr><td><code>tatvar</code> · <code>татвар</code> · <code>tax</code></td><td>Татварын данс</td></tr>
+            <tr><td><code>zeel</code> эсвэл <code>зээл</code></td><td>Зээл төлөх данс</td></tr>
+            <tr><td><code>huwiin</code> · <code>huviin</code> · <code>хувийн</code></td><td>Хувийн зардалын данс</td></tr>
+            <tr><td><code>office</code> · <code>оффис</code> · <code>офис</code></td><td>Оффис хэрэглээний данс</td></tr>
+            <tr class="row-highlight"><td><code>petrovis</code> · <code>petrowis</code> · <code>петровис</code> · <code>report</code></td><td>Petrovis account</td></tr>
+            <tr><td><code>mbank</code> · <code>м банк</code></td><td>М банк данс</td></tr>
+            <tr class="row-warn"><td><em>дээрхийн аль нь ч биш</em></td><td>⚠️ Файлын нэр тэр чигтээ хадгалагдана (буруу!)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin:12px 0 0;font-size:12px;color:#888">Жишээ нэр: <code>petrovis 5.25-6.8.xlsx</code> · <code>petrowis 6.9.xlsx</code> · <code>kass 2026-06.xlsx</code> · <code>mbank 6 sar.xlsx</code></p>
+      </div>
+      <div class="match-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid #e5e7eb">
+        <button @click="syncConfirm.show = false" class="btn-cancel-sm">Болих</button>
+        <button @click="syncConfirm.show = false; handleSync()" class="btn-confirm-sync">✅ Татах</button>
+      </div>
+    </div>
+  </div>
+
 </template>
 
 <script setup>
@@ -762,6 +796,7 @@ const accounts     = ref([]);
 const loading      = ref(false);
 const syncing      = ref(false);
 const syncMsg      = ref(null);
+const syncConfirm  = ref({ show: false });
 
 const filterAccount     = ref('');
 const filterFrom        = ref('');
@@ -2850,4 +2885,54 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── OneDrive Sync confirm modal table ─────────────────────── */
+.sync-name-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.sync-name-table th {
+  background: #f3f4f6;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+}
+.sync-name-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #374151;
+}
+.sync-name-table code {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.sync-name-table tr.row-highlight td { background: #fefce8; }
+.sync-name-table tr.row-warn td { background: #fff1f2; color: #b91c1c; font-style: italic; }
+.btn-confirm-sync {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  padding: 7px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-confirm-sync:hover { background: #15803d; }
+.btn-cancel-sm {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-cancel-sm:hover { background: #e5e7eb; }
 </style>

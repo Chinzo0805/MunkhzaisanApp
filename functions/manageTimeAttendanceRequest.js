@@ -314,8 +314,80 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         requestId,
       });
       
+    } else if (action === 'supervisorDirectAdd') {
+      // Supervisor manually adds a тасалсан record directly into timeAttendance (no pending step)
+      const { Day, EmployeeID, EmployeeFirstName, EmployeeLastName, WorkingHour, comment } = requestData;
+
+      if (!Day || !EmployeeID) {
+        return res.status(400).send({ error: 'Missing required fields: Day, EmployeeID' });
+      }
+
+      // Conflict check: no existing approved record on same day for same employee
+      const existingQuery = await db.collection('timeAttendance')
+        .where('Day', '==', Day)
+        .where('EmployeeID', '==', EmployeeID)
+        .get();
+
+      if (!existingQuery.empty) {
+        const existing = existingQuery.docs[0].data();
+        return res.status(409).send({
+          error: 'Conflict',
+          message: `${Day} өдөр ${EmployeeLastName || ''} ${EmployeeFirstName || ''}-д аль хэдийн "${existing.Status}" ирц байна`,
+        });
+      }
+
+      // Also conflict check in pending requests
+      const pendingQuery = await db.collection('timeAttendanceRequests')
+        .where('Day', '==', Day)
+        .where('EmployeeID', '==', EmployeeID)
+        .where('status', '==', 'pending')
+        .get();
+
+      if (!pendingQuery.empty) {
+        const pending = pendingQuery.docs[0].data();
+        return res.status(409).send({
+          error: 'Conflict',
+          message: `${Day} өдөр ${EmployeeLastName || ''} ${EmployeeFirstName || ''}-д аль хэдийн "${pending.Status}" хүлээгдэж буй хүсэлт байна`,
+        });
+      }
+
+      const [y, mo, d] = Day.split('-').map(Number);
+      const weekDays = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
+      const weekDay = weekDays[new Date(y, mo - 1, d).getDay()];
+      const recordId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const hours = typeof WorkingHour === 'number' ? WorkingHour : 8;
+
+      const docRef = await db.collection('timeAttendance').add({
+        EmployeeID,
+        EmployeeFirstName: EmployeeFirstName || '',
+        EmployeeLastName: EmployeeLastName || '',
+        FirstName: EmployeeFirstName || '',
+        LastName: EmployeeLastName || '',
+        Day,
+        WeekDay: weekDay,
+        Status: 'тасалсан',
+        WorkingHour: hours,
+        overtimeHour: 0,
+        ProjectID: 'N/A',
+        ProjectName: '',
+        comment: comment || '',
+        ID: recordId,
+        approvedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        syncedToExcel: false,
+        supervisorAdded: true,
+      });
+
+      console.log(`Supervisor direct-added тасалсан for employee ${EmployeeID} on ${Day}, doc: ${docRef.id}`);
+
+      res.status(200).send({
+        success: true,
+        message: 'Тасалсан ирц амжилттай нэмэгдлээ',
+        docId: docRef.id,
+      });
+
     } else {
-      return res.status(400).send({ error: 'Invalid action. Use "add", "update", or "delete"' });
+      return res.status(400).send({ error: 'Invalid action. Use "add", "update", "delete", or "supervisorDirectAdd"' });
     }
     
   } catch (error) {

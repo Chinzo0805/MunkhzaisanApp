@@ -115,8 +115,11 @@ function recalcEmployeeRow(row, workingDays) {
   const recurringAdditions  = row.recurringAdditions  || 0;  // auto from employeeDeductions additions
   const recurringDeductions = row.recurringDeductions || 0;  // auto from employeeDeductions
 
-  // Нийт бодогдсон цалин (unpaidOvertimePay and recurringAdditions are taxable gross)
-  const totalGross = calculatedSalary + additionalPay + annualLeavePay + unpaidOvertimePay + recurringAdditions;
+  // Нийт бодогдсон цалин
+  // Note: unpaidOvertimePay is NOT added here — overtime hours for 'unpaid' projects
+  // are already folded into normalHours → effectiveHours → calculatedSalary.
+  // Adding it again would double-count. recurringAdditions are taxable extras.
+  const totalGross = calculatedSalary + additionalPay + annualLeavePay + recurringAdditions;
 
   // НДШ / ХХОАТ — controlled by ndsSalary field on the row:
   //   ndsSalary = null/undefined  → full NDS on totalGross (legacy isNDS=true)
@@ -224,10 +227,11 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
       : Promise.resolve({ exists: false }),
   ]);
 
-  // If no TA summary cached yet, calculate from raw TA records and save for future use.
-  let taSummaryEmployees = taSummarySnap.exists ? (taSummarySnap.data().employees || []) : null;
-  if (!taSummaryEmployees) {
-    console.log(`taSummaries/${yearMonth}_${range} not found — calculating from raw TA`);
+  // Always recalculate from raw TA records so updated TA is always reflected.
+  // (The taSummaries cache is overwritten each time for downstream consumers like advance calc.)
+  let taSummaryEmployees = null;
+  {
+    console.log(`Calculating from raw TA for ${yearMonth}_${range}`);
     const [taSnap, projSnap] = await Promise.all([
       db.collection('timeAttendance')
         .where('Day', '>=', startDate)
@@ -268,7 +272,7 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
     db.collection('taSummaries').doc(`${yearMonth}_${range}`).set({
       yearMonth, range, calculatedAt: new Date().toISOString(), employees: taSummaryEmployees,
     }).catch(err => console.error('Failed to save taSummaries:', err));
-  }
+  } // end raw TA recalculation block
 
   // Normalize an ID value: floats like 5.0 → "5", integers → "5", strings → trimmed
   function normalizeId(v) {

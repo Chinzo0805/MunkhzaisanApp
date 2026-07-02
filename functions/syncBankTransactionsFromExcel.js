@@ -254,15 +254,18 @@ exports.syncBankTransactionsFromExcel = functions
 
 // ── Account name resolver (maps Excel filename → official account name) ──────
 function resolveAccountName(rawName) {
-  const f = rawName.toLowerCase();
-  if (f.includes('kass') || f.includes('касс'))                               return 'Кассын данс';
-  if (f.includes('main') || f.includes('харилцах') || f.includes('harilts')) return 'Байгууллагын харилцах';
-  if (f.includes('tsalin') || f.includes('цалин') || f.includes('salary'))   return 'Цалингийн данс';
-  if (f.includes('tatvar') || f.includes('татвар') || f.includes('tax'))     return 'Татварын данс';
-  if (f.includes('zeel') || f.includes('зээл'))                               return 'Зээл төлөх данс';
-  if (f.includes('huwiin') || f.includes('huviin') || f.includes('хувийн'))  return 'Хувийн зардалын данс';
-  if (f.includes('office') || f.includes('оффис') || f.includes('офис'))     return 'Оффис хэрэглээний данс';
-  if (f.includes('petrovis') || f.includes('report'))                         return 'Petrovis account';
+  // Normalize to NFC so Unicode variants of Mongolian chars compare correctly
+  const f = rawName.normalize('NFC').toLowerCase();
+  if (f.includes('kass') || f.includes('касс'))                                       return 'Кассын данс';
+  if (f.includes('main') || f.includes('харилцах') || f.includes('harilts'))          return 'Байгууллагын харилцах';
+  if (f.includes('tsalin') || f.includes('цалин') || f.includes('salary'))            return 'Цалингийн данс';
+  if (f.includes('tatvar') || f.includes('татвар') || f.includes('tax'))              return 'Татварын данс';
+  if (f.includes('zeel') || f.includes('зээл'))                                       return 'Зээл төлөх данс';
+  if (f.includes('huwiin') || f.includes('huviin') || f.includes('хувийн'))           return 'Хувийн зардалын данс';
+  if (f.includes('office') || f.includes('оффис') || f.includes('офис'))              return 'Оффис хэрэглээний данс';
+  // Accept Latin 'petrovis', common typo 'petrowis', Cyrillic 'петровис', or any file named 'report'
+  if (f.includes('petrovis') || f.includes('petrowis') || f.includes('петровис') || f.includes('report')) return 'Petrovis account';
+  if (f.includes('mbank') || f.includes('м банк') || f.includes('эм банк'))           return 'М банк данс';
   return rawName;
 }
 
@@ -369,6 +372,16 @@ function mapColumns(headers) {
     }
   }
   return colMap;
+}
+
+// Score a candidate row: count how many distinct fields have at least one
+// matching column alias. Used to identify the true header row.
+function scoreHeaderRow(row) {
+  let score = 0;
+  for (const field of FIELD_PRIORITY) {
+    if (row.some(cell => detectColumn(cell, field))) score++;
+  }
+  return score;
 }
 
 function parseDate(raw) {
@@ -581,13 +594,14 @@ exports.syncBankTransactionsFromExcel = functions
             continue;
           }
 
-          // ── Find header row (first row that contains a date-like header) ──
-          // Usually row 0, but some files have title/info rows before headers.
+          // ── Find header row (pick the row with the most matching field aliases) ──
+          // scoreHeaderRow is defined at module level; a metadata/title row like
+          // "Огноо: 5.25-6.8" scores 1, the real header row scores 4+ fields.
           let headerRowIdx = 0;
-          for (let r = 0; r < Math.min(10, allRows.length); r++) {
-            const row = allRows[r];
-            const hasDateHeader = row.some(cell => detectColumn(cell, "date"));
-            if (hasDateHeader) { headerRowIdx = r; break; }
+          let bestScore = scoreHeaderRow(allRows[0]);
+          for (let r = 1; r < Math.min(10, allRows.length); r++) {
+            const score = scoreHeaderRow(allRows[r]);
+            if (score > bestScore) { bestScore = score; headerRowIdx = r; }
           }
 
           const headers  = allRows[headerRowIdx];
@@ -679,8 +693,14 @@ exports.syncBankTransactionsFromExcel = functions
             saved += Math.min(chunkSize, batchDocs.length - i);
           }
 
-          results.push({ file: fileName, accountName, saved, skipped });
-          console.log(`${fileName}: saved ${saved}, skipped ${skipped}`);
+          // Build a human-readable map of detected columns for diagnostics
+          const _colMap = mapColumns(headers);
+          const detectedHeaders = {};
+          for (const [field, idx] of Object.entries(_colMap)) {
+            detectedHeaders[field] = headers[idx];
+          }
+          results.push({ file: fileName, accountName, saved, skipped, detectedHeaders });
+          console.log(`${fileName}: saved ${saved}, skipped ${skipped}, colMap:`, JSON.stringify(detectedHeaders));
 
         } catch (fileErr) {
           console.error(`Error processing ${fileName}:`, fileErr.message);
