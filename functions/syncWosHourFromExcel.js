@@ -93,13 +93,21 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
     const matIdx = headers.findIndex(h => h === 'Материалын дүн');
     const ajilbarIdx = headers.findIndex(h => h === 'Ажилбар');
     const remainIdx = headers.findIndex(h => h === 'Төлбөр %');
+    const detailIdx = headers.findIndex(h => h === 'Хийх ажил');
+    const rateIdx = headers.findIndex(h => h === 'Цагын хөлс');
+    const ajilHulsIdx = headers.findIndex(h => h === 'Ажлын хөлс');
 
     if (refIdx === -1) throw new Error(`"ВОС дугаар" column not found. Headers: ${headers.join(', ')}`);
     if (wosIdx === -1) throw new Error(`"Хүн/цаг" column not found. Headers: ${headers.join(', ')}`);
 
-    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}, "Ажилбар" at ${ajilbarIdx}, "Төлбөр %" at ${remainIdx}`);
+    console.log(`Found columns: "ВОС дугаар" at ${refIdx}, "Хүн/цаг" at ${wosIdx}, "Унаа" at ${carIdx}, "Материалын дүн" at ${matIdx}, "Ажилбар" at ${ajilbarIdx}, "Төлбөр %" at ${remainIdx}, "Хийх ажил" at ${detailIdx}, "Цагын хөлс" at ${rateIdx}, "Ажлын хөлс" at ${ajilHulsIdx}`);
 
-    // 6. Process each data row
+    // 6. Load all bountyRates versions once for overtime rate matching
+    const bountyRatesSnap = await db.collection('bountyRates').get();
+    const bountyRatesVersions = bountyRatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    console.log(`Loaded ${bountyRatesVersions.length} bountyRates versions`);
+
+    // 7. Process each data row
     const updated = [];
     const skipped = [];
     const errors = [];
@@ -115,6 +123,9 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
       const incomeMaterialRaw = matIdx !== -1 ? row[matIdx] : null;
       const remainRaw = remainIdx !== -1 ? row[remainIdx] : null;
       const ajilbar = ajilbarIdx !== -1 ? (row[ajilbarIdx] || '').toString().trim() : '';
+      const detail = detailIdx !== -1 ? (row[detailIdx] || '').toString().trim() : null;
+      const rateRaw = rateIdx !== -1 ? row[rateIdx] : null;
+      const ajilHulsRaw = ajilHulsIdx !== -1 ? row[ajilHulsIdx] : null;
 
       if (!refId) continue;
 
@@ -146,13 +157,6 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
         query.docs.find(d => d.data().projectType !== 'unpaid') || query.docs[0];
       const projectData = projectDoc.data();
 
-      if (projectData.projectType === 'unpaid') {
-        const reason = 'unpaid project — skipped';
-        skipped.push({ refId, reason });
-        console.warn(`⚠ SKIPPED [${refId}]: ${reason}`);
-        continue;
-      }
-
       try {
         // WosHour = Excel Хүн/цаг - existing additionalHour
         const existingAdditionalHour = parseFloat(projectData.additionalHour) || 0;
@@ -162,9 +166,38 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
         const fieldUpdates = { WosHour: wosHour };
         if (incomeCar !== null && !isNaN(incomeCar)) fieldUpdates.IncomeCar = incomeCar;
         if (incomeMaterial !== null && !isNaN(incomeMaterial)) fieldUpdates.IncomeMaterial = incomeMaterial;
+        if (detail !== null && detail !== '') fieldUpdates.Detail = detail;
         if (remainRaw !== null && remainRaw !== '') {
           const remainPct = parseFloat(remainRaw);
           if (!isNaN(remainPct)) fieldUpdates.RemainPercent = Math.min(100, Math.max(0, remainPct));
+        }
+        // For overtime: store the scraped Ажлын хөлс total as wosIncomeHR
+        // This is the website's own computed total (includes ALL row types: Томилолт, Цаг, etc.)
+        // projectCalculations will use this instead of recalculating from WosHour × rate
+        if (projectData.projectType === 'overtime' && ajilHulsRaw !== null && ajilHulsRaw !== '') {
+          const ajilHuls = parseFloat(ajilHulsRaw);
+          if (!isNaN(ajilHuls) && ajilHuls > 0) fieldUpdates.wosIncomeHR = ajilHuls;
+        }
+
+        // For overtime projects: match 'Цагын хөлс' to a bountyRates version by overtimeIncomeRate
+        // and set bountyRatesVersion so projectCalculations uses the correct global rate
+        let rateFromExcel = null;
+        let matchedVersion = null;
+        let rateVersionWarning = null;
+        if (projectData.projectType === 'overtime' && rateRaw !== null && rateRaw !== '') {
+          rateFromExcel = parseFloat(rateRaw);
+          if (!isNaN(rateFromExcel) && rateFromExcel > 0) {
+            matchedVersion = bountyRatesVersions.find(v =>
+              Math.round(parseFloat(v.overtimeIncomeRate)) === Math.round(rateFromExcel)
+            );
+            if (matchedVersion) {
+              fieldUpdates.bountyRatesVersion = matchedVersion.id;
+              console.log(`  → bountyRatesVersion: ${matchedVersion.id} (overtimeIncomeRate=${rateFromExcel}) for project ${projectData.id}`);
+            } else {
+              rateVersionWarning = `Цагын хөлс ${rateFromExcel.toLocaleString()}-тай тариф хувилбар олдсонгүй — Боунти тарифд урьд шинээрэй үүсгээрэй`;
+              console.warn(`⚠ [${refId}]: ${rateVersionWarning}`);
+            }
+          }
         }
 
         // If Ажилбар is "Нягтлан хүлээн авах", advance project status to "Нэхэмжлэх өгөх ба Шалгах"
@@ -201,7 +234,23 @@ exports.syncWosHourFromExcel = functions.region('asia-east2').runWith({
           updatedAt: new Date().toISOString(),
         });
 
-        updated.push({ refId, projectId: projectData.id, wosHour, wosHourFromExcel, existingAdditionalHour: parseFloat(projectData.additionalHour) || 0, incomeCar, incomeMaterial, statusChanged: ajilbar === 'Нягтлан хүлээн авах' });
+        updated.push({
+          refId,
+          projectId: projectData.id,
+          customer: projectData.customer || '',
+          projectType: projectData.projectType || '',
+          wosHour,
+          wosHourFromExcel,
+          existingAdditionalHour: parseFloat(projectData.additionalHour) || 0,
+          incomeCar,
+          incomeMaterial,
+          incomeHR: calculations.IncomeHR || 0,
+          wosIncomeHR: fieldUpdates.wosIncomeHR || null,
+          rateFromExcel,
+          bountyRatesVersion: fieldUpdates.bountyRatesVersion || projectData.bountyRatesVersion || null,
+          rateVersionWarning,
+          statusChanged: ajilbar === 'Нягтлан хүлээн авах',
+        });
         console.log(`✓ Updated project ${projectData.id} (ref: ${refId}): WosHour=${wosHour} (Excel ${wosHourFromExcel} - addHour ${parseFloat(projectData.additionalHour) || 0}), IncomeCar=${incomeCar}, IncomeMaterial=${incomeMaterial}`);
       }  catch (err) {
         errors.push({ refId, error: err.message });

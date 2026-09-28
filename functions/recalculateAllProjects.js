@@ -84,13 +84,11 @@ exports.recalculateAllProjects = functions.runWith({
         const changeDate = new Date(changedIso);
         const day = changeDate.getDate();
         let payDate;
-        if (day >= 1 && day <= 5) {
-          payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-10`;
-        } else if (day >= 6 && day <= 20) {
-          payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-25`;
+        if (day >= 1 && day <= 14) {
+          payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-15`;
         } else {
-          const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 10);
-          payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-10`;
+          const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 1);
+          payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
         }
         backfill.bountyPayDate = payDate;
       }

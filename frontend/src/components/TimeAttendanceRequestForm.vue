@@ -116,8 +116,12 @@
               <label>Үүрэг</label>
               <select v-model="request.Role" class="input-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'">
                 <option value="">Сонгох</option>
-                <option value="Инженер">Инженер</option>
-                <option value="Техникч">Техникч</option>
+                <option value="Инженер"
+                  :disabled="!isProjectRespEngineerById(request.ProjectID)"
+                  :title="isProjectRespEngineerById(request.ProjectID) ? '' : 'Уг ажлын хариуцагч зөвхөн инженеэрээр бүртгүүлнэ'">Инженер</option>
+                <option value="Техникч"
+                  :disabled="isProjectRespEngineerById(request.ProjectID)"
+                  :title="isProjectRespEngineerById(request.ProjectID) ? 'Хариуцагч инженер тус төслөлд зөвхөн Инженеэрийн үүрэгтэй бүртгүүлэх' : ''">Техникч</option>
                 <option value="Ажилтан">Ажилтан</option>
               </select>
             </div>
@@ -211,8 +215,12 @@
               <td>
                 <select v-model="request.Role" class="input-field" :disabled="request.Status === 'Чөлөөтэй/Амралт'">
                   <option value="">Сонгох</option>
-                  <option value="Инженер">Инженер</option>
-                  <option value="Техникч">Техникч</option>
+                  <option value="Инженер"
+                    :disabled="!isProjectRespEngineerById(request.ProjectID)"
+                    :title="isProjectRespEngineerById(request.ProjectID) ? '' : 'Уг ажлын хариуцагч зөвхөн инженеэрээр бүртгүүлнэ'">Инженер</option>
+                  <option value="Техникч"
+                    :disabled="isProjectRespEngineerById(request.ProjectID)"
+                    :title="isProjectRespEngineerById(request.ProjectID) ? 'Хариуцагч инженер тус төслөлд зөвхөн Инженеэрийн үүрэгтэй бүртгүүлэх' : ''">Техникч</option>
                   <option value="Ажилтан">Ажилтан</option>
                 </select>
               </td>
@@ -460,6 +468,8 @@ function onProjectChange(index) {
     }
     if (request.projectType === 'paid') {
       request.overtimeHour = 0;
+      // Auto-assign Role: only the responsible engineer gets Инженер role
+      request.Role = isProjectRespEngineer(project) ? 'Инженер' : 'Техникч';
     }
     // Recalculate so auto-overtime updates immediately when project changes
     calculateRow(index);
@@ -468,6 +478,19 @@ function onProjectChange(index) {
     request.isOvertimeRequest = false;
     request.overtimeHour = 0;
   }
+}
+
+// Returns true if the current logged-in user is the responsible engineer of the given project
+function isProjectRespEngineer(project) {
+  if (!project || project.projectType !== 'paid') return true; // no restriction on non-paid
+  if (project.ResponsibleEmpId == null) return false;
+  const myId = authStore.effectiveEmployeeId ?? authStore.userData?.employeeId;
+  return myId != null && Number(project.ResponsibleEmpId) === Number(myId);
+}
+
+function isProjectRespEngineerById(projectId) {
+  const project = projects.value.find(p => p.id == projectId);
+  return isProjectRespEngineer(project);
 }
 
 function calculateRow(index) {

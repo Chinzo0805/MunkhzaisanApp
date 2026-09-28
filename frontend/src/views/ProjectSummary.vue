@@ -239,6 +239,21 @@
               </td>
             </tr>
           </tbody>
+          <tfoot>
+            <tr class="footer-sum-row">
+              <td v-for="col in activeColumns" :key="col.key" :class="tdClass(col)">
+                <template v-if="footerSums[col.key] !== undefined">
+                  <span v-if="PROFIT_KEYS.includes(col.key)"
+                    :style="{ color: footerSums[col.key] >= 0 ? '#10b981' : '#ef4444', fontWeight: 700 }">
+                    {{ footerSums[col.key].toLocaleString() }}
+                  </span>
+                  <span v-else style="font-weight:700;">{{ footerSums[col.key].toLocaleString() }}</span>
+                </template>
+                <span v-else-if="col.key === 'id'" class="footer-sum-label">Нийт</span>
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -331,7 +346,6 @@ const ALL_COLUMNS = [
   { key: 'additionalValue',         label: 'Нэмэлт үнэ' },
   // HR financial + Bounty detail (29-38)
   { key: 'IncomeHR',                label: 'Орлого HR' },
-  { key: 'BaseAmount',              label: 'Суурь дүн' },
   { key: 'TeamBounty',              label: 'Багийн урамшуулал' },
   { key: 'ExpenceHRBonus',          label: 'Нийт урамшуулал' },
   { key: 'EngineerHand',            label: 'Инженерийн урамшуулал' },
@@ -363,12 +377,18 @@ const COL_GROUP_CARM     = ALL_COLUMNS.slice(44);     // Car + Material
 const PROFIT_KEYS = ['ProfitHR', 'ProfitCar', 'ProfitMaterial', 'TotalProfit'];
 // Keys that render as plain money
 const MONEY_KEYS  = [
-  'IncomeHR', 'BaseAmount', 'TeamBounty', 'ExpenceHRBonus', 'EngineerHand',
+  'IncomeHR', 'TeamBounty', 'ExpenceHRBonus', 'EngineerHand',
   'NonEngineerBounty', 'OvertimeBounty', 'ExpenseSalary', 'ExpenceManagementSalary', 'ExpenceTripSalary',
   'ExpenseHRFromTrx',
   'IncomeCar', 'ExpenceCar', 'IncomeMaterial', 'ExpenceMaterial',
   'additionalValue', 'TotalIncome', 'PlannedReceive', 'TotalExpence', 'TotalHRExpence', 'ExpenceHSE',
 ];
+// Keys that should show a sum in the footer
+const SUM_KEYS = new Set([
+  ...PROFIT_KEYS, ...MONEY_KEYS,
+  'WosHour', 'PlannedHour', 'additionalHour', 'RealHour',
+  'WorkingHours', 'OvertimeHours', 'EngineerWorkHour', 'NonEngineerWorkHour',
+]);
 // Keys that are editable in table edit mode
 const EDITABLE_KEYS = ['Status', 'ResponsibleEmp', 'referenceIdfromCustomer', 'bountyPayDate',
   'isInvoiceSent', 'InvoiceDate', 'IncomeDate', 'isEbarimtSent', 'RemainPercent'];
@@ -531,6 +551,16 @@ const sortedProjects = computed(() => {
   return data;
 });
 
+const footerSums = computed(() => {
+  const sums = {};
+  for (const col of activeColumns.value) {
+    if (SUM_KEYS.has(col.key)) {
+      sums[col.key] = sortedProjects.value.reduce((acc, p) => acc + (Number(p[col.key]) || 0), 0);
+    }
+  }
+  return sums;
+});
+
 function sortBy(col) {
   if (sortColumn.value === col) sortAsc.value = !sortAsc.value;
   else { sortColumn.value = col; sortAsc.value = true; }
@@ -663,10 +693,10 @@ async function openBountyModal(project) {
   bountyProjectId.value = project.id;
   bountyTaRecords.value = [];
   bountyProjectInfo.value = {
-    location:        project.siteLocation || '',
-    hourPerformance: project.HourPerformance ?? null,
-    baseAmount:      project.BaseAmount    || null,
-    teamBounty:      project.TeamBounty    || null,
+    location:          project.siteLocation    || '',
+    hourPerformance:   project.HourPerformance ?? null,
+    teamBounty:        project.TeamBounty       || null,
+    nonEngineerBounty: project.NonEngineerBounty ?? null,
   };
   showBountyModal.value = true;
   // Load TA records exactly like TimeAttendanceModal does
@@ -998,6 +1028,17 @@ onUnmounted(() => {
 
 .loading { text-align: center; padding: 60px; color: #6b7280; font-size: 16px; }
 .no-data { text-align: center; padding: 60px; color: #6b7280; font-size: 16px; }
+
+/* ── Footer sum row ───────────────────────────────── */
+.footer-sum-row td {
+  padding: 10px 10px;
+  background: #f3f4f6;
+  border-top: 2px solid #d1d5db;
+  font-size: 13px;
+  position: sticky;
+  bottom: 0;
+}
+.footer-sum-label { font-weight: 700; color: #374151; }
 </style>
 
 

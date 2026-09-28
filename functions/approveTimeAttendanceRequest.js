@@ -7,6 +7,7 @@ try {
 } catch (e) {}
 
 const db = getFirestore();
+db.settings({ ignoreUndefinedProperties: true });
 
 exports.approveTimeAttendanceRequest = functions.region('asia-east2').https.onRequest(async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -45,12 +46,46 @@ exports.approveTimeAttendanceRequest = functions.region('asia-east2').https.onRe
         ? { approvedByEngineer: true, approvedByEngineerName: approvedByEngineerName || '', approvedByEngineerId: approvedByEngineerId || '' }
         : {};
 
+      // ── Role enforcement for paid projects ───────────────────────────────
+      // Only the responsible engineer of a paid project may have Role = 'Инженер'.
+      // All other employees on paid projects are capped at 'Техникч'.
+      let enforcedRole = requestData.Role;
+      if (requestData.Role === 'Инженер' && requestData.ProjectID) {
+        try {
+          const projSnap = await db.collection('projects')
+            .where('id', '==', parseInt(requestData.ProjectID))
+            .limit(1)
+            .get();
+                if (!projSnap.empty) {
+            const proj = projSnap.docs[0].data();
+            if (proj.projectType === 'paid') {
+              const empId = Number(requestData.EmployeeID);
+              const respId = Number(proj.ResponsibleEmpId);
+              if (empId && respId) {
+                if (empId === respId && enforcedRole !== 'Инженер') {
+                  // Responsible engineer must be Инженер on their own project
+                  enforcedRole = 'Инженер';
+                  console.log(`Role override: emp ${empId} IS ResponsibleEmpId → Инженер on project ${requestData.ProjectID}`);
+                } else if (empId !== respId && enforcedRole === 'Инженер') {
+                  // Non-responsible employee cannot be Инженер
+                  enforcedRole = 'Техникч';
+                  console.log(`Role override: emp ${empId} ≠ ResponsibleEmpId ${respId} → Техникч on project ${requestData.ProjectID}`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Role enforcement check failed:', e.message);
+        }
+      }
+
       // Copy to timeAttendance collection with syncedToExcel flag
       await db.collection('timeAttendance').add({
         ...requestData,
-        ID: recordId, // Ensure ID exists for Excel sync
+        Role: enforcedRole,
+        ID: recordId,
         approvedAt: new Date().toISOString(),
-        syncedToExcel: false, // Mark as not synced yet
+        syncedToExcel: false,
         ...engineerMeta,
       });
       

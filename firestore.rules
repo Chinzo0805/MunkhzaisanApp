@@ -214,6 +214,12 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null;
     }
 
+    // Bounty rates config — all authenticated users can read (needed for WOS modal rate preview)
+    match /bountyRates/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isSupervisor();
+    }
+
     // Bank plan — account assignments per project; supervisors and accountants can read/write
     match /bankPlan/{docId} {
       allow read: if request.auth != null && isSupervisorOrAccountant();

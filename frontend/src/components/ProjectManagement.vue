@@ -224,7 +224,7 @@
                   {{ formatNumber(project.TotalProfit || 0) }}₮
                 </span>
               </div>
-              <div class="kcard-income-row" v-if="(project.projectType === 'paid' || project.projectType === 'overtime') && ((project.TotalIncome || 0) + (project.IncomeHR||0) + (project.IncomeCar||0) + (project.IncomeMaterial||0)) > 0">
+              <div class="kcard-income-row" v-if="((project.TotalIncome || 0) + (project.IncomeHR||0) + (project.IncomeCar||0) + (project.IncomeMaterial||0)) > 0">
                 <span class="kcard-income-label">💰 Нийт орлого</span>
                 <span class="kcard-income-value">{{ formatNumber(project.TotalIncome || ((project.IncomeHR||0) + (project.IncomeCar||0) + (project.IncomeMaterial||0))) }}₮</span>
               </div>
@@ -466,8 +466,8 @@
                   <label>HR орлого</label>
                   <input v-model.number="form.IncomeHR" type="number" step="0.01" :readonly="!isEditMode" :style="!isEditMode ? 'background-color: #f9fafb;' : ''" @input="onIncomeHRChange" />
                   <small class="hint" v-if="form.projectType === 'overtime'">WosHour × 20,000</small>
-                  <small class="hint" v-else-if="form.projectType !== 'unpaid'">(WosHour + addHour) × 110,000</small>
-                  <small class="hint" v-else>Төлбөргүй төсөл</small>
+                  <small class="hint" v-else-if="form.projectType === 'unpaid'">Шууд дүн оруулна</small>
+                  <small class="hint" v-else>(WosHour + addHour) × 110,000</small>
                 </div>
                 <div class="form-group">
                   <label>Үлдэх хувь (%)</label>
@@ -485,24 +485,19 @@
               <!-- Paid bounties -->
               <div v-if="form.projectType === 'paid'" class="form-grid-3">
                 <div class="form-group">
-                  <label>Суурь дүн (WosHour × 12,500)</label>
-                  <input :value="formatNumber(form.BaseAmount || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
-                </div>
-                <div class="form-group">
-                  <label>Багийн урамшуулал (WosHour × 22,500)</label>
+                  <label>Багийн урамшуулал</label>
                   <input :value="formatNumber(form.TeamBounty || 0)" type="text" readonly style="background-color: #fef3c7; font-weight: 600;" />
+                  <small v-if="form.frozenTeamRate" class="hint">WosHour × {{ form.frozenTeamRate.toLocaleString() }}</small>
                 </div>
                 <div class="form-group">
                   <label>Инженерийн урамшуулал</label>
                   <input :value="formatNumber(form.EngineerHand || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
                   <small class="hint">TeamBounty − NonEngineerBounty</small>
                 </div>
-              </div>
-              <div v-if="form.projectType === 'paid'" class="form-grid-3">
                 <div class="form-group">
                   <label>Инженер бус урамшуулал</label>
                   <input :value="formatNumber(form.NonEngineerBounty || 0)" type="text" readonly style="background-color: #d1fae5; font-weight: 600;" />
-                  <small class="hint">ManualBountyHours × 5,000₮</small>
+                  <small class="hint">ManualBountyHours × <span v-if="form.frozenNonEngineerRate">{{ form.frozenNonEngineerRate.toLocaleString() }}</span><span v-else>тариф</span> (бэкэндэүр тооцоолно)</small>
                 </div>
               </div>
 
@@ -967,6 +962,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useProjectsStore } from '../stores/projects';
 import { useCustomersStore } from '../stores/customers';
 import { useEmployeesStore } from '../stores/employees';
+import { useAuthStore } from '../stores/auth';
 import { useFinancialTransactionsStore } from '../stores/financialTransactions';
 import { manageProject, mergeProjects, manageFinancialTransaction, manageBankTransaction, manageBountyRates } from '../services/api';
 import { db } from '../config/firebase';
@@ -975,6 +971,7 @@ import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/fire
 const projectsStore = useProjectsStore();
 const customersStore = useCustomersStore();
 const employeesStore = useEmployeesStore();
+const authStore = useAuthStore();
 const financialTransactionsStore = useFinancialTransactionsStore();
 
 // Ensure customers, employees and financial transactions are loaded
@@ -1458,6 +1455,7 @@ function getStatusColor(status) {
 
 function onWosHourChange() {
   // When WosHour changes, calculate IncomeHR based on project type
+  // unpaid: IncomeHR is a direct free-form amount — WosHour only drives PlannedHour
   if (form.value.projectType === 'overtime') {
     form.value.IncomeHR = Math.round((form.value.WosHour || 0) * 20000);
   } else if (form.value.projectType !== 'unpaid') {
@@ -1467,10 +1465,13 @@ function onWosHourChange() {
 }
 
 function onIncomeHRChange() {
-  // When IncomeHR changes manually, back-calculate WosHour
+  // When IncomeHR changes manually:
+  // unpaid — IncomeHR is a direct amount, no back-calculation
+  // overtime — back-calculate WosHour from 20,000 rate
+  // paid — back-calculate WosHour from 110,000 rate
   if (form.value.projectType === 'overtime') {
     form.value.WosHour = form.value.IncomeHR ? Math.round((form.value.IncomeHR / 20000) * 100) / 100 : 0;
-  } else {
+  } else if (form.value.projectType !== 'unpaid') {
     const additionalHour = form.value.additionalHour || 0;
     form.value.WosHour = form.value.IncomeHR ? ((form.value.IncomeHR / 110000) - additionalHour) : 0;
   }
@@ -1484,6 +1485,7 @@ function onRemainPctChange() {
 
 function onAdditionalHourChange() {
   // When additionalHour changes, calculate additionalValue and update IncomeHR (paid only)
+  // unpaid: IncomeHR is free-form — additional hour does not recalculate it
   form.value.additionalValue = Math.round((form.value.additionalHour || 0) * 65000);
   if (form.value.projectType !== 'overtime' && form.value.projectType !== 'unpaid') {
     form.value.IncomeHR = Math.round(((form.value.WosHour || 0) + (form.value.additionalHour || 0)) * 110000);
@@ -1496,94 +1498,26 @@ function calculateFinancials() {
   const isOvertime = form.value.projectType === 'overtime';
 
   if (isUnpaid) {
-    // Unpaid projects: no client revenue, no bounty — only labour cost
-    form.value.IncomeHR = 0;
-    form.value.BaseAmount = 0;
-    form.value.TeamBounty = 0;
-    form.value.EngineerHand = 0;
-    form.value.NonEngineerBounty = 0;
-    form.value.OvertimeBounty = 0;
     form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-    const laborCost = form.value.ExpenseSalary || 0;
-    form.value.ProfitHR = Math.round(-((laborCost) + (form.value.additionalValue || 0)));
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
-    form.value.PlannedReceive = 0;
-    form.value.TotalIncome = 0;
-    form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
-    form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
-    form.value.ReceivingIncome = 0;
     return;
   }
 
   if (isOvertime) {
-    // Overtime projects (ашиглалтын илүү цаг): IncomeHR = WosHour * 20,000
-    form.value.BaseAmount = 0;
-    form.value.TeamBounty = 0;
-    form.value.EngineerHand = 0;
-    form.value.NonEngineerBounty = 0;
-    form.value.IncomeHR = Math.round((form.value.WosHour || 0) * 20000);
     form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
     form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-    // OvertimeBounty is stored from server-side TA aggregation; use stored value
-    form.value.OvertimeBounty = Math.round((form.value.OvertimeHours || 0) * 15000);
-    const laborCost = form.value.ExpenseSalary || 0;
-    form.value.ProfitHR = Math.round(
-      (form.value.IncomeHR || 0) -
-      (laborCost + (form.value.OvertimeBounty || 0) + (form.value.additionalValue || 0))
-    );
     form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
     form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
-    const totalIncomeOT = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
-    const remainPctOT = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
-    form.value.PlannedReceive = totalIncomeOT;
-    form.value.TotalIncome = Math.round(totalIncomeOT * remainPctOT);
-    const totalExpenceOT = (form.value.ExpenseSalary || 0) + (form.value.OvertimeBounty || 0) +
-      (form.value.ExpenseHRFromTrx || 0) + (form.value.ExpenceCar || 0) +
-      (form.value.ExpenceMaterial || 0) + (form.value.ExpenceHSE || 0);
-    form.value.TotalProfit = Math.round(form.value.TotalIncome - totalExpenceOT);
-    form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
-    form.value.ReceivingIncome = form.value.TotalIncome;
     return;
   }
 
-  // Paid (Угсралтын урамшуулал): full bounty calculation
-  form.value.OvertimeBounty = 0;
-  // BaseAmount = WosHour * 12500
-  form.value.BaseAmount = Math.round((form.value.WosHour || 0) * 12500);
-  // TeamBounty = WosHour * 22500
-  form.value.TeamBounty = Math.round((form.value.WosHour || 0) * 22500);
-  // PlannedHour = WosHour * 3
+  // Paid: only update rate-independent display fields — bounty/profit come from backend
   form.value.PlannedHour = Math.round((form.value.WosHour || 0) * 3);
-  // NonEngineerBounty = ManualBountyHours * 5000 (manual non-engineer assignment)
-  form.value.NonEngineerBounty = Math.round((form.value.ManualBountyHours || 0) * 5000);
-  // HourPerformance = (RealHour / PlannedHour) * 100
   form.value.HourPerformance = calculateTimePerformance(form.value.RealHour, form.value.PlannedHour);
-  // EngineerHand = TeamBounty − NonEngineerBounty
-  form.value.EngineerHand = Math.max(0, form.value.TeamBounty - form.value.NonEngineerBounty);
-  // ProfitHR = IncomeHR - (EngineerHand + NonEngineerBounty + ExpenseSalary + ExpenseHRFromTrx + additionalValue)
-  const totalExpenseHR = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) + (form.value.ExpenseSalary || 0) + (form.value.ExpenseHRFromTrx || 0) + (form.value.additionalValue || 0);
-  form.value.ProfitHR = Math.round((form.value.IncomeHR || 0) - totalExpenseHR);
-  // ProfitCar = IncomeCar - ExpenceCar
   form.value.ProfitCar = Math.round((form.value.IncomeCar || 0) - (form.value.ExpenceCar || 0));
-  // ProfitMaterial = IncomeMaterial - ExpenceMaterial
   form.value.ProfitMaterial = Math.round((form.value.IncomeMaterial || 0) - (form.value.ExpenceMaterial || 0));
-  // TotalProfit = ProfitHR + ProfitCar + ProfitMaterial - ExpenceHSE
-  form.value.TotalProfit = Math.round((form.value.ProfitHR || 0) + (form.value.ProfitCar || 0) + (form.value.ProfitMaterial || 0) - (form.value.ExpenceHSE || 0));
-  form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
-  // PlannedReceive = gross income; TotalIncome = PlannedReceive × RemainPercent/100
-  const totalIncome = (form.value.IncomeHR || 0) + (form.value.IncomeCar || 0) + (form.value.IncomeMaterial || 0);
-  const remainPct = (form.value.RemainPercent != null ? form.value.RemainPercent : 100) / 100;
-  form.value.PlannedReceive = totalIncome;
-  form.value.TotalIncome = Math.round(totalIncome * remainPct);
-  // TotalProfit = actual income − total expenses
-  const totalExpence = (form.value.EngineerHand || 0) + (form.value.NonEngineerBounty || 0) +
-    (form.value.ExpenseSalary || 0) + (form.value.ExpenseHRFromTrx || 0) +
-    (form.value.ExpenceCar || 0) + (form.value.ExpenceMaterial || 0) + (form.value.ExpenceHSE || 0);
-  form.value.TotalProfit = Math.round(form.value.TotalIncome - totalExpence);
-  form.value.ManagerSalary = form.value.TotalProfit > 0 ? Math.round(form.value.TotalProfit * 0.02) : 0;
-  form.value.ReceivingIncome = form.value.TotalIncome;
 }
 
 function handleAddItem() {
@@ -1596,6 +1530,9 @@ function handleAddItem() {
   activeTab.value = 'basic';
   form.value.id = maxId + 1;
   form.value.StartDate = new Date().toISOString().slice(0, 10);
+  // Pre-fill responsible engineer with the creator
+  form.value.ResponsibleEmpId = Number(authStore.userData?.employeeId) || '';
+  form.value.ResponsibleEmp   = authStore.userData?.employeeFirstName || '';
   showModal.value = true;
 }
 
@@ -1640,7 +1577,7 @@ function editItem(project) {
     referenceIdfromCustomer: project.referenceIdfromCustomer || '',
     Status: project.Status || 'Төлөвлсөн',
     WosHour: project.WosHour || 0,
-    BaseAmount: project.BaseAmount || ((project.WosHour || 0) * 12500),
+    BaseAmount: project.BaseAmount || 0,
     EngineerHand: project.EngineerHand || 0,
     TeamBounty: project.TeamBounty || 0,
     PlannedHour: project.PlannedHour || 0,
@@ -1677,6 +1614,12 @@ function editItem(project) {
     PlannedReceive: project.PlannedReceive || project.ReceivingIncome || 0,
     AvgITASalary: project.AvgITASalary || 0,
     ExpenseSalary: project.ExpenseSalary || 0,
+    // Frozen bounty rates stored by backend at calculation time
+    frozenBaseRate:        project.frozenBaseRate        || 0,
+    frozenTeamRate:        project.frozenTeamRate        || 0,
+    frozenNonEngineerRate: project.frozenNonEngineerRate || 0,
+    frozenOvertimeRate:    project.frozenOvertimeRate    || 0,
+    frozenIncomeRate:      project.frozenIncomeRate      || 0,
   };
 }
 
@@ -1767,9 +1710,6 @@ async function handleSave() {
   saveSuccess.value = '';
   
   try {
-    // Calculate all financial fields before saving
-    calculateFinancials();
-    
     const action = editingItem.value ? 'update' : 'add';
     const itemId = editingDocId.value || null;
     

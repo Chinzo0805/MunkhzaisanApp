@@ -6,7 +6,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged 
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase';
 import { msalInstance, loginRequest } from '../config/msal';
 
@@ -16,6 +16,10 @@ export const useAuthStore = defineStore('auth', () => {
   const msalAccount = ref(null);
   const msalAccessToken = ref(null);
   const loading = ref(true);
+  const blockedMessage = ref('');
+
+  // Real-time listener unsubscribe function for the linked employee doc
+  let _employeeUnsubscribe = null;
 
   // ── View-as (supervisor viewing on behalf of an employee) ──────────────────
   const _savedViewAs = (() => { try { const s = sessionStorage.getItem('viewAsEmployee'); return s ? JSON.parse(s) : null; } catch { return null; } })();
@@ -81,6 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
           console.log('Restored Microsoft account from cache:', accounts[0].username);
         }
       } else {
+        if (_employeeUnsubscribe) { _employeeUnsubscribe(); _employeeUnsubscribe = null; }
         user.value = null;
         userData.value = null;
       }
@@ -149,7 +154,33 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (userDoc.exists()) {
-        userData.value = userDoc.data();
+        const data = userDoc.data();
+        // Check if the linked employee has departed (Гарсан)
+        if (data.employeeId) {
+          const empQuery = query(collection(db, 'employees'), where('Id', '==', Number(data.employeeId)));
+          const empSnap = await getDocs(empQuery);
+          if (!empSnap.empty && empSnap.docs[0].data().State === 'Гарсан') {
+            blockedMessage.value = 'Таны эрх хаагдсан байна. Та компанийг орхисон тул системд нэвтрэх боломжгүй.';
+            await firebaseSignOut(auth);
+            user.value = null;
+            userData.value = null;
+            return;
+          }
+
+          // Employee is active — watch in real time so they are kicked out
+          // immediately if their state is changed to 'Гарсан' while logged in
+          if (_employeeUnsubscribe) _employeeUnsubscribe();
+          _employeeUnsubscribe = onSnapshot(empQuery, (snap) => {
+            if (!snap.empty && snap.docs[0].data().State === 'Гарсан') {
+              blockedMessage.value = 'Таны эрх хаагдсан байна. Та компанийг орхисон тул системд нэвтрэх боломжгүй.';
+              firebaseSignOut(auth);
+              user.value = null;
+              userData.value = null;
+            }
+          });
+        }
+        blockedMessage.value = '';
+        userData.value = data;
       } else {
         userData.value = null;
       }
@@ -298,6 +329,7 @@ export const useAuthStore = defineStore('auth', () => {
   // Sign out
   async function signOut() {
     try {
+      if (_employeeUnsubscribe) { _employeeUnsubscribe(); _employeeUnsubscribe = null; }
       await firebaseSignOut(auth);
       
       // Sign out from Microsoft if signed in
@@ -331,6 +363,7 @@ export const useAuthStore = defineStore('auth', () => {
     effectiveLastName,
     effectiveFullName,
     setViewAs,
+    blockedMessage,
     clearViewAs,
     initAuthListener,
     signInWithGoogle,

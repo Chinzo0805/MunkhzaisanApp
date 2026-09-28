@@ -12,8 +12,10 @@
       <div class="filter-group">
         <label>Олгох өдөр:</label>
         <select v-model="selectedRange" @change="fetchSavedData">
-          <option value="10">10-ны</option>
-          <option value="25">25-ны</option>
+          <option value="1">1-ний</option>
+          <option value="15">15-ний</option>
+          <option value="10">10-ний (хуучин)</option>
+          <option value="25">25-ний (хуучин)</option>
         </select>
       </div>
       <button @click="recalculate" class="btn-refresh" :disabled="loading || isBountyLocked">
@@ -85,7 +87,7 @@
                 <th>Ажилтан</th>
                 <th class="num">Инженер цаг</th>
                 <th class="num">Инженер урамшуулал</th>
-                <th class="num">Техникч цаг</th>
+                <th class="num">Wos цаг</th>
                 <th class="num">Техникч урамшуулал</th>
                 <th class="num">Илүү цаг</th>
                 <th class="num">Илүү цагийн урамшуулал</th>
@@ -97,7 +99,7 @@
                 <td>{{ emp.name }}</td>
                 <td class="num">{{ emp.engineerHours > 0 ? emp.engineerHours.toFixed(1) : '-' }}</td>
                 <td class="num">{{ emp.engineerBounty > 0 ? emp.engineerBounty.toLocaleString() : '-' }}</td>
-                <td class="num">{{ emp.nonEngineerHours > 0 ? emp.nonEngineerHours.toFixed(1) : '-' }}</td>
+                <td class="num">{{ emp.bountyHours > 0 ? emp.bountyHours.toFixed(1) : '-' }}</td>
                 <td class="num">{{ emp.nonEngineerBounty > 0 ? emp.nonEngineerBounty.toLocaleString() : '-' }}</td>
                 <td class="num">{{ emp.overtimeHours > 0 ? emp.overtimeHours.toFixed(1) : '-' }}</td>
                 <td class="num">{{ emp.overtimeBounty > 0 ? emp.overtimeBounty.toLocaleString() : '-' }}</td>
@@ -109,7 +111,7 @@
                 <td><strong>Дүн</strong></td>
                 <td class="num">{{ proj._sumEngineerHours > 0 ? proj._sumEngineerHours.toFixed(1) : '-' }}</td>
                 <td class="num"><strong>{{ proj._sumEngineerBounty.toLocaleString() }}</strong></td>
-                <td class="num">{{ proj._sumNonEngineerHours > 0 ? proj._sumNonEngineerHours.toFixed(1) : '-' }}</td>
+                <td class="num">{{ proj._sumBountyHours > 0 ? proj._sumBountyHours.toFixed(1) : '-' }}</td>
                 <td class="num"><strong>{{ proj._sumNonEngineerBounty.toLocaleString() }}</strong></td>
                 <td class="num">{{ proj._sumOvertimeHours > 0 ? proj._sumOvertimeHours.toFixed(1) : '-' }}</td>
                 <td class="num"><strong>{{ proj._sumOvertimeBounty.toLocaleString() }}</strong></td>
@@ -181,10 +183,11 @@ import { collection, getDocs, query, where, doc, getDoc, setDoc, updateDoc } fro
 import SupervisorNav from '../components/SupervisorNav.vue';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../stores/auth';
+import { calculateBounty } from '../services/api';
 import * as XLSX from 'xlsx';
 
 const selectedMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
-const selectedRange = ref('10');
+const selectedRange = ref('1');
 const loading = ref(false);
 const searched = ref(false);
 const projects = ref([]);
@@ -275,105 +278,14 @@ async function recalculate() {
   projects.value = [];
   errorMsg.value = '';
   try {
-    const bountyPayDate = `${selectedMonth.value}-${String(selectedRange.value).padStart(2, '0')}`;
-
-    // Load employee types once — Дадлагжигч employees receive no bounty
-    const empTypeSnap = await getDocs(collection(db, 'employees'));
-    const empTypeMap = new Map();
-    empTypeSnap.forEach(d => {
-      const emp = d.data();
-      const raw = emp.Id ?? emp.ID;
-      const n = parseFloat(String(raw ?? '').trim());
-      empTypeMap.set(isNaN(n) ? String(raw || '').trim() : String(Math.round(n)), emp.Type || '');
-    });
-    function normEmpId(v) {
-      const n = parseFloat(String(v ?? '').trim());
-      return isNaN(n) ? String(v || '').trim() : String(Math.round(n));
-    }
-
-    const projSnap = await getDocs(
-      query(collection(db, 'projects'), where('bountyPayDate', '==', bountyPayDate))
-    );
-    const projList = projSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-
-    for (const proj of projList) {
-      const isOvertime = proj.projectType === 'overtime';
-      const isUnpaid = proj.projectType === 'unpaid';
-      if (isUnpaid) { proj._employees = []; proj._totalBounty = 0; continue; }
-
-      const engineerHand = parseFloat(proj.EngineerHand) || 0;
-      const taSnap = await getDocs(
-        query(collection(db, 'timeAttendance'), where('ProjectID', '==', parseInt(proj.id)))
-      );
-      const empMap = new Map();
-      taSnap.forEach(doc => {
-        const r = doc.data();
-        const firstName = String(r.EmployeeFirstName || r.FirstName || '').trim();
-        const lastName  = String(r.EmployeeLastName  || r.LastName  || '').trim();
-        const empId = String(r.EmployeeID || '').trim();
-        const key = empId || `${lastName}|${firstName}`;
-        const name = firstName || lastName || 'Unknown';
-        const role = (r.Role || '').trim();
-        const wh = parseFloat(r.WorkingHour) || 0;
-        const oh = parseFloat(r.overtimeHour) || 0;
-        if (!empMap.has(key)) empMap.set(key, { employeeId: empId, name, engineerHours: 0, nonEngineerHours: 0, overtimeHours: 0 });
-        const e = empMap.get(key);
-        if (role === 'Инженер') e.engineerHours += wh; else e.nonEngineerHours += wh;
-        e.overtimeHours += oh;
-      });
-
-      let mainEngineerKey = null, maxEngHours = 0;
-      for (const [key, e] of empMap.entries()) {
-        if (e.engineerHours > maxEngHours) { maxEngHours = e.engineerHours; mainEngineerKey = key; }
-      }
-
-      let sumEH = 0, sumNEH = 0, sumOH = 0, sumEB = 0, sumNEB = 0, sumOB = 0;
-      const employees = Array.from(empMap.entries()).map(([key, e]) => {
-        // Дадлагжигч (Trainee) employees receive no bounty of any kind
-        const isTrainee = empTypeMap.get(normEmpId(e.employeeId)) === 'Дадлагжигч';
-        const engineerBounty = (!isOvertime && !isTrainee && key === mainEngineerKey && engineerHand > 0) ? Math.max(0, engineerHand) : 0;
-        const nonEngineerBounty = (!isOvertime && !isTrainee) ? Math.max(0, Math.round(e.nonEngineerHours * 5000)) : 0;
-        const overtimeBounty = (isOvertime && !isTrainee) ? Math.max(0, Math.round(e.overtimeHours * 15000)) : 0;
-        const totalBounty = Math.max(0, engineerBounty + nonEngineerBounty + overtimeBounty);
-        sumEH += e.engineerHours; sumNEH += e.nonEngineerHours; sumOH += e.overtimeHours;
-        sumEB += engineerBounty; sumNEB += nonEngineerBounty; sumOB += overtimeBounty;
-        return { employeeId: e.employeeId, name: e.name, engineerHours: e.engineerHours, engineerBounty, nonEngineerHours: e.nonEngineerHours, nonEngineerBounty, overtimeHours: e.overtimeHours, overtimeBounty, totalBounty };
-      }).sort((a, b) => b.totalBounty - a.totalBounty);
-
-      proj._employees = employees;
-      proj._sumEngineerHours = sumEH; proj._sumNonEngineerHours = sumNEH; proj._sumOvertimeHours = sumOH;
-      proj._sumEngineerBounty = sumEB; proj._sumNonEngineerBounty = sumNEB; proj._sumOvertimeBounty = sumOB;
-      proj._totalBounty = sumEB + sumNEB + sumOB;
-    }
-    projects.value = projList.sort((a, b) => (a.bountyPayDate || '').localeCompare(b.bountyPayDate || ''));
+    const result = await calculateBounty(selectedMonth.value, selectedRange.value);
+    if (!result.success) throw new Error(result.error || 'Тооцоолол амжилтгүй');
+    projects.value = result.projects || [];
     await fetchConfirmedBountyInfo();
-    // Save recalculated data to bountyCalculations and reset pending approvals
-    try {
-      const projData = projects.value.map(p => ({
-        docId: p.docId, id: p.id,
-        referenceIdfromCustomer: p.referenceIdfromCustomer || '',
-        customer: p.customer || '', siteLocation: p.siteLocation || '',
-        projectType: p.projectType || '', bountyPayDate: p.bountyPayDate || '',
-        _totalBounty: p._totalBounty || 0,
-        _sumEngineerBounty: p._sumEngineerBounty || 0,
-        _sumNonEngineerBounty: p._sumNonEngineerBounty || 0,
-        _sumOvertimeBounty: p._sumOvertimeBounty || 0,
-        _employees: p._employees || [],
-      }));
-      await setDoc(doc(db, 'bountyCalculations', bountyDocId.value), {
-        yearMonth: selectedMonth.value, range: selectedRange.value,
-        calculatedAt: new Date().toISOString(),
-        projects: projData,
-        employees: buildEmployeesSummary(projects.value),
-        grandTotal: grandTotal.value,
-      });
-      await resetApprovals();
-      await loadRecurringBountyAdj();
-    } catch (saveErr) {
-      console.error('Save bounty error:', saveErr);
-    }
+    await resetApprovals();
+    await loadRecurringBountyAdj();
   } catch (err) {
-    console.error('Error loading bounty report:', err);
+    console.error('recalculate error:', err);
     errorMsg.value = err.message || 'Тайлан ачаалахад алдаа гарлаа';
   } finally {
     loading.value = false;
@@ -396,11 +308,11 @@ function exportToExcel() {
 
   // Sheet 2+: Per project
   for (const proj of projects.value) {
-    const headers = ['Ажилтан', 'Инженер цаг', 'Инженер урамшуулал', 'Техникч цаг', 'Техникч урамшуулал', 'Илүү цаг', 'Илүү цагийн урамшуулал', 'Нийт'];
+    const headers = ['Ажилтан', 'Инженер цаг', 'Инженер урамшуулал', 'Wos цаг', 'Техникч урамшуулал', 'Илүү цаг', 'Илүү цагийн урамшуулал', 'Нийт'];
     const rows = (proj._employees || []).map(e => [
-      e.name, e.engineerHours, e.engineerBounty, e.nonEngineerHours, e.nonEngineerBounty, e.overtimeHours, e.overtimeBounty, e.totalBounty,
+      e.name, e.engineerHours, e.engineerBounty, e.bountyHours, e.nonEngineerBounty, e.overtimeHours, e.overtimeBounty, e.totalBounty,
     ]);
-    rows.push(['Нийт', proj._sumEngineerHours, proj._sumEngineerBounty, proj._sumNonEngineerHours, proj._sumNonEngineerBounty, proj._sumOvertimeHours, proj._sumOvertimeBounty, proj._totalBounty || 0]);
+    rows.push(['Нийт', proj._sumEngineerHours, proj._sumEngineerBounty, proj._sumBountyHours || 0, proj._sumNonEngineerBounty, proj._sumOvertimeHours, proj._sumOvertimeBounty, proj._totalBounty || 0]);
     const sheetName = `#${proj.id}`.slice(0, 31);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...rows]), sheetName);
   }

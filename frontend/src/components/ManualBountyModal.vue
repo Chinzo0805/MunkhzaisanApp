@@ -12,24 +12,30 @@
       <div class="bounty-modal-body">
 
         <!-- Project info card -->
-        <div v-if="projectInfo.location || projectInfo.hourPerformance != null || projectInfo.baseAmount || projectInfo.teamBounty" class="project-info-card">
+        <div v-if="projectInfo.location || projectInfo.wosHour != null || projectInfo.teamBounty || projectInfo.engineerHand > 0" class="project-info-card">
           <div v-if="projectInfo.location" class="info-item">
             <span class="info-label">📍 Байршил</span>
             <span class="info-value">{{ projectInfo.location }}</span>
           </div>
-          <div v-if="projectInfo.hourPerformance != null" class="info-item">
-            <span class="info-label">📊 Цагийн гүйцэтгэл</span>
-            <span class="info-value" :style="{ color: getPerformanceColor(projectInfo.hourPerformance) }">
-              {{ projectInfo.hourPerformance.toFixed(1) }}%
-            </span>
-          </div>
-          <div v-if="projectInfo.baseAmount" class="info-item">
-            <span class="info-label">💵 Суурь дүн</span>
-            <span class="info-value">{{ formatAmount(projectInfo.baseAmount) }}₮</span>
+          <div v-if="projectInfo.wosHour != null" class="info-item">
+            <span class="info-label">⏱ WOS цаг (хадгалагдсан)</span>
+            <span class="info-value" style="color:#7c3aed">{{ projectInfo.wosHour }}ц</span>
           </div>
           <div v-if="projectInfo.teamBounty" class="info-item">
             <span class="info-label">🏆 Багийн урамшуулал</span>
             <span class="info-value highlight">{{ formatAmount(projectInfo.teamBounty) }}₮</span>
+          </div>
+          <div v-if="projectInfo.nonEngineerBounty != null" class="info-item">
+            <span class="info-label">👷 Техникч урамшуулал</span>
+            <span class="info-value" :class="liveNonEngineerBounty !== (projectInfo.nonEngineerBounty||0) ? 'live-changed' : 'highlight'">
+              {{ formatAmount(liveNonEngineerBounty) }}₮
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">🏗️ Инженерийн урамшуулал</span>
+            <span class="info-value" :class="liveEngineerBounty !== (projectInfo.engineerHand||0) ? 'live-changed' : 'highlight'">
+              {{ formatAmount(liveEngineerBounty) }}₮
+            </span>
           </div>
         </div>
 
@@ -57,13 +63,16 @@
                   <th>Техникч</th>
                   <th class="num-col">Ирц цаг</th>
                   <th class="num-col wos-col">Wos цаг</th>
-                  <th class="num-col wos-col">Дүн (₮)</th>
+                  <th class="num-col wos-col">Дүн (₮) Лавлах<span v-if="displayRate" class="rate-hint"> ~{{ displayRate.toLocaleString() }}/ц</span></th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="row in rows" :key="row.employeeName"
                   :class="{ 'row-has-bounty': row.bountyHours > 0 }">
-                  <td class="name-col">{{ row.employeeName }}</td>
+                  <td class="name-col">
+                    {{ row.employeeName }}
+                    <span v-if="row.role" class="emp-type-badge">{{ row.role }}</span>
+                  </td>
                   <td class="num-col ta-hours">{{ row.taTotal.toFixed(1) }}</td>
                   <td class="num-col wos-col">
                     <input
@@ -77,7 +86,13 @@
                     <span v-else class="locked-value">{{ row.bountyHours > 0 ? row.bountyHours.toFixed(1) : '-' }}</span>
                   </td>
                   <td class="num-col wos-col amount-cell">
-                    {{ row.bountyHours > 0 ? formatAmount(row.bountyHours * RATE) : '-' }}
+                    <span v-if="row.bountyHours > 0 && displayRate > 0" class="preview-amt">
+                      {{ formatAmount(row.bountyHours * displayRate) }}
+                    </span>
+                    <span v-else-if="row.bountyHours > 0 && grandBountyHours > 0 && projectInfo.nonEngineerBounty">
+                      {{ formatAmount(projectInfo.nonEngineerBounty * row.bountyHours / grandBountyHours) }}
+                    </span>
+                    <span v-else class="tc-zero">—</span>
                   </td>
                 </tr>
               </tbody>
@@ -85,11 +100,10 @@
                 <tr class="totals-row">
                   <td class="total-label-cell">Нийт дүн:</td>
                   <td class="num-col ta-hours">{{ grandTaTotal.toFixed(1) }}</td>
-                  <td class="num-col wos-col">
-                    <strong>{{ grandBountyHours.toFixed(1) }}</strong>
-                  </td>
+                  <td class="num-col wos-col"><strong>{{ grandBountyHours.toFixed(1) }}</strong></td>
                   <td class="num-col wos-col amount-cell">
-                    <strong>{{ formatAmount(grandBountyHours * RATE) }}₮</strong>
+                    <strong v-if="liveNonEngineerBounty">{{ formatAmount(liveNonEngineerBounty) }}₮</strong>
+                    <span v-else class="tc-zero">—</span>
                   </td>
                 </tr>
               </tfoot>
@@ -111,7 +125,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 const props = defineProps({
@@ -123,12 +137,13 @@ const props = defineProps({
 });
 defineEmits(['close']);
 
-const RATE = 5000;
-
 const rows             = ref([]);
 const loading          = ref(false);
 const saving           = ref(false);
 const savedThisSession = ref(false);
+// Rate derived from backend total once rows load (Нийт дүн ÷ Нийт цаг).
+// Used only as a live preview while editing — never sent to Firestore.
+const displayRate = ref(0);
 
 const isLocked = computed(() =>
   props.lockedWhenSaved && (savedThisSession.value || rows.value.some(r => r.docId))
@@ -136,6 +151,23 @@ const isLocked = computed(() =>
 
 const grandTaTotal     = computed(() => rows.value.reduce((s, r) => s + (r.taTotal || 0), 0));
 const grandBountyHours = computed(() => rows.value.reduce((s, r) => s + (r.bountyHours || 0), 0));
+
+// Live reactive bounty estimates — exact same formula as backend:
+//   NonEngineerBounty = grandBountyHours × nonEngineerRate
+//   EngineerHand      = TeamBounty − NonEngineerBounty
+const liveNonEngineerBounty = computed(() => {
+  if (displayRate.value > 0) return Math.round(grandBountyHours.value * displayRate.value);
+  return props.projectInfo.nonEngineerBounty || 0;
+});
+const liveEngineerBounty = computed(() => {
+  const teamBounty = props.projectInfo.teamBounty || 0;
+  if (teamBounty > 0) return Math.max(0, Math.round(teamBounty - liveNonEngineerBounty.value));
+  // Fallback when teamBounty not available: adjust from stored engineerHand
+  const base   = props.projectInfo.engineerHand || 0;
+  const origNE = props.projectInfo.nonEngineerBounty || 0;
+  if (!displayRate.value || !origNE) return base;
+  return Math.max(0, Math.round(base + (origNE - liveNonEngineerBounty.value)));
+});
 
 function formatAmount(val) {
   if (!val) return '0';
@@ -161,8 +193,9 @@ async function buildRows() {
     props.taRecords.forEach(rec => {
       const name = rec.EmployeeFirstName || rec.FirstName || '';
       if (!name) return;
-      if (!taMap[name]) taMap[name] = { taWorking: 0, taOvertime: 0, role: '' };
+      if (!taMap[name]) taMap[name] = { taWorking: 0, taOvertime: 0, role: '', employeeId: null };
       if (!taMap[name].role && rec.Role) taMap[name].role = rec.Role;
+      if (!taMap[name].employeeId && rec.EmployeeID) taMap[name].employeeId = rec.EmployeeID;
       taMap[name].taWorking  += parseFloat(rec.WorkingHour)  || 0;
       taMap[name].taOvertime += parseFloat(rec.overtimeHour) || 0;
     });
@@ -186,6 +219,8 @@ async function buildRows() {
         const ex = bountyMap[name] || {};
         built.push({
           employeeName: name,
+          employeeId:   ta.employeeId || null,
+          role:         '',          // will be filled from employees collection below
           taWorking:    Math.round(ta.taWorking  * 10) / 10,
           taOvertime:   Math.round(ta.taOvertime * 10) / 10,
           taTotal:      Math.round((ta.taWorking + ta.taOvertime) * 10) / 10,
@@ -195,6 +230,24 @@ async function buildRows() {
           dirty:        false,
         });
       });
+
+    // 4. Enrich rows with employee Position from employees collection
+    const empIds = [...new Set(built.map(r => r.employeeId).filter(Boolean).map(Number))];
+    if (empIds.length > 0) {
+      try {
+        const empSnap = await getDocs(
+          query(collection(db, 'employees'), where('Id', 'in', empIds))
+        );
+        const empMap = {};
+        empSnap.docs.forEach(d => {
+          const data = d.data();
+          empMap[Number(data.Id)] = data.Type || data.Position || data.Department || '';
+        });
+        built.forEach(r => {
+          if (r.employeeId) r.role = empMap[Number(r.employeeId)] || '';
+        });
+      } catch (e) { /* ignore */ }
+    }
     // Previously saved rows for employees not in TA (manually added)
     bSnap.docs.forEach(d => {
       const data = d.data();
@@ -211,6 +264,57 @@ async function buildRows() {
     });
 
     rows.value = built;
+
+    // ── Derive the per-hour display rate ──────────────────
+    // Exact backend formula: NonEngineerBounty = ManualBountyHours × nonEngineerRate
+    // Priority:
+    //   1. frozenNonEngineerRate stored on project (already stamped by backend — best)
+    //   2. nonEngineerRate from bountyRates/{version} doc
+    //   3. Derive from saved hours: nonEngineerBounty / savedTotal
+    //   4. Derive from project wosHour: nonEngineerBounty / wosHour
+    const backendTotal = props.projectInfo?.nonEngineerBounty || 0;
+    const savedTotal   = built.reduce((s, r) => s + (r.bountyHours || 0), 0);
+    const projectWos   = props.projectInfo?.wosHour || 0;
+    const frozenRate   = props.projectInfo?.frozenNonEngineerRate || 0;
+
+    let configRate = 0;
+    if (!frozenRate) {
+      // Try project-specific version first
+      if (props.projectInfo?.bountyRatesVersion) {
+        try {
+          const rateDoc = await getDoc(doc(db, 'bountyRates', props.projectInfo.bountyRatesVersion));
+          if (rateDoc.exists()) configRate = rateDoc.data().nonEngineerRate || 0;
+        } catch (e) { /* ignore */ }
+      }
+      // Fall back: scan all bountyRates docs
+      if (!configRate) {
+        try {
+          const allRatesSnap = await getDocs(collection(db, 'bountyRates'));
+          if (!allRatesSnap.empty) {
+            let latest = null;
+            allRatesSnap.docs.forEach(d => {
+              const data = d.data();
+              if (!latest || (data.effectiveFrom || '') > (latest.effectiveFrom || '')) {
+                latest = data;
+              }
+            });
+            if (latest) configRate = latest.nonEngineerRate || 0;
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    if (frozenRate > 0) {
+      displayRate.value = frozenRate;                          // best: frozen on project
+    } else if (configRate > 0) {
+      displayRate.value = configRate;                          // good: from rates config
+    } else if (savedTotal > 0 && backendTotal > 0) {
+      displayRate.value = Math.round(backendTotal / savedTotal); // fallback
+    } else if (projectWos > 0 && backendTotal > 0) {
+      displayRate.value = Math.round(backendTotal / projectWos);  // fallback
+    } else {
+      displayRate.value = 0;
+    }
   } catch (e) {
     console.error('Error building bounty rows:', e);
   } finally {
@@ -232,19 +336,16 @@ async function saveAll() {
           row.docId = null;
         } else {
           await updateDoc(doc(db, 'projectBountyHours', row.docId), {
-            bountyHours:  row.bountyHours,
-            bountyAmount: Math.round(row.bountyHours * RATE),
-            notes:        row.notes || '',
-            updatedAt:    now,
+            bountyHours: row.bountyHours,
+            notes:       row.notes || '',
+            updatedAt:   now,
           });
         }
       } else if (!isZero) {
-        // Create new record
         const ref = await addDoc(collection(db, 'projectBountyHours'), {
           projectID:    pid,
           employeeName: row.employeeName,
           bountyHours:  row.bountyHours,
-          bountyAmount: Math.round(row.bountyHours * RATE),
           notes:        row.notes || '',
           createdAt:    now,
           updatedAt:    now,
@@ -330,6 +431,7 @@ watch(() => props.show, (show) => {
   font-size: 14px; font-weight: 700; color: #111827;
 }
 .info-value.highlight { color: #d97706; }
+.info-value.live-changed { color: #059669; font-weight: 800; }
 
 /* Table */
 .table-wrap { overflow-x: auto; }
@@ -353,10 +455,30 @@ watch(() => props.show, (show) => {
   background: #fef3c7; font-size: 14px; border-top: 2px solid #fcd34d;
   padding: 10px 14px;
 }
+.backend-total-row td { background: #f0fdf4; border-top: 1px dashed #86efac; }
+.backend-total-cell { text-align: right !important; color: #166534; font-size: 13px; padding: 7px 12px !important; }
+.backend-badge { display:inline-block; margin-left:6px; font-size:10px; background:#dcfce7; color:#166534; border-radius:4px; padding:1px 5px; font-weight:700; vertical-align:middle; }
+.rate-hint { font-size: 10px; font-weight: 400; color: #9ca3af; margin-left: 3px; }
+.preview-amt { color: #d97706; font-weight: 600; }
 .total-label-cell { font-weight: 700; color: #92400e; text-align: right; }
 
 .num-col { text-align: right; }
 .name-col { font-weight: 600; color: #111827; min-width: 110px; }
+.emp-type-badge {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.th-type-hint {
+  font-size: 10px; font-weight: 400; color: #9ca3af; margin-left: 3px;
+}
 .ta-hours { font-weight: 700; color: #374151; }
 .amount-cell { font-weight: 700; color: #d97706; }
 

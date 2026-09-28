@@ -1,23 +1,17 @@
 ﻿<template>
   <div class="salary-page">
 
-    <!-- ===== Shared date picker ===== -->
+    <!-- Shared date picker controls TA + Salary -->
     <div class="shared-picker">
       <label class="picker-label">📅 Сар:</label>
       <input type="month" v-model="selectedMonth" @change="loadAll" class="month-input" />
-      <label class="picker-label" style="margin-left:12px;">Цалингийн өдөр:</label>
-      <select v-model="bountyDay" @change="loadAll" class="day-select">
-        <option value="10">10-ны</option>
-        <option value="25">25-ны</option>
-      </select>
     </div>
 
-    <!-- ===== TA Summary Section ===== -->
+    <!-- ===== TA Summary Card ===== -->
     <div class="section-card">
       <div class="section-header-row">
         <div class="section-title">📋 Ирцийн нэгтгэл</div>
       </div>
-
       <div class="period-tabs">
         <button @click="taSummaryRange = 'full'" :class="['ptab', taSummaryRange === 'full' ? 'active' : '']">Бүтэн сар</button>
         <button @click="taSummaryRange = '1-15'"  :class="['ptab', taSummaryRange === '1-15'  ? 'active' : '']">1–15</button>
@@ -46,10 +40,30 @@
       </template>
     </div>
 
-    <!-- ===== Bounty Section ===== -->
-    <div class="section-card">
-      <div class="section-header-row">
-        <div class="section-title">🏆 Урамшуулал</div>
+    <!-- Main tabs -->
+    <div class="main-tabs">
+      <button :class="['main-tab', { active: mainTab === 'salary' }]" @click="mainTab = 'salary'">
+        💵 Цалин
+      </button>
+      <button :class="['main-tab', { active: mainTab === 'bounty' }]" @click="mainTab = 'bounty'">
+        🏆 Урамшуулал
+      </button>
+    </div>
+
+    <!-- ===== Bounty Panel ===== -->
+    <div v-show="mainTab === 'bounty'" class="section-card">
+
+      <!-- Bounty has its own date picker since pay dates differ from salary -->
+      <div class="shared-picker" style="margin-bottom:12px;">
+        <label class="picker-label">📅 Сар:</label>
+        <input type="month" v-model="bountyMonth" @change="loadBounty" class="month-input" />
+        <label class="picker-label" style="margin-left:8px;">Өдөр:</label>
+        <select v-model="bountyDay" @change="loadBounty" class="day-select">
+          <option value="1">1-ний</option>
+          <option value="15">15-ний</option>
+          <option value="10">10-ний (хуучин)</option>
+          <option value="25">25-ний (хуучин)</option>
+        </select>
       </div>
 
       <div v-if="bountyLoading" class="loading-spin-sm">
@@ -109,7 +123,7 @@
             <div v-if="proj._my.overtimeBounty > 0" class="role-row">
               <span class="role-icon">⏰</span>
               <span class="role-name">Илүү цагийн урамшуулал</span>
-              <span class="role-hours">{{ proj._my.overtimeHours.toFixed(1) }}ц × 15,000</span>
+              <span class="role-hours">{{ proj._my.overtimeHours.toFixed(1) }}ц × {{ Math.round(proj._my.overtimeBounty / proj._my.overtimeHours).toLocaleString() }}</span>
               <span class="val-green">{{ proj._my.overtimeBounty.toLocaleString() }}₮</span>
             </div>
             <div v-if="proj._my.total === 0" class="no-data-sm" style="padding:6px 0;">
@@ -132,13 +146,8 @@
       </template> <!-- end v-else loading -->
     </div>
 
-    <!-- ===== Salary Section ===== -->
-    <div class="section-card">
-      <div class="section-header-row">
-        <div class="section-title">💵 Цалин</div>
-        <span v-if="bountyDay === '10'" class="salary-month-note">{{ salaryMonth() }}</span>
-      </div>
-
+    <!-- ===== Salary Panel ===== -->
+    <div v-show="mainTab === 'salary'" class="section-card">
       <div class="period-tabs">
         <button @click="salaryTab = 'full'" :class="['ptab', salaryTab === 'full' ? 'active' : '']">Бүтэн сар</button>
         <button @click="salaryTab = 'advance'" :class="['ptab', salaryTab === 'advance' ? 'active' : '']">Урьдчилгаа</button>
@@ -266,7 +275,12 @@ const now = new Date();
 const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
 const selectedMonth = ref(defaultMonth);
-const bountyDay     = ref('10');
+const _td = new Date();
+const _isEarly = _td.getDate() < 15;
+const _nm = new Date(_td.getFullYear(), _td.getMonth() + 1, 1);
+const bountyMonth = ref(_isEarly ? defaultMonth : `${_nm.getFullYear()}-${String(_nm.getMonth() + 1).padStart(2, '0')}`);
+const bountyDay   = ref(_isEarly ? '15' : '1');
+const mainTab       = ref('salary');
 const salaryTab     = ref('full');
 const taSummaryRange = ref('full');
 
@@ -305,17 +319,6 @@ function fmtDate(iso) {
   catch { return iso.slice(0, 10); }
 }
 
-// When bountyDay=10, the April 10th payment covers March work → show March salary.
-// When bountyDay=25, the payment is mid-month for the selected month → show same month.
-function salaryMonth() {
-  if (bountyDay.value === '10') {
-    const [y, m] = selectedMonth.value.split('-').map(Number);
-    const d = new Date(y, m - 2, 1); // go back one month
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  return selectedMonth.value;
-}
-
 async function loadSalary() {
   const employeeId = authStore.effectiveEmployeeId;
   if (!employeeId || !selectedMonth.value) return;
@@ -325,7 +328,7 @@ async function loadSalary() {
   advanceRow.value = null;
   advanceConfirmed.value = null;
   salaryAdj.value = [];
-  const sm = salaryMonth();
+  const sm = selectedMonth.value;
   try {
     const empIdStr = String(employeeId).trim();
     const [fullDoc, advDoc, fullConf, advConf, adjDoc] = await Promise.all([
@@ -354,7 +357,7 @@ async function loadSalary() {
 // ── Bounty data ──────────────────────────────────────────────────────────
 async function loadBounty() {
   const employeeId = authStore.effectiveEmployeeId;
-  if (!employeeId || !selectedMonth.value) return;
+  if (!employeeId || !bountyMonth.value) return;
 
   bountyLoading.value  = true;
   bountyProjects.value = [];
@@ -362,7 +365,7 @@ async function loadBounty() {
   bountyCalculated.value = false;
 
   try {
-    const docId   = `${selectedMonth.value}_${bountyDay.value}`;
+    const docId   = `${bountyMonth.value}_${bountyDay.value}`;
     const myIdStr = String(employeeId).trim();
 
     const [calcSnap, confSnap] = await Promise.all([
@@ -408,7 +411,7 @@ async function loadTASummary() {
   if (!employeeId || !selectedMonth.value) return;
   taLoading.value = true;
   taRow.value = null;
-  const sm = salaryMonth(); // use the same month offset as salary
+  const sm = selectedMonth.value;
   try {
     const result = await manageTASummary('get', sm, taSummaryRange.value);
     if (result.success && result.data) {
@@ -425,20 +428,20 @@ async function loadTASummary() {
 }
 
 function loadAll() {
-  salaryTab.value = bountyDay.value === '25' ? 'advance' : 'full';
   loadSalary();
-  loadBounty();
   loadTASummary();
 }
 
 
 onMounted(() => {
   loadAll();
+  loadBounty();
 });
 
 // Reload when supervisor switches view-as employee
 watch(() => authStore.effectiveEmployeeId, () => {
   loadAll();
+  loadBounty();
 });
 
 // Reload TA summary when its range tab changes
@@ -454,6 +457,34 @@ watch(taSummaryRange, () => {
   padding: 16px;
   font-family: 'Segoe UI', sans-serif;
 }
+
+/* Main navigation tabs */
+.main-tabs {
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+.main-tab {
+  flex: 1;
+  padding: 10px 6px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: color 0.15s, border-color 0.15s;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.main-tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+.main-tab:hover:not(.active) { color: #374151; background: #f9fafb; }
 
 /* Shared date/day picker bar */
 .shared-picker {

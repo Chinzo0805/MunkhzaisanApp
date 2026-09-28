@@ -465,4 +465,14 @@ export async function manageBountyRates(action, rateData = null) {
   }
 }
 
+export async function calculateBounty(yearMonth, range) {
+  try {
+    const response = await api.post('/calculateBounty', { yearMonth, range });
+    return response.data;
+  } catch (error) {
+    console.error('Error calculating bounty:', error);
+    throw error;
+  }
+}
+
 export default api;

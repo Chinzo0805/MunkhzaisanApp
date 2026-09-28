@@ -19,11 +19,20 @@
           {{ syncing ? '⏳ Уншиж байна...' : '📥 OneDrive-с татах' }}
         </button>
         <span v-else class="ms-needed">Microsoft дансаа Dashboard-д холбоно уу</span>
+        <button
+          @click="handleCleanupDuplicates"
+          class="btn-sync"
+          style="background:#dc2626;"
+          :disabled="syncing"
+          title="Давхардсан бичлэгүүдийг устгах (date+дүн ижил бол)"
+        >
+          🧹 Давхардсан устгах
+        </button>
       </div>
     </div>
 
     <!-- Sync result banner -->
-    <div v-if="syncMsg" :class="['sync-banner', syncMsg.success ? 'success' : 'error']">
+    <div v-if="syncMsg" :class="['sync-banner', syncMsg.success ? 'success' : 'error']" style="white-space: pre-wrap; word-break: break-all;">
       {{ syncMsg.text }}
       <button @click="syncMsg = null" class="banner-close">✕</button>
     </div>
@@ -1661,10 +1670,13 @@ function setSort(field) {
 }
 
 // ── Load data ─────────────────────────────────────────────────────────────────
-async function loadTransactions() {
+async function loadTransactions(typeFilter = null) {
   loading.value = true;
   try {
-    const constraints = [orderBy('date', 'desc'), limit(2000)];
+    // When opened with a type filter (e.g. from bank-report), query server-side — no limit needed
+    const constraints = typeFilter
+      ? [where('type', '==', typeFilter), orderBy('date', 'desc')]
+      : [orderBy('date', 'desc'), limit(5000)];
     const snap = await getDocs(query(collection(db, 'bankTransactions'), ...constraints));
     transactions.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -1687,6 +1699,19 @@ async function handleSync() {
     const token = await authStore.getMicrosoftToken();
     const res = await syncBankTransactionsFromExcel(token);
     if (res.success) {
+      // Build per-file diagnostic when 0 records were saved
+      const totalSaved = (res.results || []).reduce((s, r) => s + (r.saved || 0), 0);
+      if (totalSaved === 0 && res.results && res.results.length > 0) {
+        const diagLines = res.results.map(r => {
+          if (r.error) return `❌ ${r.file}: ${r.error}`;
+          if (r.skipped && r.reason) return `⚠️ ${r.file}: ${r.reason}`;
+          const detected = r.detectedHeaders ? Object.entries(r.detectedHeaders).map(([k,v]) => `${k}="${v}"`).join(', ') : 'хоосон';
+          return `📄 ${r.file}: saved=${r.saved||0}, skipped=${r.skipped||0} | headers: ${detected}`;
+        });
+        syncMsg.value = { success: false, text: `0 бичлэг хадгалагдсангүй — толгой мөрийн мэдэгдэл:\n${diagLines.join('\n')}` };
+        await loadTransactions();
+        return;
+      }
       const postRes = await manageBankTransaction({
         action: 'bulkAutoLink',
         fromDate: autoLinkFromDate.value,
@@ -1715,6 +1740,25 @@ async function handleSync() {
           text: `${res.message} | Авто холбоход алдаа: ${postRes.error || 'Алдаа'}${petrovisText}`,
         };
       }
+      await loadTransactions();
+    } else {
+      syncMsg.value = { success: false, text: res.error || 'Алдаа гарлаа' };
+    }
+  } catch (e) {
+    syncMsg.value = { success: false, text: e.message || 'Алдаа гарлаа' };
+  } finally {
+    syncing.value = false;
+  }
+}
+
+async function handleCleanupDuplicates() {
+  if (!confirm('Давхардсан бичлэгүүдийг устгах уу?\n(Нэг өдрийн нэг дүнтэй хэд хэдэн бичлэгийн дотроос хамгийн бүрэн бичлэгийг үлдээж, бусдыг устгана.)')) return;
+  syncing.value = true;
+  syncMsg.value = null;
+  try {
+    const res = await manageBankTransaction({ action: 'cleanupDuplicates' });
+    if (res.success) {
+      syncMsg.value = { success: true, text: `🧹 Давхардсан устгалт дууслаа: ${res.deleted} бичлэг устгагдлаа (${res.groupsChecked} бүлэг шалгагдлаа)` };
       await loadTransactions();
     } else {
       syncMsg.value = { success: false, text: res.error || 'Алдаа гарлаа' };
@@ -1834,14 +1878,14 @@ async function saveEdit(id) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  const typeParam = route.query.type || null;
   await Promise.all([
-    loadTransactions(),
+    loadTransactions(typeParam),
     employeesStore.fetchEmployees(),
     projectsStore.subscribeToProjects(),
     financialTxnStore.fetchTransactions(),
   ]);
-  // Apply URL query params if present (e.g. from bank-report page links)
-  if (route.query.type)    filterType.value    = route.query.type;
+  if (typeParam)           filterType.value    = typeParam;
   if (route.query.subtype) filterSubtype.value = route.query.subtype;
 });
 </script>

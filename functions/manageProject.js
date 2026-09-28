@@ -143,16 +143,13 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
           const changeDate = new Date();
           const day = changeDate.getDate();
           let payDate;
-          if (day >= 1 && day <= 5) {
-            // Same month, 10th
-            payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-10`;
-          } else if (day >= 6 && day <= 20) {
-            // Same month, 25th
-            payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-25`;
+          if (day >= 1 && day <= 14) {
+            // Same month, 15th
+            payDate = `${changeDate.getFullYear()}-${String(changeDate.getMonth() + 1).padStart(2, '0')}-15`;
           } else {
-            // Next month, 10th
-            const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 10);
-            payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-10`;
+            // Next month, 1st
+            const next = new Date(changeDate.getFullYear(), changeDate.getMonth() + 1, 1);
+            payDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
           }
           bountyPayDateUpdate = { bountyPayDate: payDate };
           console.log(`bountyPayDate set to ${payDate} (changed on day ${day})`);
@@ -174,6 +171,42 @@ exports.manageProject = functions.region('asia-east2').https.onRequest(async (re
         projectDoc.ref;
 
       await projectDocRef.update(updateData);
+
+      // ── Auto-fix TA roles when ResponsibleEmpId changes ────────────────
+      // If the responsible engineer changes on a paid project, update all
+      // existing timeAttendance records so roles remain consistent.
+      const oldRespId = Number(oldProjectData.ResponsibleEmpId) || null;
+      const newRespId = Number(projectData.ResponsibleEmpId ?? oldProjectData.ResponsibleEmpId) || null;
+      const isPaid = (projectData.projectType ?? oldProjectData.projectType) === 'paid';
+
+      if (isPaid && oldRespId !== newRespId && (oldRespId || newRespId)) {
+        const pid = parseInt(oldProjectData.id);
+        const taSnap = await db.collection('timeAttendance')
+          .where('ProjectID', '==', pid)
+          .get();
+
+        const batch = db.batch();
+        let roleFixCount = 0;
+        taSnap.docs.forEach(d => {
+          const ta = d.data();
+          const empId = Number(ta.EmployeeID) || null;
+          if (!empId) return;
+          let correctRole = null;
+          if (empId === newRespId && ta.Role !== '\u0418\u043d\u0436\u0435\u043d\u0435\u0440') {
+            correctRole = '\u0418\u043d\u0436\u0435\u043d\u0435\u0440'; // new engineer → promote
+          } else if (empId === oldRespId && ta.Role === '\u0418\u043d\u0436\u0435\u043d\u0435\u0440') {
+            correctRole = '\u0422\u0435\u0445\u043d\u0438\u043a\u0447'; // old engineer → demote
+          }
+          if (correctRole) {
+            batch.update(d.ref, { Role: correctRole, syncedToExcel: false });
+            roleFixCount++;
+          }
+        });
+        if (roleFixCount > 0) {
+          await batch.commit();
+          console.log(`\u2713 Auto-fixed ${roleFixCount} TA role(s) on project ${pid}: ResponsibleEmpId ${oldRespId} \u2192 ${newRespId}`);
+        }
+      }
 
       // Write status history record if status changed
       if (statusChanged) {

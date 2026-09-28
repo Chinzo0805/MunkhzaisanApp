@@ -9,12 +9,9 @@
         <label>Он сар:</label>
         <input type="month" v-model="selectedMonth" @change="onMonthRangeChange" />
       </div>
-      <div class="filter-group">
-        <label>Төрол:</label>
-        <select v-model="reportType" class="report-type-select" @change="onMonthRangeChange">
-          <option value="full">Сүүл цалин</option>
-          <option value="advance">Урьдчилгаа</option>
-        </select>
+      <div class="filter-group type-toggle-group">
+        <button @click="setReportType('advance')" :class="['btn-type-toggle', reportType === 'advance' && 'btn-type-active-adv']">⏰ Урьдчилгаа</button>
+        <button @click="setReportType('full')" :class="['btn-type-toggle', reportType === 'full' && 'btn-type-active-full']">💰 Сүүл цалин</button>
       </div>
       <div v-if="reportType === 'full'" class="filter-group">
         <label>Харах:</label>
@@ -96,6 +93,11 @@
         <div class="stat-content">
           <div class="stat-label">Нийт гарт олгох</div>
           <div class="stat-value">{{ formatMnt(totalNetPay) }}</div>
+          <div class="stat-detail">
+            <span class="nds-badge">НДШ-тэй: {{ formatMnt(totalNetPayNDS) }}</span>
+            &nbsp;/&nbsp;
+            <span class="nonds-badge">НДШ-гүй: {{ formatMnt(totalNetPayNoNDS) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -140,6 +142,7 @@
           <button @click="calculateAdvance" :disabled="calculatingAdvance" class="btn-calc" :title="isAdvanceLocked ? 'Батлалт цуцлагдаж, дахин тооцоолно' : ''">
             {{ calculatingAdvance ? 'Тооцоолж байна...' : '🔄 Дахин тооцоолох' }}
           </button>
+          <button v-if="advanceData.length > 0" @click="exportAdvanceToExcel" class="btn-export">📥 Excel татах</button>
         </div>
       </div>
       <div v-if="advanceData.length === 0" class="no-data">
@@ -157,12 +160,13 @@
             <th class="th-r">Тасалсан цаг</th>
             <th class="th-r">Эффектив цаг</th>
             <th class="th-r">Үндсэн цалин</th>
-            <th class="th-r advance-pay-col">Гарт олгох (Урьдчилгаа)</th>
+            <th class="th-r advance-pay-col th-nds">Гарт олгох (Урьдчилгаа)<br><span class="th-sub">(НДШ-тэй)</span></th>
+            <th class="th-r th-nonds">Гарт олгох (Урьдчилгаа)<br><span class="th-sub">(НДШ-гүй)</span></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="emp in sortedAdvanceData" :key="emp.employeeId"
-              :class="['salary-row', emp.advancePay === 0 ? 'row-no-advance' : '']">
+              :class="['salary-row', ((emp.advancePay||0)+(emp.advancePayNoNDS||0))===0 ? 'row-no-advance' : '']">
             <td>
               <div class="emp-name">{{ emp.name }}<span class="emp-id">#{{ emp.employeeId }}</span></div>
               <div class="emp-meta">{{ emp.position }}<span v-if="emp.type"> · {{ emp.type }}</span></div>
@@ -172,26 +176,58 @@
             <td class="tc-r" :class="(emp.absentHours||0) > 0 ? 'tc-deduct' : ''">{{ emp.absentHours ? Math.round((emp.absentHours||0)/8) + 'өд (−'+(emp.absentHours*2)+'ц)' : '—' }}</td>
             <td class="tc-r" :class="emp.effectiveHours >= 80 ? 'tc-add' : 'tc-zero'">{{ emp.effectiveHours ?? 0 }}ц</td>
             <td class="tc-r">{{ emp.baseSalary ? formatMnt(emp.baseSalary) : '—' }}</td>
-            <td class="tc-r advance-pay-col">
-              <div class="advance-pay-cell">
-                <!-- Editable input shown when forceAdvance is on -->
-                <template v-if="emp.forceAdvance">
-                  <input
-                    type="number" min="0" step="10000"
-                    v-model.number="emp.advancePay"
-                    @change="onForceAdvanceChange(emp)"
-                    class="advance-amount-input"
-                  />
-                </template>
-                <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
-                  {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : `— (0 цаг)` }}
-                </span>
-                <label v-if="emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance" class="force-check"
-                  :title="emp.forceAdvance ? 'Урамшуулал олгохоос татгалзах' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох'">
-                  <input type="checkbox" v-model="emp.forceAdvance" @change="onForceAdvanceChange(emp)" />
-                  <span>{{ emp.forceAdvance ? 'Урамшуулал олгосон' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох' }}</span>
-                </label>
-              </div>
+            <td class="tc-r advance-pay-col tc-nds-cell">
+              <template v-if="hasNDS(emp)">
+                <div class="advance-pay-cell">
+                  <template v-if="emp.forceAdvance">
+                    <input type="number" min="0" step="10000" v-model.number="emp.advancePay" @change="onForceAdvanceChange(emp)" class="advance-amount-input" />
+                  </template>
+                  <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
+                    {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : '— (0 цаг)' }}
+                  </span>
+                  <label v-if="emp.advancePay === 0 && !emp.forceAdvance || emp.forceAdvance" class="force-check"
+                    :title="emp.forceAdvance ? 'Урамшуулал олгохоос татгалзах' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох'">
+                    <input type="checkbox" v-model="emp.forceAdvance" @change="onForceAdvanceChange(emp)" />
+                    <span>{{ emp.forceAdvance ? 'Урамшуулал олгосон' : 'Ажилласан цаг хүрээгүй ч урамшуулал олгох' }}</span>
+                  </label>
+                </div>
+              </template>
+              <span v-else class="tc-zero">—</span>
+            </td>
+            <td class="tc-r tc-nonds-cell">
+              <!-- Non-НДШ employees: their full advancePay is in this column -->
+              <template v-if="!hasNDS(emp)">
+                <div class="advance-pay-cell">
+                  <template v-if="emp.forceAdvance">
+                    <input type="number" min="0" step="10000" v-model.number="emp.advancePay" @change="onForceAdvanceChange(emp)" class="advance-amount-input" />
+                  </template>
+                  <span v-else :class="emp.advancePay > 0 ? 'tc-money' : 'tc-zero'">
+                    {{ emp.advancePay > 0 ? formatMnt(emp.advancePay) : '— (0 цаг)' }}
+                  </span>
+                  <label class="force-check"
+                    :title="emp.forceAdvance ? 'Өөрчлөлтөөс татгалзах' : 'НДШ-гүй ажилтанд урьдчилгаа олгох'">
+                    <input type="checkbox" v-model="emp.forceAdvance" @change="onForceAdvanceChange(emp)" />
+                    <span>{{ emp.forceAdvance ? 'Гараар тохируулсан' : emp.advancePay > 0 ? '✒ Гараар өөрчлөх' : 'Урьдчилгаа олгох' }}</span>
+                  </label>
+                </div>
+              </template>
+              <!-- Partial НДШ employees: their non-НДШ portion advance (advancePayNoNDS) -->
+              <template v-else-if="(emp.ndsSalary || 0) > 0">
+                <div class="advance-pay-cell">
+                  <template v-if="emp.forceAdvanceNoNDS">
+                    <input type="number" min="0" step="10000" v-model.number="emp.advancePayNoNDS" @change="onForceAdvanceNoNDSChange(emp)" class="advance-amount-input" />
+                  </template>
+                  <span v-else :class="(emp.advancePayNoNDS||0) > 0 ? 'tc-money' : 'tc-zero'">
+                    {{ (emp.advancePayNoNDS||0) > 0 ? formatMnt(emp.advancePayNoNDS) : '— (0 цаг)' }}
+                  </span>
+                  <label class="force-check"
+                    :title="emp.forceAdvanceNoNDS ? 'Өөрчлөлтөөс татгалзах' : 'НДШ-гүй хэсгийн урьдчилгаа'">
+                    <input type="checkbox" v-model="emp.forceAdvanceNoNDS" @change="onForceAdvanceNoNDSChange(emp)" />
+                    <span>{{ emp.forceAdvanceNoNDS ? 'Гараар тохируулсан' : (emp.advancePayNoNDS||0) > 0 ? '✒ Гараар өөрчлөх' : 'НДШ-гүй урьдчилгаа' }}</span>
+                  </label>
+                </div>
+              </template>
+              <span v-else class="tc-zero">—</span>
             </td>
           </tr>
         </tbody>
@@ -203,7 +239,8 @@
             <td></td>
             <td></td>
             <td></td>
-            <td class="tc-r tc-money"><strong>{{ formatMnt(totalAdvancePay) }}</strong></td>
+            <td class="tc-r tc-money tc-nds-cell"><strong>{{ formatMnt(totalAdvancePayNDS) }}</strong></td>
+            <td class="tc-r tc-money tc-nonds-cell"><strong>{{ totalAdvancePayNoNDS > 0 ? formatMnt(totalAdvancePayNoNDS) : '—' }}</strong></td>
           </tr>
         </tfoot>
       </table>
@@ -270,8 +307,11 @@
             </th>
             <th class="th-r">Нийт нэмэгдэл</th>
             <th class="th-r">Нийт суутгал</th>
-            <th @click="toggleSort('netPay')" class="sortable th-r">
-              Гарт олгох {{ sortColumn === 'netPay' ? (sortAsc ? '↑' : '↓') : '' }}
+            <th @click="toggleSort('netPay')" class="sortable th-r th-nds">
+              Гарт олгох<br><span class="th-sub">(НДШ-тэй)</span> {{ sortColumn === 'netPay' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th class="th-r th-nonds">
+              Гарт олгох<br><span class="th-sub">(НДШ-гүй)</span>
             </th>
             <th class="th-expand"></th>
           </tr>
@@ -292,7 +332,8 @@
               <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.totalGross) : '—' }}</td>
               <td class="tc-r tc-add">{{ emp.baseSalary ? '+ ' + formatMnt((emp.additionalPay||0)+(emp.annualLeavePay||0)) : '—' }}</td>
               <td class="tc-r tc-deduct">{{ emp.baseSalary ? '- ' + formatMnt((emp.employeeNDS||0)+(emp.hhoatNet||0)+(emp.advance||0)+(emp.otherDeductions||0)+(emp.recurringDeductions||0)) : '—' }}</td>
-              <td class="tc-r tc-money">{{ emp.baseSalary ? formatMnt(emp.netPay) : '—' }}</td>
+              <td class="tc-r" :class="getNdsColumnPay(emp) != null ? 'tc-money tc-nds-cell' : 'tc-zero'">{{ getNdsColumnPay(emp) != null ? formatMnt(getNdsColumnPay(emp)) : '—' }}</td>
+              <td class="tc-r" :class="getNoNdsColumnPay(emp) != null ? 'tc-money tc-nonds-cell' : 'tc-zero'">{{ getNoNdsColumnPay(emp) != null ? formatMnt(getNoNdsColumnPay(emp)) : '—' }}</td>
               <td class="tc-expand">
                 <button class="btn-expand" @click.stop="toggleExpand(emp.employeeId, emp)">
                   {{ expandedRows.has(emp.employeeId) ? '▲' : '▼' }}
@@ -301,7 +342,7 @@
             </tr>
             <!-- Expanded detail row -->
             <tr v-if="expandedRows.has(emp.employeeId)" class="detail-row">
-              <td colspan="12">
+              <td colspan="13">
                 <div class="project-details">
                   <!-- Salary formula breakdown -->
                   <div class="detail-section">
@@ -335,6 +376,52 @@
                   </div>
                   </div>
 
+                  <!-- Partial НДШ split breakdown -->
+                  <div v-if="emp.ndsSalary > 0" class="detail-section partial-nds-breakdown">
+                    <strong>🔀 Хэсэгчилсэн НДШ задаргаа</strong>
+                    <div class="partial-nds-grid">
+                      <!-- НДШ-тэй хэсэг -->
+                      <div class="partial-box nds-box">
+                        <div class="partial-box-title">НДШ-тэй хэсэг</div>
+                        <div class="partial-box-rows">
+                          <span>НДШ-д хамрагдах дүн:</span><span class="val-money">{{ formatMnt(getPartialSplit(emp).ndsBase) }}</span>
+                          <span>НДШ ажилтан (11.5%):</span><span class="val-deduct">− {{ formatMnt(emp.employeeNDS||0) }}</span>
+                          <span>ТНО:</span><span>{{ formatMnt(emp.tno||0) }}</span>
+                          <span>ХХОАТ (10%):</span><span class="val-deduct">− {{ formatMnt(emp.hhoat||0) }}</span>
+                          <span>ХӨнгөлөлт:</span><span class="val-money">+ {{ formatMnt(emp.discount||0) }}</span>
+                          <template v-if="getPartialSplit(emp).advanceNDS > 0">
+                            <span>Урьдчилгаа (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).advanceNDS) }}</span>
+                          </template>
+                          <template v-if="getPartialSplit(emp).otherNDS > 0">
+                            <span>Бусад суутгал (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).otherNDS) }}</span>
+                          </template>
+                          <template v-if="getPartialSplit(emp).recurNDS > 0">
+                            <span>Тогтмол суутгал (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).recurNDS) }}</span>
+                          </template>
+                          <span class="partial-sep">Гарт олгох (НДШ-тэй):</span><span class="partial-sep val-nds-result">{{ formatMnt(getNdsColumnPay(emp) ?? 0) }}</span>
+                        </div>
+                      </div>
+                      <!-- НДШ-гүй хэсэг -->
+                      <div class="partial-box nonds-box">
+                        <div class="partial-box-title">НДШ-гүй хэсэг</div>
+                        <div class="partial-box-rows">
+                          <span>НДШ-д хамрагдахгүй дүн:</span><span class="val-money">{{ formatMnt(getPartialSplit(emp).surplus) }}</span>
+                          <template v-if="getPartialSplit(emp).advanceNoNDS > 0">
+                            <span>Урьдчилгаа (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).advanceNoNDS) }}</span>
+                          </template>
+                          <template v-if="getPartialSplit(emp).otherNoNDS > 0">
+                            <span>Бусад суутгал (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).otherNoNDS) }}</span>
+                          </template>
+                          <template v-if="getPartialSplit(emp).recurNoNDS > 0">
+                            <span>Тогтмол суутгал (хуваари):</span><span class="val-deduct">− {{ formatMnt(getPartialSplit(emp).recurNoNDS) }}</span>
+                          </template>
+                          <span class="partial-sep">Гарт олгох (НДШ-гүй):</span><span class="partial-sep val-nonds-result">{{ formatMnt(getNoNdsColumnPay(emp) ?? 0) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="partial-ratio-note">Хуваарилалт хүснэгт: {{ formatMnt(getPartialSplit(emp).ndsBase) }} / {{ formatMnt(getPartialSplit(emp).surplus) }} ({{ Math.round(getPartialSplit(emp).ratio*100) }}% / {{ Math.round((1-getPartialSplit(emp).ratio)*100) }}%)</div>
+                  </div>
+
                   <!-- Adjustments panel (additions / deductions) -->
                   <div class="detail-section">
                     <SalaryAdjustmentsPanel
@@ -363,7 +450,8 @@
             <td class="tc-r tc-money"><strong>{{ formatMnt(totalTotalGross) }}</strong></td>
             <td class="tc-r tc-add"><strong>+ {{ formatMnt(totalAdditions) }}</strong></td>
             <td class="tc-r tc-deduct"><strong>- {{ formatMnt(totalDeductions) }}</strong></td>
-            <td class="tc-r tc-money"><strong>{{ formatMnt(totalNetPay) }}</strong></td>
+            <td class="tc-r tc-money tc-nds-cell"><strong>{{ formatMnt(totalNetPayNDS) }}</strong></td>
+            <td class="tc-r tc-money tc-nonds-cell"><strong>{{ formatMnt(totalNetPayNoNDS) }}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -765,6 +853,7 @@ const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padS
 const selectedMonth = ref(currentMonth);
 const selectedRange = 'full';
 const reportType = ref('full'); // 'full' | 'advance'
+function setReportType(type) { reportType.value = type; onMonthRangeChange(); }
 
 // ── Advance (Урьдчилгаа) state ────────────────────────────────────
 const ADVANCE_AMOUNT   = 500_000;
@@ -785,8 +874,40 @@ const sortedAdvanceData = computed(() => {
 });
 
 const totalAdvancePay = computed(() =>
-  advanceData.value.reduce((s, e) => s + (e.advancePay || 0), 0)
+  advanceData.value.reduce((s, e) => s + (e.advancePay || 0) + (e.advancePayNoNDS || 0), 0)
 );
+
+async function onForceAdvanceNoNDSChange(emp) {
+  const prev = !emp.forceAdvanceNoNDS;
+  if (isAdvanceLocked.value) {
+    const ok = confirm('Урьдчилгаа аль хэдийн батлагдсан байна.\nӨөрчлөлт хийвэл батлалт цуцлагдана.\nҮргэлжлүүлэх үү?');
+    if (!ok) { emp.forceAdvanceNoNDS = prev; return; }
+    await resetAdvanceApprovals();
+  }
+  if (emp.forceAdvanceNoNDS && (emp.advancePayNoNDS || 0) === 0) {
+    emp.advancePayNoNDS = ADVANCE_AMOUNT;
+  } else if (!emp.forceAdvanceNoNDS) {
+    // Restore auto-calculated non-НДШ portion advance
+    const ndsAmt    = Math.min(emp.ndsSalary || 0, emp.baseSalary || 0);
+    const nonNdsAmt = Math.max(0, (emp.baseSalary || 0) - ndsAmt);
+    const nonNdsRate = (emp.workingDaysMonth || 0) > 0 && nonNdsAmt > 0
+      ? nonNdsAmt / (emp.workingDaysMonth * 8) : 0;
+    emp.advancePayNoNDS = Math.min(Math.round(nonNdsRate * 0.8 * (emp.effectiveHours || 0)), ADVANCE_MAX);
+  }
+  try {
+    const calculatedAt = advanceCalculatedAt.value || new Date().toISOString();
+    await setDoc(doc(db, 'salaries', `${selectedMonth.value}_advance`), {
+      yearMonth: selectedMonth.value,
+      calculatedAt,
+      employees: advanceData.value,
+    });
+    await resetAdvanceApprovals();
+  } catch (err) {
+    console.error('overrideAdvanceNoNDS save error:', err);
+    emp.forceAdvanceNoNDS = prev;
+    alert('Хадгалахад алдаа гарлаа: ' + err.message);
+  }
+}
 
 async function onForceAdvanceChange(emp) {
   const prev = !emp.forceAdvance; // current value already toggled by v-model
@@ -797,12 +918,22 @@ async function onForceAdvanceChange(emp) {
       return;
     }
   }
-  // When first checking, default to ADVANCE_AMOUNT; when unchecking, zero it out.
-  // When the amount input fires this handler, forceAdvance is already true — keep the entered value.
   if (emp.forceAdvance && emp.advancePay === 0) {
     emp.advancePay = ADVANCE_AMOUNT;
   } else if (!emp.forceAdvance) {
-    emp.advancePay = 0;
+    // Uncheck: restore auto-calculated value for this employee's НДШ portion
+    if (emp.hasNDS === false && (emp.workingDaysMonth || 0) > 0 && emp.baseSalary > 0) {
+      // Non-НДШ: full salary
+      const rate = emp.baseSalary / (emp.workingDaysMonth * 8);
+      emp.advancePay = Math.min(Math.round(rate * 0.8 * (emp.effectiveHours || 0)), ADVANCE_MAX);
+    } else if ((emp.ndsSalary || 0) > 0 && (emp.workingDaysMonth || 0) > 0 && emp.baseSalary > 0) {
+      // Partial: restore НДШ portion advance
+      const ndsAmt = Math.min(emp.ndsSalary, emp.baseSalary);
+      const ndsRate = ndsAmt / (emp.workingDaysMonth * 8);
+      emp.advancePay = Math.min(Math.round(ndsRate * 0.8 * (emp.effectiveHours || 0)), ADVANCE_MAX);
+    } else {
+      emp.advancePay = 0;
+    }
   }
   try {
     const calculatedAt = advanceCalculatedAt.value || new Date().toISOString();
@@ -915,6 +1046,77 @@ const totalNetPay      = computed(() => displaySalaryData.value.reduce((s, e) =>
 const totalAdditions   = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.additionalPay||0) + (e.annualLeavePay||0), 0));
 const totalDeductions  = computed(() => displaySalaryData.value.reduce((s, e) => s + (e.employeeNDS||0) + (e.hhoatNet||0) + (e.advance||0) + (e.otherDeductions||0) + (e.recurringDeductions||0), 0));
 
+// НДШ-тэй / НДШ-гүй split helpers
+// Advance rows carry hasNDS flag from backend; full-salary rows are detected by ndsSalary field.
+
+// hasNDS: used for advance table (no ndsSalary in advance rows)
+function hasNDS(emp) {
+  if (emp.hasNDS !== undefined) return !!emp.hasNDS; // advance rows
+  if (emp.ndsSalary !== undefined && emp.ndsSalary !== null) return emp.ndsSalary > 0; // partial or none
+  return (emp.isNDS !== false); // full or legacy
+}
+
+// getPartialSplit: for partial НДШ employees, proportionally split cash deductions
+// between the НДШ-subject portion and the untaxed surplus based on their size ratio.
+// e.g. totalGross=3,000,000  ndsSalary=1,500,000  advance=1,000,000
+//   → advanceNDS=500,000  advanceNoNDS=500,000
+function getPartialSplit(emp) {
+  const totalGross = emp.totalGross || 0;
+  const ndsBase    = Math.min(totalGross, emp.ndsSalary || 0);
+  const surplus    = totalGross - ndsBase;
+  const ratio      = totalGross > 0 ? ndsBase / totalGross : 0.5;
+  const split = total => { const n = Math.round(total * ratio); return { nds: n, noNds: total - n }; };
+  const adv = split(emp.advance || 0);
+  const oth = split(emp.otherDeductions || 0);
+  const rec = split(emp.recurringDeductions || 0);
+  return {
+    ndsBase, surplus, ratio,
+    advanceNDS: adv.nds,  advanceNoNDS: adv.noNds,
+    otherNDS:   oth.nds,  otherNoNDS:   oth.noNds,
+    recurNDS:   rec.nds,  recurNoNDS:   rec.noNds,
+  };
+}
+
+// getNdsColumnPay: what to show in the "Гарт олгох (НДШ-тэй)" column for full-salary rows
+// full НДШ   → netPay (entire net is here)
+// no НДШ     → null  (nothing in this column)
+// partial НДШ → НДШ net minus proportional share of deductions
+function getNdsColumnPay(emp) {
+  if (!emp.baseSalary) return null;
+  const ns = emp.ndsSalary;
+  if (ns === null || ns === undefined) {
+    return (emp.isNDS !== false) ? (emp.netPay || 0) : null;
+  }
+  if (ns === 0) return null;
+  const { ndsBase, advanceNDS, otherNDS, recurNDS } = getPartialSplit(emp);
+  return ndsBase - (emp.employeeNDS || 0) - (emp.hhoatNet || 0) - advanceNDS - otherNDS - recurNDS;
+}
+
+// getNoNdsColumnPay: what to show in the "Гарт олгох (НДШ-гүй)" column for full-salary rows
+// full НДШ   → null
+// no НДШ     → netPay
+// partial НДШ → untaxed surplus minus proportional share of deductions
+function getNoNdsColumnPay(emp) {
+  if (!emp.baseSalary) return null;
+  const ns = emp.ndsSalary;
+  if (ns === null || ns === undefined) {
+    return (emp.isNDS !== false) ? null : (emp.netPay || 0);
+  }
+  if (ns === 0) return emp.netPay || 0;
+  const { surplus, advanceNoNDS, otherNoNDS, recurNoNDS } = getPartialSplit(emp);
+  return surplus - advanceNoNDS - otherNoNDS - recurNoNDS;
+}
+
+const totalNetPayNDS   = computed(() => displaySalaryData.value.reduce((s, e) => { const v = getNdsColumnPay(e); return s + (v != null ? v : 0); }, 0));
+const totalNetPayNoNDS = computed(() => displaySalaryData.value.reduce((s, e) => { const v = getNoNdsColumnPay(e); return s + (v != null ? v : 0); }, 0));
+
+const totalAdvancePayNDS   = computed(() => advanceData.value.filter(e =>  hasNDS(e)).reduce((s, e) => s + (e.advancePay || 0), 0));
+const totalAdvancePayNoNDS = computed(() => advanceData.value.reduce((s, e) => {
+  if (!hasNDS(e)) return s + (e.advancePay || 0);          // non-НДШ: advancePay is in this column
+  if ((e.ndsSalary || 0) > 0) return s + (e.advancePayNoNDS || 0); // partial: non-НДШ portion
+  return s;
+}, 0));
+
 // ── Helpers ──────────────────────────────────────────────────────
 function formatMnt(n) {
   if (!n && n !== 0) return '0₮';
@@ -979,7 +1181,8 @@ async function fetchSavedData() {
     const aMap = new Map();
     if (advanceSnap.exists()) {
       (advanceSnap.data().employees || []).forEach(e => {
-        if (e.advancePay > 0) aMap.set(String(e.employeeId), e.advancePay);
+        const total = (e.advancePay || 0) + (e.advancePayNoNDS || 0);
+        if (total > 0) aMap.set(String(e.employeeId), total);
       });
     }
     advanceMapForEOM.value = aMap;
@@ -1088,7 +1291,33 @@ async function onMonthRangeChange() {
 
 onMounted(() => onMonthRangeChange());
 
-// ── Excel Export ─────────────────────────────────────────────────
+// ── Excel Export (advance) ────────────────────────────────────────
+function exportAdvanceToExcel() {
+  const headers = [
+    'Ажилтан', 'Албан тушаал', 'Төрөл',
+    'А/өдөр', 'А/цаг', 'Тасалсан өдөр', 'Эффектив цаг',
+    'Үндсэн цалин',
+    'Гарт олгох (Урьдчилгаа НДШ-тэй)', 'Гарт олгох (Урьдчилгаа НДШ-гүй)',
+  ];
+  const rows = sortedAdvanceData.value.map(e => [
+    e.name, e.position || '', e.type || '',
+    e.workedDays || 0, e.normalHours || 0, e.absentHours || 0, e.effectiveHours || 0,
+    e.baseSalary || 0,
+    hasNDS(e) ? (e.advancePay || 0) : ((e.ndsSalary || 0) > 0 ? (e.advancePay || 0) : ''),
+    !hasNDS(e) ? (e.advancePay || 0) : ((e.ndsSalary || 0) > 0 ? (e.advancePayNoNDS || 0) : ''),
+  ]);
+  rows.push([
+    'НИЙТ', '', '', '', '', '', '', '',
+    totalAdvancePayNDS.value, totalAdvancePayNoNDS.value,
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [22,14,10, 8,8,8,8, 14, 22,22].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Урьдчилгаа');
+  XLSX.writeFile(wb, `advance_${selectedMonth.value}.xlsx`);
+}
+
+// ── Excel Export (full salary) ────────────────────────────────────
 function exportToExcel() {
   const headers = [
     'Ажилтан', 'Албан тушаал', 'Төрөл',
@@ -1096,7 +1325,7 @@ function exportToExcel() {
     'Үндсэн цалин', 'Бодогдсон цалин', 'Нэмэгдэл цалин', 'Ээлжийн амралт',
     'Нийт бодогдсон', 'Байгааллагаас НДШ (12.5%)', 'НДШ ажилтан (11.5%)',
     'ТНО', 'ХХОАТ (10%)', 'Хөнгөлөлт', 'ХХОАТ хөнгөлөлт хассан',
-    'Урьдчилгаа', 'Бусад суутгал', 'Нэмэгдэл (тогтмол)', 'Суутгал (тогтмол)', 'Гарт олгох',
+    'Урьдчилгаа', 'Бусад суутгал', 'Нэмэгдэл (тогтмол)', 'Суутгал (тогтмол)', 'Гарт олгох (НДШ-тэй)', 'Гарт олгох (НДШ-гүй)',
   ];
 
   const rows = sortedData.value.map(e => [
@@ -1117,7 +1346,8 @@ function exportToExcel() {
     e.otherDeductions  || 0,
     e.recurringAdditions  || 0,
     e.recurringDeductions || 0,
-    e.netPay           || 0,
+    getNdsColumnPay(e)   != null ? getNdsColumnPay(e)   : '',
+    getNoNdsColumnPay(e) != null ? getNoNdsColumnPay(e) : '',
   ]);
 
   rows.push([
@@ -1125,7 +1355,7 @@ function exportToExcel() {
     totalBaseSalary.value, totalCalcSalary.value, '', '',
     totalTotalGross.value, totalEmployerNDS.value, totalEmployeeNDS.value,
     '', '', '', totalHHOATNet.value,
-    '', '', '', '', totalNetPay.value,
+    '', '', '', '', totalNetPayNDS.value, totalNetPayNoNDS.value,
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -1138,6 +1368,31 @@ function exportToExcel() {
 
 <style scoped>
 .report-type-select { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; font-weight: 600; }
+.type-toggle-group { display: flex; gap: 0; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+.btn-type-toggle { padding: 7px 18px; border: none; background: #f3f4f6; color: #374151; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.btn-type-toggle:hover { background: #e5e7eb; }
+.btn-type-active-full { background: #1d4ed8 !important; color: white !important; }
+.btn-type-active-adv  { background: #d97706 !important; color: white !important; }
+/* Partial НДШ breakdown */
+.partial-nds-breakdown { margin-top: 12px; }
+.partial-nds-grid { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.partial-box { flex: 1; min-width: 240px; border-radius: 8px; overflow: hidden; border: 1px solid; }
+.nds-box  { border-color: #bfdbfe; background: #eff6ff; }
+.nonds-box { border-color: #bbf7d0; background: #f0fdf4; }
+.partial-box-title { padding: 8px 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.nds-box .partial-box-title  { background: #dbeafe; color: #1d4ed8; }
+.nonds-box .partial-box-title { background: #dcfce7; color: #15803d; }
+.partial-box-rows { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 12px; font-size: 12px; align-items: center; }
+.partial-sep { border-top: 1px solid #d1d5db; padding-top: 6px; margin-top: 4px; font-weight: 700; }
+.val-nds-result   { color: #1d4ed8; font-weight: 700; font-size: 13px; }
+.partial-ratio-note { margin-top: 8px; font-size: 11px; color: #6b7280; padding: 0 2px; }
+.th-nds  { background: #eff6ff !important; color: #1d4ed8; }
+.th-nonds { background: #f0fdf4 !important; color: #15803d; }
+.th-sub  { font-size: 10px; font-weight: 500; opacity: 0.85; }
+.tc-nds-cell   { background: #eff6ff; }
+.tc-nonds-cell { background: #f0fdf4; }
+.nds-badge   { color: #1d4ed8; font-weight: 600; }
+.nonds-badge { color: #15803d; font-weight: 600; }
 .advance-pay-col { min-width: 200px; }
 .advance-amount-input { width: 110px; text-align: right; padding: 3px 6px; border: 1px solid #f59e0b; border-radius: 5px; font-size: 13px; font-weight: 600; color: #92400e; background: #fffbeb; }
 .advance-amount-input:focus { outline: none; border-color: #d97706; box-shadow: 0 0 0 2px rgba(245,158,11,0.2); }

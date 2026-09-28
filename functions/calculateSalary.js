@@ -50,13 +50,19 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
       if (idx === -1) return res.status(404).send({ error: 'Employee not found in salary document' });
 
       // Read fresh from Firestore — no overrides from frontend
-      const [adjSnap, confirmedAdvSnap] = await Promise.all([
+      // Also fetch current employee Salary so baseSalary stays in sync with employee record
+      const empNumId = Number(empIdStr);
+      const [adjSnap, confirmedAdvSnap, empQuerySnap] = await Promise.all([
         range === 'full'
           ? db.collection('salaryAdjustments').doc(`${yearMonth}_${empIdStr}`).get()
           : Promise.resolve({ exists: false }),
         range === 'full'
           ? db.collection('confirmedSalaries').doc(`${yearMonth}_advance`).get()
           : Promise.resolve({ exists: false }),
+        db.collection('employees')
+          .where('Id', '==', isNaN(empNumId) ? empIdStr : empNumId)
+          .limit(1)
+          .get(),
       ]);
 
       // Fresh adjustment fields from salaryAdjustments
@@ -77,9 +83,18 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
         if (advEmp?.advancePay) advance = advEmp.advancePay;
       }
 
+      // Refresh baseSalary from live employee record (single source of truth)
+      let freshBaseSalary = employees[idx].baseSalary;
+      if (!empQuerySnap.empty) {
+        const empData = empQuerySnap.docs[0].data();
+        const parsed = parseFloat(empData?.Salary ?? empData?.BasicSalary ?? empData?.salary);
+        if (!isNaN(parsed) && parsed > 0) freshBaseSalary = parsed;
+      }
+
       // Preserve recurringDeductions from stored row — correct from last full calc
       const updated = {
         ...employees[idx],
+        baseSalary: freshBaseSalary,
         additionalPay,
         annualLeavePay,
         advance,
@@ -197,24 +212,43 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
         const hourlyRate = (workingDaysMonth > 0 && baseSalary > 0)
           ? baseSalary / (workingDaysMonth * 8)
           : 0;
-        // Advance only for employees with an NDS portion (full or partial)
-        const hasNds = (ndsSalary !== null) ? ndsSalary > 0 : isNDS;
-        const advancePay = (hasNds && effectiveHours > 0 && hourlyRate > 0)
-          ? Math.min(Math.round(hourlyRate * ADVANCE_RATE * effectiveHours), ADVANCE_MAX)
-          : 0;
+        // Advance for ALL employees with hours, regardless of НДШ mode.
+        // For PARTIAL НДШ employees, calculate each portion independently so the split is clean.
+        let advancePay, advancePayNoNDS;
+        if (ndsSalary !== null && ndsSalary > 0 && ndsSalary < baseSalary) {
+          // Partial: НДШ portion and non-НДШ portion each get their own advance
+          const ndsAmt    = Math.min(ndsSalary, baseSalary);
+          const nonNdsAmt = baseSalary - ndsAmt;
+          const ndsRate    = workingDaysMonth > 0 ? ndsAmt    / (workingDaysMonth * 8) : 0;
+          const nonNdsRate = workingDaysMonth > 0 ? nonNdsAmt / (workingDaysMonth * 8) : 0;
+          advancePay      = (effectiveHours > 0 && ndsRate > 0)
+            ? Math.min(Math.round(ndsRate    * ADVANCE_RATE * effectiveHours), ADVANCE_MAX) : 0;
+          advancePayNoNDS = (effectiveHours > 0 && nonNdsRate > 0)
+            ? Math.min(Math.round(nonNdsRate * ADVANCE_RATE * effectiveHours), ADVANCE_MAX) : 0;
+        } else {
+          // Full НДШ, No НДШ, or ndsSalary covers full salary
+          advancePay      = (effectiveHours > 0 && hourlyRate > 0)
+            ? Math.min(Math.round(hourlyRate * ADVANCE_RATE * effectiveHours), ADVANCE_MAX) : 0;
+          advancePayNoNDS = 0;
+        }
         return {
-          employeeId:   empId,
+          employeeId:      empId,
           name,
-          position:     emp?.Position || '',
-          type:         emp?.Type || '',
+          position:        emp?.Position || '',
+          type:            emp?.Type || '',
           baseSalary,
-          workedDays:   ta.workedDays || 0,
-          normalHours:  Math.round(ta.normalHours || 0),
-          absentHours:  Math.round(ta.absentHours || 0),
+          workingDaysMonth,
+          ndsSalary:       ndsSalary ?? null,
+          workedDays:      ta.workedDays || 0,
+          normalHours:     Math.round(ta.normalHours || 0),
+          absentHours:     Math.round(ta.absentHours || 0),
           effectiveHours,
           advancePay,
-          forceAdvance: false,
-          autoTA:       emp?.autoTA === true,
+          advancePayNoNDS,
+          hasNDS:          (ndsSalary !== null) ? ndsSalary > 0 : isNDS,
+          forceAdvance:    false,
+          forceAdvanceNoNDS: false,
+          autoTA:          emp?.autoTA === true,
         };
       }
 
@@ -225,11 +259,7 @@ exports.calculateSalary = functions.region('asia-east2').https.onRequest(async (
       for (const [empId, emp] of empMap.entries()) {
         if (empTA.has(empId)) continue;
         const baseSalary = parseFloat(emp?.Salary ?? emp?.BasicSalary ?? emp?.salary) || 0;
-        const isNDS = emp?.isNDS !== false;
-        const empNdsSal = (emp?.ndsSalary !== undefined && emp?.ndsSalary !== null)
-          ? (parseFloat(emp.ndsSalary) || 0) : null;
-        const hasNds = (empNdsSal !== null) ? empNdsSal > 0 : isNDS;
-        if (!baseSalary && hasNds) continue;
+        if (!baseSalary) continue; // skip employees with no base salary
         const state = (emp?.State || '').trim();
         if (state && state !== 'Ажиллаж байгаа') continue;
         rows.push(buildAdvanceRow(empId, { workedDays: 0, normalHours: 0, absentHours: 0 }, emp));

@@ -35,7 +35,12 @@ const error = ref('');
 // Check if we just came back from Microsoft redirect
 onMounted(async () => {
   console.log('Login page mounted');
-  
+
+  // Show blocked message if set by auth store (e.g. departed employee)
+  if (authStore.blockedMessage) {
+    error.value = authStore.blockedMessage;
+  }
+
   // Wait longer for MSAL to process the redirect
   await new Promise(resolve => setTimeout(resolve, 1500));
   
@@ -60,6 +65,12 @@ async function handleGoogleSignIn() {
   
   try {
     await authStore.signInWithGoogle();
+
+    // Check if employee is blocked (departed)
+    if (authStore.blockedMessage) {
+      error.value = authStore.blockedMessage;
+      return;
+    }
     
     // Check if user is registered
     if (authStore.userData) {

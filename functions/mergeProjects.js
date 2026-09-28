@@ -14,6 +14,7 @@ const { calculateProjectMetrics } = require('./projectCalculations');
  *   - timeAttendanceRequests   ProjectID (int)
  *   - warehouseRequests        projectID (string), ProjectName
  *   - warehouseTransactions    projectID (string), ProjectName
+ *   - bankTransactions         projectID (string), projectName
  *
  * Body: { sourceId: <numeric project.id>, targetId: <numeric project.id> }
  */
@@ -118,16 +119,68 @@ exports.mergeProjects = functions.region('asia-east2').https.onRequest(async (re
       ProjectName: target.siteLocation || '',
     }));
 
-    // 6. Recalculate target project (includes TA aggregation from the now-merged records)
-    const updatedMetrics = await calculateProjectMetrics(String(targetIdNum), target, db);
+    // 6. bankTransactions (projectID stored as string)
+    await relinkCollection('bankTransactions', 'projectID', () => ({
+      projectID: String(targetIdNum),
+      projectName: target.siteLocation || '',
+    }));
+
     const now = new Date().toISOString();
+
+    // 7. Merge projectBountyHours — add hours per employee instead of just re-linking
+    {
+      const [sourceBountySnap, targetBountySnap] = await Promise.all([
+        db.collection('projectBountyHours').where('projectID', '==', sourceIdNum).get(),
+        db.collection('projectBountyHours').where('projectID', '==', targetIdNum).get(),
+      ]);
+
+      // Build a map of existing target bounty docs by employeeName
+      const targetBountyMap = {};
+      targetBountySnap.docs.forEach(d => {
+        targetBountyMap[d.data().employeeName] = {
+          ref: d.ref,
+          bountyHours: parseFloat(d.data().bountyHours) || 0,
+        };
+      });
+
+      let bountyMerged = 0;
+      let bountyRelinked = 0;
+
+      if (sourceBountySnap.docs.length > 0) {
+        const bBatch = db.batch();
+        sourceBountySnap.docs.forEach(d => {
+          const data = d.data();
+          const empName = data.employeeName;
+          const srcHours = parseFloat(data.bountyHours) || 0;
+
+          if (targetBountyMap[empName]) {
+            // Employee exists in target → add hours to existing target doc, delete source doc
+            bBatch.update(targetBountyMap[empName].ref, {
+              bountyHours: targetBountyMap[empName].bountyHours + srcHours,
+              updatedAt: now,
+            });
+            bBatch.delete(d.ref);
+            bountyMerged++;
+          } else {
+            // Employee only in source → re-link to target project
+            bBatch.update(d.ref, { projectID: targetIdNum, updatedAt: now });
+            bountyRelinked++;
+          }
+        });
+        await bBatch.commit();
+      }
+      summary['projectBountyHours'] = { merged: bountyMerged, relinked: bountyRelinked };
+    }
+
+    // 8. Recalculate target project (includes TA aggregation from the now-merged records)
+    const updatedMetrics = await calculateProjectMetrics(String(targetIdNum), target, db);
     await db.collection('projects').doc(target.docId).update({
       ...updatedMetrics,
       updatedAt: now,
       mergedFrom: admin.firestore.FieldValue.arrayUnion(sourceIdNum),
     });
 
-    // 7. Delete the source project
+    // 9. Delete the source project
     await db.collection('projects').doc(source.docId).delete();
 
     return res.status(200).send({

@@ -171,9 +171,6 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   // Fetch bounty rates frozen on this project (or defaults if not stamped yet)
   const rates = await fetchBountyRates(projectData.bountyRatesVersion || null, db);
 
-  // Calculate base amount (WosHour * baseRate) - 0 for unpaid/overtime
-  calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * rates.baseRate);
-
   // Calculate TeamBounty - 0 for unpaid/overtime
   calculations.TeamBounty = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * rates.teamRate);
 
@@ -201,10 +198,23 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   calculations.EngineerHand = (isUnpaid || isOvertime) ? 0
     : Math.max(0, calculations.TeamBounty - calculations.NonEngineerBounty);
 
-  // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
-  calculations.IncomeHR = isUnpaid ? 0
-    : isOvertime ? Math.round(wosHour * 20000)
-    : Math.round((wosHour + additionalHour) * 110000);
+  // Snapshot ALL rates used — frontend reads these for display hints
+  calculations.frozenTeamRate           = rates.teamRate;
+  calculations.frozenNonEngineerRate    = rates.nonEngineerRate;
+  calculations.frozenOvertimeRate       = rates.overtimeRate;
+  calculations.frozenIncomeRate         = rates.incomeRate;
+  calculations.frozenOvertimeIncomeRate = rates.overtimeIncomeRate;
+
+  // Calculate Income HR
+  // unpaid:   direct free-form amount on project — preserve it
+  // overtime: use wosIncomeHR (scraped directly from WOS website — includes ALL row types:
+  //           Томилолт, Цаг, etc.) if available; fall back to WosHour × overtimeIncomeRate
+  // paid:     (WosHour + additionalHour) × incomeRate
+  calculations.IncomeHR = isUnpaid
+    ? (parseFloat(projectData.IncomeHR) || 0)
+    : isOvertime
+      ? (parseFloat(projectData.wosIncomeHR) || Math.round(wosHour * rates.overtimeIncomeRate))
+      : Math.round((wosHour + additionalHour) * rates.incomeRate);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
   calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + calculations.OvertimeBounty);
@@ -242,8 +252,11 @@ async function calculateProjectMetrics(projectId, projectData, db) {
   
   // Calculate Profit HR
   if (isUnpaid) {
-    // No income, no bounty — ITA average salary cost + direct expenses
-    calculations.ProfitHR = Math.round(-(calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + expenseHRFromTrx + additionalValue));
+    // Unpaid: company earns income but pays no bounty — profit = IncomeHR − labour costs
+    calculations.ProfitHR = Math.round(
+      calculations.IncomeHR -
+      (calculations.ExpenseSalary + calculations.ExpenceManagementSalary + calculations.ExpenceTripSalary + expenseHRFromTrx + additionalValue)
+    );
   } else if (isOvertime) {
     // Overtime projects: income exists, but expense = ITA salary cost + overtime bounty
     calculations.ProfitHR = Math.round(
@@ -330,6 +343,10 @@ function calculateBasicMetrics(projectData) {
   const isUnpaid = projectData.projectType === 'unpaid';
   const isOvertime = projectData.projectType === 'overtime';
   
+  // Read frozen income rates stored by the last full recalculation (with defaults fallback)
+  const frozenIncomeRate = parseFloat(projectData.frozenIncomeRate) || DEFAULT_BOUNTY_RATES.incomeRate;
+  const frozenOvertimeIncomeRate = parseFloat(projectData.frozenOvertimeIncomeRate) || DEFAULT_BOUNTY_RATES.overtimeIncomeRate;
+
   // Calculate base amount (WosHour * 12500) - 0 for unpaid/overtime
   calculations.BaseAmount = (isUnpaid || isOvertime) ? 0 : Math.round(wosHour * 12500);
   
@@ -354,10 +371,12 @@ function calculateBasicMetrics(projectData) {
   calculations.EngineerHand = (isUnpaid || isOvertime) ? 0
     : Math.max(0, calculations.TeamBounty - calculations.NonEngineerBounty);
   
-  // Calculate Income HR (0 for unpaid; wosHour*20,000 for overtime; (wosHour+additionalHour)*110,000 for paid)
+  // Calculate Income HR
+  // overtime: prefer wosIncomeHR (scraped total) if stored; fall back to frozen rate formula
   calculations.IncomeHR = isUnpaid ? 0
-    : isOvertime ? Math.round(wosHour * 20000)
-    : Math.round((wosHour + additionalHour) * 110000);
+    : isOvertime
+      ? (parseFloat(projectData.wosIncomeHR) || Math.round(wosHour * frozenOvertimeIncomeRate))
+      : Math.round((wosHour + additionalHour) * frozenIncomeRate);
   
   // Calculate Total HR Bonus (ExpenceHRBonus)
   calculations.ExpenceHRBonus = Math.round(calculations.NonEngineerBounty + calculations.EngineerHand + calculations.OvertimeBounty);

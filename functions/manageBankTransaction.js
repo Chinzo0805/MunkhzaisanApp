@@ -1286,6 +1286,56 @@ exports.manageBankTransaction = functions
         });
       }
 
+      // ── CLEANUP DUPLICATE BANK TRANSACTIONS ───────────────────────────────
+      // Finds records with the same accountName + date + income + expense and
+      // deletes all but the "best" one (most complete: non-empty description +
+      // non-empty relatedAccount). Safe to re-run.
+      if (action === "cleanupDuplicates") {
+        const allSnap = await db.collection("bankTransactions").get();
+
+        // Group by accountName|date|income|expense
+        const groups = new Map();
+        allSnap.docs.forEach(doc => {
+          const d = doc.data();
+          const dateStr = d.date ||
+            (typeof d.documentDate === 'string' ? d.documentDate.slice(0, 10) : null) ||
+            (d.documentDate && d.documentDate.toDate ? d.documentDate.toDate().toISOString().slice(0, 10) : null);
+          const key = [d.accountName || '', dateStr || '', d.income || 0, d.expense || 0].join('|');
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(doc);
+        });
+
+        // For each group with >1 doc, keep the best one and delete the rest
+        const toDelete = [];
+        for (const [, docs] of groups) {
+          if (docs.length < 2) continue;
+          // Score each doc: +2 for non-empty description, +1 for non-empty relatedAccount
+          const scored = docs.map(doc => {
+            const d = doc.data();
+            let score = 0;
+            if (String(d.description || '').trim().length > 0) score += 2;
+            if (String(d.relatedAccount || '').trim().length > 0) score += 1;
+            return { doc, score };
+          });
+          scored.sort((a, b) => b.score - a.score); // best first
+          // Delete all except the best (index 0)
+          for (let i = 1; i < scored.length; i++) {
+            toDelete.push(scored[i].doc.ref);
+          }
+        }
+
+        // Batch delete
+        let deleted = 0;
+        for (let i = 0; i < toDelete.length; i += 400) {
+          const batch = db.batch();
+          toDelete.slice(i, i + 400).forEach(ref => batch.delete(ref));
+          await batch.commit();
+          deleted += Math.min(400, toDelete.length - i);
+        }
+
+        return res.status(200).json({ success: true, deleted, groupsChecked: groups.size });
+      }
+
       return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
 
     } catch (err) {

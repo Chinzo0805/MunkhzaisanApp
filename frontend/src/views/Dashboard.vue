@@ -209,7 +209,96 @@
           </div>
         </div>
         
-        <!-- Management Components -->
+        <!-- WOS Import Report Modal -->
+    <div v-if="wosImportReport" class="modal-overlay wos-report-overlay">
+      <div class="modal-content wos-report-modal">
+        <div class="wos-report-header">
+          <div>
+            <h3>📋 WOS Хүн/цаг импортын тайлан</h3>
+            <span class="wos-report-file">{{ wosImportReport.file }}</span>
+          </div>
+          <button @click="wosImportReport = null" class="modal-close">✕</button>
+        </div>
+        <div class="wos-report-summary">
+          <span class="wrs-chip updated">✓ Шинэчлэгдсэн: {{ wosImportReport.updated }}</span>
+          <span class="wrs-chip skipped">⚠ Алгасагдсан: {{ wosImportReport.skipped }}</span>
+          <span class="wrs-chip errors" v-if="wosImportReport.errors > 0">✗ Алдаа: {{ wosImportReport.errors }}</span>
+        </div>
+
+        <!-- Updated projects table -->
+        <div v-if="wosImportReport.details?.updated?.length" class="wrs-section">
+          <h4>Шинэчлэгдсэн төслүүд</h4>
+          <div class="wrs-table-wrap">
+            <table class="wrs-table">
+              <thead>
+                <tr>
+                  <th>ВОС дугаар</th>
+                  <th>Төсөл</th>
+                  <th>Төрөл</th>
+                  <th>Хүн/цаг (Excel)</th>
+                  <th>WosHour</th>
+                  <th>Цагын хөлс</th>
+                  <th>Тариф хувилбар</th>
+                  <th>Орлого HR</th>
+                  <th>Унаа</th>
+                  <th>Материал</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in wosImportReport.details.updated" :key="r.refId">
+                  <td class="mono">{{ r.refId }}</td>
+                  <td>{{ r.customer || r.projectId }}</td>
+                  <td><span :class="['ptype', r.projectType]">{{ r.projectType === 'overtime' ? 'Ашиглалт' : r.projectType === 'unpaid' ? 'Суурь' : 'Угсралт' }}</span></td>
+                  <td class="num">{{ r.wosHourFromExcel }}</td>
+                  <td class="num">{{ r.wosHour }}</td>
+                  <td class="num" :class="{ 'rate-custom': r.rateFromExcel }">
+                    {{ r.rateFromExcel != null ? r.rateFromExcel.toLocaleString() : '—' }}
+                  </td>
+                  <td :class="{ 'rate-warn': r.rateVersionWarning }">
+                    <span v-if="r.bountyRatesVersion">{{ r.bountyRatesVersion }}</span>
+                    <span v-else-if="r.rateVersionWarning" class="rate-warn-text" :title="r.rateVersionWarning">⚠ Олдсонгүй</span>
+                    <span v-else class="dim">—</span>
+                  </td>
+                  <td class="num bold">{{ r.incomeHR?.toLocaleString() }}</td>
+                  <td class="num">{{ r.incomeCar != null ? r.incomeCar.toLocaleString() : '—' }}</td>
+                  <td class="num">{{ r.incomeMaterial != null ? r.incomeMaterial.toLocaleString() : '—' }}</td>
+                  <td><span v-if="r.statusChanged" class="status-changed">→ Нэхэмжлэх</span><span v-else class="dim">—</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Skipped -->
+        <div v-if="wosImportReport.details?.skipped?.length" class="wrs-section">
+          <h4>Алгасагдсан мөрүүд ({{ wosImportReport.details.skipped.length }})</h4>
+          <div class="wrs-skipped">
+            <div v-for="s in wosImportReport.details.skipped" :key="s.refId" class="wrs-skip-row">
+              <span class="mono">{{ s.refId }}</span>
+              <span class="skip-reason">{{ s.reason }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Errors -->
+        <div v-if="wosImportReport.details?.errors?.length" class="wrs-section">
+          <h4>Алдаанууд</h4>
+          <div class="wrs-skipped">
+            <div v-for="e in wosImportReport.details.errors" :key="e.refId" class="wrs-skip-row error">
+              <span class="mono">{{ e.refId }}</span>
+              <span class="skip-reason">{{ e.error }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="wrs-footer">
+          <button @click="wosImportReport = null" class="wrs-close-btn">Хаах</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Management Components -->
         <EmployeeManagement @saved="handleSaved" />
         <CustomerManagement @saved="handleSaved" />
         <ProjectManagement @saved="handleSaved" />
@@ -515,6 +604,7 @@ function pickViewAs(emp) {
 
 const syncing = ref(false);
 const syncResult = ref(null);
+const wosImportReport = ref(null);
 const loading = ref(false);
 const refreshingRole = ref(false);
 const refreshRoleMsg = ref('');
@@ -788,10 +878,7 @@ async function handleWosSync() {
       return;
     }
     const result = await syncWosHourFromExcel(token);
-    syncResult.value = {
-      success: true,
-      message: `✓ WOS Хүн/цаг синхрончлогдлоо: ${result.updated} төсөл шинэчлэгдсэн, ${result.skipped} алгасагдсан (файл: ${result.file})`,
-    };
+    wosImportReport.value = result;
     await projectsStore.fetchProjects();
   } catch (error) {
     const msg = error.response?.data?.error || error.response?.data?.message || error.message;
@@ -1608,4 +1695,44 @@ function handleSaved(event) {
 .va-info span { font-size: 0.78rem; color: #6b7280; margin-top: 1px; }
 .va-arrow { color: #9ca3af; font-size: 1.2rem; }
 .va-empty { padding: 24px; text-align: center; color: #9ca3af; font-size: 0.9rem; }
+
+/* ── WOS Import Report Modal ── */
+.wos-report-overlay { align-items: flex-start; padding-top: 40px; }
+.wos-report-modal { max-width: 960px; width: 96%; max-height: 82vh; overflow-y: auto; padding: 0; border-radius: 10px; display: flex; flex-direction: column; }
+.wos-report-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 22px 12px; border-bottom: 1px solid #e5e7eb; background: #1e3a5f; border-radius: 10px 10px 0 0; }
+.wos-report-header h3 { margin: 0 0 4px; color: #fff; font-size: 1.05rem; }
+.wos-report-file { font-size: 0.78rem; color: #93c5fd; }
+.wos-report-header .modal-close { color: #fff; }
+.wos-report-summary { display: flex; gap: 10px; padding: 12px 22px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+.wrs-chip { font-size: 0.82rem; font-weight: 600; padding: 4px 12px; border-radius: 20px; }
+.wrs-chip.updated { background: #dcfce7; color: #166534; }
+.wrs-chip.skipped { background: #fef9c3; color: #854d0e; }
+.wrs-chip.errors { background: #fee2e2; color: #991b1b; }
+.wrs-section { padding: 14px 22px; border-bottom: 1px solid #f1f5f9; }
+.wrs-section h4 { margin: 0 0 10px; font-size: 0.88rem; color: #374151; }
+.wrs-table-wrap { overflow-x: auto; }
+.wrs-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.wrs-table th { background: #f1f5f9; color: #374151; font-weight: 600; padding: 7px 10px; text-align: left; white-space: nowrap; border-bottom: 2px solid #e2e8f0; }
+.wrs-table td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; color: #111827; }
+.wrs-table tr:hover td { background: #f8fafc; }
+.wrs-table td.mono { font-family: monospace; font-size: 0.8rem; color: #6b7280; }
+.wrs-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.wrs-table td.bold { font-weight: 700; color: #1e40af; }
+.wrs-table td.rate-custom { color: #d97706; font-weight: 600; }
+.rate-warn-text { color: #dc2626; font-size: 0.78rem; font-weight: 600; cursor: help; }
+.ptype { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.ptype.paid, .ptype.undefined { background: #dbeafe; color: #1e40af; }
+.ptype.overtime { background: #fef3c7; color: #92400e; }
+.ptype.unpaid { background: #fee2e2; color: #991b1b; }
+.status-changed { font-size: 0.75rem; background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.dim { color: #d1d5db; }
+.wrs-skipped { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
+.wrs-skip-row { display: flex; gap: 16px; font-size: 0.81rem; padding: 4px 6px; border-radius: 4px; background: #fefce8; }
+.wrs-skip-row.error { background: #fff1f2; }
+.wrs-skip-row .mono { font-family: monospace; color: #6b7280; min-width: 140px; }
+.skip-reason { color: #78350f; }
+.wrs-skip-row.error .skip-reason { color: #9f1239; }
+.wrs-footer { padding: 14px 22px; display: flex; justify-content: flex-end; background: #f8fafc; border-radius: 0 0 10px 10px; }
+.wrs-close-btn { background: #1e3a5f; color: #fff; border: none; border-radius: 6px; padding: 8px 28px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.wrs-close-btn:hover { background: #1e40af; }
 </style>

@@ -124,11 +124,16 @@ function recalcEmployeeRow(row, workingDays) {
   // НДШ / ХХОАТ — controlled by ndsSalary field on the row:
   //   ndsSalary = null/undefined  → full NDS on totalGross (legacy isNDS=true)
   //   ndsSalary = 0               → no NDS, no HHОАТ (Гарт олгох = Нийт − advance − суутгал)
-  //   ndsSalary > 0               → partial: НДШ/ХХОАТ on min(totalGross, ndsSalary) only
+  //   ndsSalary > 0               → partial: НДШ/ХХОАТ on ndsSalary scaled with TA (same formula as calculatedSalary)
   // Falls back to legacy isNDS boolean if ndsSalary is not set.
   let ndsBase;
   if (row.ndsSalary !== undefined && row.ndsSalary !== null) {
-    ndsBase = Math.min(totalGross, Math.max(0, row.ndsSalary));
+    if (row.ndsSalary === 0) {
+      ndsBase = 0;
+    } else {
+      // partial: ndsSalary is a monthly base that scales with attendance, just like baseSalary
+      ndsBase = (wdMonth > 0) ? Math.round(row.ndsSalary / (wdMonth * 8) * effectiveHours) : 0;
+    }
   } else {
     ndsBase = (row.isNDS !== false) ? totalGross : 0;  // backward compat
   }
@@ -344,8 +349,9 @@ async function calculateSalaryForPeriod(db, yearMonth, range) {
   if (range === 'full' && confirmedAdvSnap.exists) {
     (confirmedAdvSnap.data().employees || []).forEach(e => {
       const empId = normalizeId(e.employeeId);
-      if (empId && (e.advancePay || 0) > 0) {
-        confirmedAdvanceByEmp.set(empId, e.advancePay);
+      const totalAdv = (e.advancePay || 0) + (e.advancePayNoNDS || 0);
+      if (empId && totalAdv > 0) {
+        confirmedAdvanceByEmp.set(empId, totalAdv);
       }
     });
   }

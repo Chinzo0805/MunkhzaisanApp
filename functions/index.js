@@ -32,11 +32,14 @@ exports.manageCustomer = require("./manageCustomer").manageCustomer;
 exports.syncProjectsToExcel = require("./syncProjectsToExcel").syncProjectsToExcel;
 exports.syncFromExcelToProjects = require("./syncFromExcelToProjects").syncFromExcelToProjects;
 exports.syncWosHourFromExcel = require("./syncWosHourFromExcel").syncWosHourFromExcel;
+exports.syncWosFromDirectData = require("./syncWosFromDirectData").syncWosFromDirectData;
 exports.manageProject = require("./manageProject").manageProject;
 exports.updateProjectRealHours = require("./updateProjectRealHours").updateProjectRealHours;
 exports.recalculateAllProjects = require("./recalculateAllProjects").recalculateAllProjects;
 exports.mergeProjects = require("./mergeProjects").mergeProjects;
+exports.backfillTARoles = require("./backfillTARoles").backfillTARoles;
 exports.manageBountyRates = require("./manageBountyRates").manageBountyRates;
+exports.calculateBounty   = require("./calculateBounty").calculateBounty;
 
 // Salary functions
 exports.manageSalaryPeriod = require("./manageSalaryPeriod").manageSalaryPeriod;

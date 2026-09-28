@@ -1,27 +1,35 @@
 <template>
   <div class="ta-history-container">
-    <h3>Миний цагийн бүртгэл</h3>
-    
-    <!-- Project Summary Section -->
-    <div class="projects-summary-section">
-      <div class="section-heading">
-        <h4>Миний хариуцсан ажлууд</h4>
+    <!-- Main Navigation Tabs -->
+    <div class="main-tabs">
+      <button :class="['main-tab', { active: mainTab === 'projects' }]" @click="mainTab = 'projects'">
+        📋 Хариуцсан ажлууд<span v-if="projectSummary.length" class="main-tab-badge">{{ projectSummary.length }}</span>
+      </button>
+      <button :class="['main-tab', { active: mainTab === 'attendance' }]" @click="mainTab = 'attendance'">
+        📅 Цагийн бүртгэл
+      </button>
+    </div>
+
+    <!-- ── PROJECTS PANEL ── -->
+    <div v-show="mainTab === 'projects'" class="projects-panel">
+      <div class="panel-header">
+        <h3 class="panel-title">Миний хариуцсан ажлууд</h3>
         <button @click="loadProjectSummary" class="btn-refresh" :disabled="loadingProjects">
           {{ loadingProjects ? '...' : '🔄' }}
         </button>
       </div>
-      <div class="project-controls">
-        <select v-model="statusFilter" class="status-filter">
-          <option value="">Бүх төлөв</option>
-          <option value="Төлөвлсөн">Төлөвлсөн</option>
-          <option value="Ажиллаж байгаа">Ажиллаж байгаа</option>
-          <option value="Ажил хүлээлгэн өгөх">Ажил хүлээлгэн өгөх</option>
-          <option value="Нэхэмжлэх өгөх ба Шалгах">Нэхэмжлэх өгөх ба Шалгах</option>
-          <option value="Урамшуулал олгох">Урамшуулал олгох</option>
-          <option value="Дууссан">Дууссан</option>
-        </select>
+
+      <!-- Status chips filter -->
+      <div v-if="projectSummary.length > 0" class="status-chips-row">
+        <button
+          v-for="chip in projectStatusChips"
+          :key="chip.value"
+          :class="['pstatus-chip', { 'chip-active': projectStatusFilter === chip.value }]"
+          :style="chip.value ? { '--chip-color': getProgressColor(chip.value) } : {}"
+          @click="projectStatusFilter = chip.value"
+        >{{ chip.label }}<span class="chip-cnt">{{ chip.count }}</span></button>
       </div>
-      
+
       <div v-if="loadingProjects" class="loading">Төслүүдийг уншиж байна...</div>
       
       <div v-else-if="filteredProjects.length > 0" class="projects-grid">
@@ -56,111 +64,143 @@
           <!-- Stats 2-col grid -->
           <div class="stats-grid">
             <div class="sg-item">
-              <div class="sg-label">Төлөвлөгөөт цаг</div>
-              <div class="sg-value planned">{{ project.plannedHour }}<small> цаг</small></div>
-            </div>
-            <div class="sg-item">
               <div class="sg-label">Ажилласан цаг</div>
               <div class="sg-value real">{{ project.realHour }}<small> цаг</small></div>
             </div>
-            <div v-if="project.engineerHand > 0" class="sg-item sg-full">
-              <div class="sg-label">Инженерийн урамшуулал</div>
-              <div class="sg-value bounty-adjusted">{{ formatNumber(project.engineerHand) }} ₮</div>
+            <div class="sg-item">
+              <div class="sg-label">WOS цаг</div>
+              <div class="sg-value wos">{{ project.wosHour || 0 }}<small> цаг</small></div>
             </div>
+            <template v-if="project.engineerHand > 0 || project.teamBounty > 0">
+              <div class="sg-item">
+                <div class="sg-label">Инженер урамшуулал</div>
+                <div class="sg-value bounty-adjusted">{{ formatNumber(project.engineerHand || 0) }} ₮</div>
+              </div>
+              <div class="sg-item">
+                <div class="sg-label">Баг урамшуулал</div>
+                <div class="sg-value team-bounty">{{ formatNumber(project.teamBounty || 0) }} ₮</div>
+              </div>
+            </template>
           </div>
 
-          <!-- Progress bars full-width -->
-          <div class="progress-section">
-            <div class="progress-item">
-              <div class="progress-label">
-                <span>Төлөвийн прогресс</span>
-                <span>{{ project.progress }}%</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: project.progress + '%', backgroundColor: getProgressColor(project.status) }"></div>
-              </div>
-            </div>
-            <div v-if="project.HourPerformance != null" class="progress-item">
-              <div class="progress-label">
-                <span>Цагийн гүйцэтгэл</span>
-                <span :style="{ color: getPerformanceColor(project.HourPerformance) }">{{ project.HourPerformance.toFixed(1) }}%</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: Math.min(100, project.HourPerformance) + '%', backgroundColor: getPerformanceColor(project.HourPerformance) }"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card-tap-hint">Дэлгэрэнг дарна дэдэггэер харах →</div>
+          <div class="card-tap-hint">Дэлгэрэнгүй мэдээлэл харах →</div>
 
           <!-- WOS hours button: only for paid projects in handover status -->
           <button
             v-if="project.status === 'Ажил хүлээлгэн өгөх' && project.projectType === 'paid'"
             @click.stop="openBountyModal(project, $event)"
-            class="btn-wos-assign"
-            title="Техникчийн WOS цаг оруулах"
-          >💰 Wos цаг оруулах</button>
+            :class="project.nonEngineerBounty > 0 ? 'btn-wos-view' : 'btn-wos-assign'"
+            :title="project.nonEngineerBounty > 0 ? 'Оруулсан WOS цаг харах' : 'Техникчийн WOS цаг оруулах'"
+          >{{ project.nonEngineerBounty > 0 ? '👁 Оруулсан WOS цаг харах →' : '💰 Wos цаг оруулах' }}</button>
         </div>
       </div>
       
       <div v-else class="no-records">
         Төсөлд ажилласан бүртгэл байхгүй байна
       </div>
-    </div>
-    
-    <!-- Project Details Modal -->
+    </div><!-- /projects-panel -->
+
+    <!-- Project Details Modal (position:fixed — visible from any tab) -->
     <div v-if="selectedProject" class="modal-overlay" @click.self="closeProjectDetails">
       <div class="modal-content project-details-modal">
         <div class="modal-header">
-          <h3>{{ selectedProject.projectId }} - Ажилласан цагийн бүртгэл</h3>
+          <div class="pdetail-title-block">
+            <div class="pdetail-id-row">
+              <span class="pdetail-id">#{{ selectedProject.projectId }}</span>
+              <span class="project-status">{{ selectedProject.status }}</span>
+              <span v-if="selectedProject.projectType" :class="['proj-type-badge', 'ptype-' + selectedProject.projectType]">
+                {{ selectedProject.projectType === 'paid' ? 'Угсралтын' : selectedProject.projectType === 'overtime' ? 'Ашиглалт' : 'Суурь цалин' }}
+              </span>
+            </div>
+            <div class="pdetail-location">📍 {{ selectedProject.siteLocation }}</div>
+            <div v-if="selectedProject.referenceId || selectedProject.startDate" class="pdetail-meta-row">
+              <span v-if="selectedProject.referenceId" class="meta-chip">🔗 {{ selectedProject.referenceId }}</span>
+              <span v-if="selectedProject.startDate" class="meta-chip">📅 {{ selectedProject.startDate }}</span>
+            </div>
+            <div class="pdetail-stats">
+              <div class="pds-item"><div class="pds-label">Ажилласан цаг</div><div class="pds-value real">{{ selectedProject.realHour }}ц</div></div>
+              <div class="pds-item"><div class="pds-label">WOS цаг</div><div class="pds-value wos">{{ selectedProject.wosHour || 0 }}ц</div></div>
+              <template v-if="selectedProject.engineerHand > 0 || selectedProject.teamBounty > 0">
+                <div class="pds-item"><div class="pds-label">Инженер урамшуулал</div><div class="pds-value bounty">{{ formatNumber(selectedProject.engineerHand || 0) }} ₮</div></div>
+                <div class="pds-item"><div class="pds-label">Баг урамшуулал</div><div class="pds-value team-bounty">{{ formatNumber(selectedProject.teamBounty || 0) }} ₮</div></div>
+              </template>
+            </div>
+          </div>
           <button @click="closeProjectDetails" class="close-btn">×</button>
         </div>
         <div class="modal-body">
-          <div v-if="loadingProjectTA" class="loading">Уншиж байна...</div>
-          <div v-else-if="projectTARecords.length > 0">
-            <!-- Grouped by day, collapsible -->
-            <div class="ta-cards">
-              <div v-for="group in projectTAByDay" :key="group.day" class="ta-day-group">
-                <div class="ta-day-header" @click="toggleDay(group.day)">
-                  <div class="ta-day-header-left">
-                    <span class="ta-day-arrow">{{ collapsedDays.has(group.day) ? '▶' : '▼' }}</span>
-                    <span class="ta-day-date">📅 {{ group.day }}</span>
-                    <span class="ta-day-count">{{ group.records.length }} хүн</span>
-                  </div>
-                  <span class="ta-day-total">{{ group.totalHours }} ц</span>
-                </div>
-                <div v-if="!collapsedDays.has(group.day)" class="ta-day-records">
-                  <div v-for="record in group.records" :key="record.docId" class="ta-card">
-                    <div class="ta-card-top">
-                      <span class="ta-card-name">👤 {{ record.EmployeeFirstName }} {{ record.EmployeeLastName }}</span>
-                      <span class="ta-card-hours">{{ record.WorkingHour }} ц</span>
+
+          <!-- Дэлгэрэнгүй collapsible -->
+          <div v-if="selectedProject.detail" class="collapse-section">
+            <button class="collapse-header" @click="detailSectionOpen = !detailSectionOpen">
+              <span class="collapse-arrow">{{ detailSectionOpen ? '▼' : '▶' }}</span>
+              📝 Дэлгэрэнгүй
+            </button>
+            <div v-if="detailSectionOpen" class="collapse-body">
+              <p class="detail-text">{{ selectedProject.detail }}</p>
+            </div>
+          </div>
+
+          <!-- ТА рецордс collapsible -->
+          <div class="collapse-section">
+            <button class="collapse-header" @click="taRecordsOpen = !taRecordsOpen">
+              <span class="collapse-arrow">{{ taRecordsOpen ? '▼' : '▶' }}</span>
+              📊 Баг ажилласан цагийн бүртгэл
+              <span v-if="!loadingProjectTA && projectTARecords.length" class="collapse-count">{{ projectTARecords.length }} бүртгэл</span>
+            </button>
+            <div v-if="taRecordsOpen" class="collapse-body">
+              <div v-if="loadingProjectTA" class="loading">Уншиж байна...</div>
+              <div v-else-if="projectTARecords.length > 0">
+                <!-- Grouped by day, collapsible -->
+                <div class="ta-cards">
+                  <div v-for="group in projectTAByDay" :key="group.day" class="ta-day-group">
+                    <div class="ta-day-header" @click="toggleDay(group.day)">
+                      <div class="ta-day-header-left">
+                        <span class="ta-day-arrow">{{ collapsedDays.has(group.day) ? '▶' : '▼' }}</span>
+                        <span class="ta-day-date">📅 {{ group.day }}</span>
+                        <span class="ta-day-count">{{ group.records.length }} хүн</span>
+                      </div>
+                      <span class="ta-day-total">{{ group.totalHours }} ц</span>
                     </div>
-                    <div v-if="record.comment" class="ta-card-comment">💬 {{ record.comment }}</div>
+                    <div v-if="!collapsedDays.has(group.day)" class="ta-day-records">
+                      <div v-for="record in group.records" :key="record.docId" class="ta-card">
+                        <div class="ta-card-top">
+                          <span class="ta-card-name">👤 {{ record.EmployeeFirstName }} {{ record.EmployeeLastName }}</span>
+                          <span class="ta-card-hours">{{ record.WorkingHour }} ц</span>
+                        </div>
+                        <div v-if="record.comment" class="ta-card-comment">💬 {{ record.comment }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Stats summary -->
+                <div class="ta-summary">
+                  <div class="ta-stat-grid">
+                    <div class="ta-stat-item">
+                      <div class="ta-stat-label">Нийт хүн/цаг</div>
+                      <div class="ta-stat-value">{{ totalProjectHours }} <small>цаг</small></div>
+                    </div>
+                    <div class="ta-stat-item accent">
+                      <div class="ta-stat-label">Баг/Цаг <span class="ta-stat-hint">(нийт цаг ÷ 3)</span></div>
+                      <div class="ta-stat-value">{{ bagHours }} <small>цаг</small></div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <!-- Stats summary -->
-            <div class="ta-summary">
-              <div class="ta-stat-grid">
-                <div class="ta-stat-item">
-                  <div class="ta-stat-label">Нийт хүн/цаг</div>
-                  <div class="ta-stat-value">{{ totalProjectHours }} <small>цаг</small></div>
-                </div>
-                <div class="ta-stat-item accent">
-                  <div class="ta-stat-label">Баг/Цаг <span class="ta-stat-hint">(нийт цаг ÷ 3)</span></div>
-                  <div class="ta-stat-value">{{ bagHours }} <small>цаг</small></div>
-                </div>
+              <div v-else class="no-records">
+                Энэ төсөлд ажилласан бүртгэл байхгүй байна
               </div>
             </div>
           </div>
-          <div v-else class="no-records">
-            Энэ төсөлд ажилласан бүртгэл байхгүй байна
-          </div>
+
         </div>
       </div>
-    </div>
-    
+    </div><!-- /project-details-modal -->
+
+    <!-- ── ATTENDANCE PANEL ── -->
+    <div v-show="mainTab === 'attendance'" class="attendance-panel">
+    <h3 class="panel-title">Миний цагийн бүртгэл</h3>
+
     <!-- Month picker and statistics -->
     <div class="month-picker-section">
       <div class="picker-row">
@@ -283,7 +323,8 @@
     <div v-else class="no-records">
       {{ activeTab === 'approved' ? 'Зөвшөөрөгдсөн бүртгэл байхгүй' : 'Татгалзсан бүртгэл байхгүй' }}
     </div>
-  </div>
+    </div><!-- /attendance-panel -->
+  </div><!-- /ta-history-container -->
 
   <!-- Bounty Modal for employee page -->
   <ManualBountyModal
@@ -314,7 +355,6 @@ const loading = ref(false);
 const selectedMonth = ref(getCurrentMonth());
 const activeTab = ref('approved');
 const loadingProjects = ref(false);
-const statusFilter = ref('Ажиллаж байгаа');
 const selectedProject = ref(null);
 
 // Bounty modal state
@@ -324,7 +364,9 @@ const bountyTaRecords   = ref([]);
 const bountyProjectInfo = ref({});
 const loadingProjectTA = ref(false);
 const projectTARecords = ref([]);
-const collapsedDays = ref(new Set());
+const collapsedDays    = ref(new Set());
+const taRecordsOpen     = ref(false);
+const detailSectionOpen = ref(true);
 
 const approvedRecords = ref([]);
 const rejectedRecords = ref([]);
@@ -465,11 +507,24 @@ const filteredDisplayedRecords = computed(() => {
   });
 });
 
-const filteredProjects = computed(() => {
-  if (!statusFilter.value) {
-    return projectSummary.value;
+const mainTab = ref('projects');
+const projectStatusFilter = ref('');
+
+const STATUS_ORDER_CHIPS = ['Ажиллаж байгаа', 'Төлөвлсөн', 'Ажил хүлээлгэн өгөх', 'Нэхэмжлэх өгөх ба Шалгах', 'Урамшуулал олгох', 'Дууссан'];
+
+const projectStatusChips = computed(() => {
+  const counts = {};
+  for (const p of projectSummary.value) counts[p.status] = (counts[p.status] || 0) + 1;
+  const chips = [{ value: '', label: 'Бүгд', count: projectSummary.value.length }];
+  for (const s of STATUS_ORDER_CHIPS) {
+    if (counts[s]) chips.push({ value: s, label: s, count: counts[s] });
   }
-  return projectSummary.value.filter(p => p.status === statusFilter.value);
+  return chips;
+});
+
+const filteredProjects = computed(() => {
+  if (!projectStatusFilter.value) return projectSummary.value;
+  return projectSummary.value.filter(p => p.status === projectStatusFilter.value);
 });
 
 const totalProjectHours = computed(() => {
@@ -729,17 +784,13 @@ function formatNumber(value) {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-function getPerformanceColor(performance) {
-  if (performance < 100) return '#10b981'; // Green - better performance
-  if (performance === 100) return '#3b82f6'; // Blue - perfect
-  return '#ef4444'; // Red - worse performance
-}
-
 async function viewProjectDetails(project) {
   selectedProject.value = project;
   loadingProjectTA.value = true;
   projectTARecords.value = [];
   collapsedDays.value = new Set();
+  taRecordsOpen.value = false;
+  detailSectionOpen.value = true;
   
   try {
     const taQuery = query(
@@ -775,10 +826,13 @@ async function openBountyModal(project, event) {
   bountyProjectId.value = project.projectId;
   bountyTaRecords.value = [];
   bountyProjectInfo.value = {
-    location:        project.siteLocation    || '',
-    hourPerformance: project.HourPerformance ?? null,
-    baseAmount:      project.baseAmount      || null,
-    teamBounty:      project.teamBounty      || null,
+    location:           project.siteLocation       || '',
+    wosHour:            project.wosHour            ?? null,
+    baseAmount:         project.baseAmount          || null,
+    teamBounty:         project.teamBounty          || null,
+    nonEngineerBounty:  project.nonEngineerBounty   ?? null,
+    engineerHand:       project.engineerHand        || 0,
+    bountyRatesVersion: project.bountyRatesVersion  || null,
   };
   showBountyModal.value = true;
   const snap = await getDocs(
@@ -849,10 +903,9 @@ async function loadProjectSummary() {
         ? Number(projectData.ResponsibleEmpId) === Number(employeeId)
         : projectData.ResponsibleEmp === employeeFirstName;
       if (isResponsible) {
-        const plannedHour = parseFloat(projectData['Planned Hour']) || parseFloat(projectData.PlannedHour) || 0;
         const realHour = parseFloat(projectData.RealHour) || 0;
         const wosHour = parseFloat(projectData.WosHour) || 0;
-        const engineerHand = projectData.EngineerHand != null ? parseFloat(projectData.EngineerHand) : wosHour * 7500;
+        const engineerHand = parseFloat(projectData.EngineerHand) || 0;
         const progress = statusProgress[projectData.Status] || 0;
         projectDetails.push({
           projectId: projectData.id,
@@ -861,13 +914,16 @@ async function loadProjectSummary() {
           siteLocation: projectData.siteLocation || projectData.SiteLocation || 'N/A',
           referenceId: projectData.referenceIdfromCustomer || '',
           startDate: projectData.StartDate || '',
-          plannedHour: Math.round(plannedHour * 10) / 10,
           realHour: Math.round(realHour * 10) / 10,
+          wosHour: Math.round(wosHour * 10) / 10,
           engineerHand: projectData.EngineerHand || Math.round(engineerHand),
-          baseAmount:   projectData.BaseAmount   || null,
-          teamBounty:   projectData.TeamBounty   || null,
+          teamBounty:          projectData.TeamBounty          || null,
+          nonEngineerBounty:   projectData.NonEngineerBounty   || null,
+          bountyRatesVersion:  projectData.bountyRatesVersion  || null,
+          frozenNonEngineerRate: projectData.frozenNonEngineerRate || null,
           progress,
-          HourPerformance: projectData.HourPerformance
+          HourPerformance: projectData.HourPerformance,
+          detail: projectData.Detail || ''
         });
       }
     });
@@ -1242,20 +1298,6 @@ h3 {
   font-weight: 700;
 }
 
-.project-controls {
-  margin-bottom: 14px;
-}
-
-.status-filter {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  background: white;
-  cursor: pointer;
-  color: #374151;
-}
 
 .btn-refresh {
   padding: 8px 14px;
@@ -1407,47 +1449,25 @@ h3 {
 .sg-value.planned { color: #6b7280; }
 .sg-value.real    { color: #16a34a; }
 .sg-value.bounty-adjusted { color: #059669; }
-
-/* Progress section */
-.progress-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.progress-item {}
-.progress-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-.progress-bar {
-  width: 100%;
-  height: 10px;
-  background: #e5e7eb;
-  border-radius: 99px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 99px;
-  transition: width 0.4s ease;
-}
+.sg-value.wos          { color: #7c3aed; }
+.sg-value.team-bounty  { color: #0891b2; }
 
 /* Tap hint */
 .card-tap-hint {
-  font-size: 11px;
-  color: #9ca3af;
-  text-align: right;
-  margin-top: 2px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+  margin-top: 4px;
+  padding: 6px 0 2px;
+  border-top: 1px solid #f3f4f6;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .btn-wos-assign {
   margin-top: 8px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 8px 10px;
   background: #065f46;
   color: #fff;
   border: none;
@@ -1456,8 +1476,206 @@ h3 {
   font-size: 13px;
   font-weight: 600;
 }
-.btn-wos-assign:hover {
-  background: #047857;
+.btn-wos-assign:hover { background: #047857; }
+
+.btn-wos-view {
+  margin-top: 4px;
+  width: 100%;
+  padding: 6px 0 2px;
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  border-top: 1px solid #f3f4f6;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  transition: color 0.15s;
+}
+.btn-wos-view:hover { color: #1d4ed8; }
+
+/* ── Main navigation tabs ── */
+.main-tabs {
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+.main-tab {
+  flex: 1;
+  padding: 10px 6px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: color 0.15s, border-color 0.15s;
+  text-align: center;
+  line-height: 1.3;
+  min-width: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 480px) {
+  .main-tab {
+    flex-direction: row;
+    font-size: 14px;
+    padding: 12px 10px;
+    gap: 6px;
+  }
+}
+.main-tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+.main-tab:hover:not(.active) { color: #374151; background: #f9fafb; }
+.main-tab-badge {
+  background: #1d4ed8;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 20px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.5;
+}
+.main-tab.active .main-tab-badge { background: #1d4ed8; }
+
+/* ── Panel containers ── */
+.projects-panel {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+}
+.attendance-panel {
+  padding-top: 4px;
+}
+
+/* ── Panel header ── */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.panel-title {
+  margin: 0 0 16px;
+  color: #111827;
+  font-size: 17px;
+  font-weight: 700;
+}
+.panel-header .panel-title { margin-bottom: 0; }
+
+/* ── Status chips filter ── */
+.status-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.pstatus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid #e5e7eb;
+  background: white;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.pstatus-chip:hover { border-color: #9ca3af; background: #f3f4f6; }
+.pstatus-chip.chip-active {
+  background: var(--chip-color, #1d4ed8);
+  border-color: var(--chip-color, #1d4ed8);
+  color: white;
+}
+.chip-cnt { font-size: 11px; font-weight: 700; opacity: 0.85; }
+
+/* ── Project detail modal header ── */
+.pdetail-title-block { flex: 1; min-width: 0; }
+.pdetail-id-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.pdetail-id { font-size: 22px; font-weight: 800; color: #1d4ed8; }
+.pdetail-location { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 6px; }
+.pdetail-meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.pdetail-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+.pds-item {
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.pds-full { grid-column: 1 / -1; }
+.pds-label { font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+.pds-value { font-size: 17px; font-weight: 700; color: #111827; }
+.pds-value.real        { color: #16a34a; }
+.pds-value.wos         { color: #7c3aed; }
+.pds-value.bounty      { color: #059669; }
+.pds-value.team-bounty { color: #0891b2; }
+
+/* Modal section title divider */
+.modal-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 12px;
+}
+
+/* ── Collapsible sections in modal ── */
+.collapse-section {
+  margin-bottom: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.collapse-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #f9fafb;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  text-align: left;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.collapse-header:hover { background: #f3f4f6; }
+.collapse-arrow { font-size: 10px; color: #6b7280; flex-shrink: 0; }
+.collapse-count { margin-left: auto; font-size: 12px; color: #9ca3af; font-weight: 500; }
+.collapse-body { padding: 12px 14px; }
+.detail-text {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .modal-overlay {
@@ -1489,9 +1707,10 @@ h3 {
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 20px;
   border-bottom: 1px solid #e5e7eb;
+  gap: 12px;
 }
 
 .modal-header h3 {

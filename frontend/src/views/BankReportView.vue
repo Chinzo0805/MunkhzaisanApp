@@ -12,6 +12,7 @@
         <input type="date" v-model="filterFrom" class="sel-sm" />
         <span>—</span>
         <input type="date" v-model="filterTo" class="sel-sm" />
+        <input type="month" v-model="filterMonth" @change="onMonthPick" class="sel-sm" title="Сараар хурдан сонгох" style="cursor:pointer" />
         <label class="transfer-toggle">
           <input type="checkbox" v-model="showTransfers" />
           Дотоод шилжүүлэг харах
@@ -24,6 +25,7 @@
     <div class="tabs">
       <button :class="['tab', { active: activeTab === 'type' }]"    @click="activeTab = 'type'">🏷 Ангиллаар</button>
       <button :class="['tab', { active: activeTab === 'project' }]" @click="activeTab = 'project'">🏗 Төслөөр</button>
+      <button :class="['tab', { active: activeTab === 'trend' }]"   @click="activeTab = 'trend'">📈 Трэнд</button>
     </div>
 
     <!-- Loading -->
@@ -418,6 +420,125 @@
 
       </div><!-- end proj-dashboard-tab -->
 
+      <!-- ── TAB 3: Category Trend by Month ──────────────────────────────────── -->
+      <div v-if="activeTab === 'trend'" class="tab-content trend-tab">
+
+        <!-- Year selector -->
+        <div class="trend-controls">
+          <span class="filter-label">Жил:</span>
+          <div class="date-field-btns">
+            <button v-for="y in trendAvailableYears" :key="y"
+              :class="['df-btn', { active: trendYear === y }]"
+              @click="trendYear = y">{{ y }}</button>
+          </div>
+          <span class="trend-info">{{ trendMonths.length }} сар · {{ trendIncomeData.length }} орлогын ангилал · {{ trendExpenseData.length }} зардлын ангилал</span>
+          <button class="df-btn" @click="loadData" :disabled="loading" style="margin-left:auto">{{ loading ? '...' : '🔄 Шинэчлэх' }}</button>
+        </div>
+
+        <!-- Income trend table -->
+        <div class="trend-section">
+          <div class="trend-section-title income-hdr">💚 Орлогын трэнд — {{ trendYear }}</div>
+          <div class="trend-table-wrap">
+            <table class="trend-table">
+              <thead>
+                <tr>
+                  <th class="trend-cat-col">Ангилал</th>
+                  <th v-for="m in trendMonths" :key="m" class="trend-month-col">{{ +m.slice(5) }}-р сар</th>
+                  <th class="trend-total-col">Нийт</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="row in trendIncomeData" :key="'ti-'+row.cat">
+                  <tr class="trend-cat-row" @click="toggleTrendCat('inc-'+row.cat)">
+                    <td class="trend-cat-cell">
+                      <span class="expand-icon">{{ expandedTrendCats.has('inc-'+row.cat) ? '▼' : '▶' }}</span>
+                      {{ row.cat || '(ангилаагүй)' }}
+                      <button class="open-txn-btn" @click.stop="openBankTxns(row.cat, null)" title="Банкны гүйлгээнд харах">↗</button>
+                    </td>
+                    <td v-for="m in trendMonths" :key="m" class="trend-val-cell"
+                      :class="row.months[m] ? 'trend-inc' : 'trend-empty'"
+                      :style="row.months[m] ? { background: `rgba(22,163,74,${0.08 + 0.22 * (row.months[m] / (trendIncomeMonthMax[m] || 1))})` } : {}">
+                      {{ row.months[m] ? fmtMnt(row.months[m]) : '' }}
+                    </td>
+                    <td class="trend-total-cell trend-inc-bold">{{ fmtMnt(row.total) }}</td>
+                  </tr>
+                  <template v-if="expandedTrendCats.has('inc-'+row.cat)">
+                    <tr v-for="sub in row.subtypes" :key="'tis-'+row.cat+sub.sub" class="trend-sub-row">
+                      <td class="trend-cat-cell trend-sub-cell">↳ {{ sub.sub }} <button class="open-txn-btn" @click.stop="openBankTxns(row.cat, sub.sub)" title="Банкны гүйлгээнд харах">↗</button></td>
+                      <td v-for="m in trendMonths" :key="m" class="trend-val-cell" :class="sub.months[m] ? 'trend-inc' : 'trend-empty'">
+                        {{ sub.months[m] ? fmtMnt(sub.months[m]) : '' }}
+                      </td>
+                      <td class="trend-total-cell trend-inc-bold">{{ fmtMnt(sub.total) }}</td>
+                    </tr>
+                  </template>
+                </template>
+              </tbody>
+              <tfoot>
+                <tr class="trend-foot-row">
+                  <td><strong>Нийт</strong></td>
+                  <td v-for="m in trendMonths" :key="m" class="trend-val-cell trend-inc-bold">
+                    <strong>{{ fmtMnt(trendIncomeMonthTotals[m] || 0) }}</strong>
+                  </td>
+                  <td class="trend-total-cell trend-inc-bold"><strong>{{ fmtMnt(trendIncomeTotal) }}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Expense trend table -->
+        <div class="trend-section">
+          <div class="trend-section-title expense-hdr">🔴 Зардлын трэнд — {{ trendYear }}</div>
+          <div class="trend-table-wrap">
+            <table class="trend-table">
+              <thead>
+                <tr>
+                  <th class="trend-cat-col">Ангилал</th>
+                  <th v-for="m in trendMonths" :key="m" class="trend-month-col">{{ +m.slice(5) }}-р сар</th>
+                  <th class="trend-total-col">Нийт</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="row in trendExpenseData" :key="'te-'+row.cat">
+                  <tr class="trend-cat-row" @click="toggleTrendCat('exp-'+row.cat)">
+                    <td class="trend-cat-cell">
+                      <span class="expand-icon">{{ expandedTrendCats.has('exp-'+row.cat) ? '▼' : '▶' }}</span>
+                      {{ row.cat || '(ангилаагүй)' }}
+                      <button class="open-txn-btn" @click.stop="openBankTxns(row.cat, null)" title="Банкны гүйлгээнд харах">↗</button>
+                    </td>
+                    <td v-for="m in trendMonths" :key="m" class="trend-val-cell"
+                      :class="row.months[m] ? 'trend-exp' : 'trend-empty'"
+                      :style="row.months[m] ? { background: `rgba(220,38,38,${0.06 + 0.20 * (row.months[m] / (trendExpenseMonthMax[m] || 1))})` } : {}">
+                      {{ row.months[m] ? fmtMnt(row.months[m]) : '' }}
+                    </td>
+                    <td class="trend-total-cell trend-exp-bold">{{ fmtMnt(row.total) }}</td>
+                  </tr>
+                  <template v-if="expandedTrendCats.has('exp-'+row.cat)">
+                    <tr v-for="sub in row.subtypes" :key="'tes-'+row.cat+sub.sub" class="trend-sub-row">
+                      <td class="trend-cat-cell trend-sub-cell">↳ {{ sub.sub }} <button class="open-txn-btn" @click.stop="openBankTxns(row.cat, sub.sub)" title="Банкны гүйлгээнд харах">↗</button></td>
+                      <td v-for="m in trendMonths" :key="m" class="trend-val-cell" :class="sub.months[m] ? 'trend-exp' : 'trend-empty'">
+                        {{ sub.months[m] ? fmtMnt(sub.months[m]) : '' }}
+                      </td>
+                      <td class="trend-total-cell trend-exp-bold">{{ fmtMnt(sub.total) }}</td>
+                    </tr>
+                  </template>
+                </template>
+              </tbody>
+              <tfoot>
+                <tr class="trend-foot-row">
+                  <td><strong>Нийт</strong></td>
+                  <td v-for="m in trendMonths" :key="m" class="trend-val-cell trend-exp-bold">
+                    <strong>{{ fmtMnt(trendExpenseMonthTotals[m] || 0) }}</strong>
+                  </td>
+                  <td class="trend-total-cell trend-exp-bold"><strong>{{ fmtMnt(trendExpenseTotal) }}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- end trend-tab -->
+
     </template>
 
     <!-- ── Financial transaction list modal ── -->
@@ -532,6 +653,7 @@ const activeTab        = ref('type');
 const filterAccount    = ref('');
 const filterFrom       = ref(range.from);
 const filterTo         = ref(range.to);
+const filterMonth      = ref(''); // quick month picker
 const accounts         = ref([]);
 const projectDateField = ref('EndDate');
 const expandedTypes    = ref(new Set());
@@ -541,6 +663,7 @@ const projTypeFilter   = ref('all'); // all | paid | overtime | unpaid
 const projStatusFilter = ref('all'); // all | specific status
 const txnModal         = ref(null);  // proj object when showing bank transaction list
 const finTxnModal      = ref(null);  // { proj, rows } when showing financial transaction list
+const expandedTrendCats = ref(new Set());
 const finTxnLoading    = ref(false);
 // Modal filter + sort state
 const finTxnFilter    = ref('');
@@ -569,7 +692,7 @@ const dateFields = [
 ];
 
 // ── Load data ─────────────────────────────────────────────────────────────────
-onMounted(async () => {
+async function loadData() {
   loading.value = true;
   try {
     const [txSnap, projSnap] = await Promise.all([
@@ -586,7 +709,8 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(loadData);
 
 // ── Expand toggles ────────────────────────────────────────────────────────────
 function toggleType(type) {
@@ -598,6 +722,11 @@ function toggleProject(id) {
   const s = new Set(expandedProjects.value);
   s.has(id) ? s.delete(id) : s.add(id);
   expandedProjects.value = s;
+}
+function toggleTrendCat(key) {
+  const s = new Set(expandedTrendCats.value);
+  s.has(key) ? s.delete(key) : s.add(key);
+  expandedTrendCats.value = s;
 }
 
 async function openFinTxns(proj) {
@@ -929,6 +1058,108 @@ const dashTotals = computed(() => {
   return { income, expense, profit, txnCount };
 });
 
+// ── Month picker ──────────────────────────────────────────────────────────────
+function onMonthPick(e) {
+  const ym = e.target.value;
+  if (!ym) return;
+  const [y, m] = ym.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  filterFrom.value = `${ym}-01`;
+  filterTo.value   = `${ym}-${String(lastDay).padStart(2, '0')}`;
+}
+
+// ── Trend tab computeds ───────────────────────────────────────────────────────
+const trendYear = ref(String(new Date().getFullYear()));
+
+const trendAvailableYears = computed(() => {
+  const yrs = new Set();
+  transactions.value.forEach(t => {
+    if (typeof t.date === 'string') yrs.add(t.date.slice(0, 4));
+  });
+  return [...yrs].sort().reverse();
+});
+
+const trendMonths = computed(() => {
+  const set = new Set();
+  transactions.value.forEach(t => {
+    if (typeof t.date === 'string' && t.date.startsWith(trendYear.value)) set.add(t.date.slice(0, 7));
+  });
+  return [...set].sort();
+});
+
+const trendIncomeData = computed(() => {
+  const cats = {};
+  transactions.value.forEach(t => {
+    if (typeof t.date !== 'string' || !t.date.startsWith(trendYear.value)) return;
+    if (!showTransfers.value && t.type === 'Дотоод шилжүүлэг') return;
+    const inc = parseFloat(t.income) || 0;
+    if (inc <= 0) return;
+    const m = t.date.slice(0, 7), cat = t.type || '(ангилаагүй)', sub = t.subtype || '(дэд ангилаагүй)';
+    if (!cats[cat]) cats[cat] = { months: {}, subtypes: {} };
+    cats[cat].months[m] = (cats[cat].months[m] || 0) + inc;
+    if (!cats[cat].subtypes[sub]) cats[cat].subtypes[sub] = {};
+    cats[cat].subtypes[sub][m] = (cats[cat].subtypes[sub][m] || 0) + inc;
+  });
+  return Object.entries(cats)
+    .map(([cat, v]) => ({
+      cat,
+      total: Object.values(v.months).reduce((s, x) => s + x, 0),
+      months: v.months,
+      subtypes: Object.entries(v.subtypes)
+        .map(([sub, md]) => ({ sub, total: Object.values(md).reduce((s, x) => s + x, 0), months: md }))
+        .sort((a, b) => b.total - a.total),
+    }))
+    .sort((a, b) => b.total - a.total);
+});
+
+const trendExpenseData = computed(() => {
+  const cats = {};
+  transactions.value.forEach(t => {
+    if (typeof t.date !== 'string' || !t.date.startsWith(trendYear.value)) return;
+    if (!showTransfers.value && t.type === 'Дотоод шилжүүлэг') return;
+    const exp = parseFloat(t.expense) || 0;
+    if (exp <= 0) return;
+    const m = t.date.slice(0, 7), cat = t.type || '(ангилаагүй)', sub = t.subtype || '(дэд ангилаагүй)';
+    if (!cats[cat]) cats[cat] = { months: {}, subtypes: {} };
+    cats[cat].months[m] = (cats[cat].months[m] || 0) + exp;
+    if (!cats[cat].subtypes[sub]) cats[cat].subtypes[sub] = {};
+    cats[cat].subtypes[sub][m] = (cats[cat].subtypes[sub][m] || 0) + exp;
+  });
+  return Object.entries(cats)
+    .map(([cat, v]) => ({
+      cat,
+      total: Object.values(v.months).reduce((s, x) => s + x, 0),
+      months: v.months,
+      subtypes: Object.entries(v.subtypes)
+        .map(([sub, md]) => ({ sub, total: Object.values(md).reduce((s, x) => s + x, 0), months: md }))
+        .sort((a, b) => b.total - a.total),
+    }))
+    .sort((a, b) => b.total - a.total);
+});
+
+const trendIncomeMonthTotals = computed(() => {
+  const t = {};
+  trendIncomeData.value.forEach(r => Object.entries(r.months).forEach(([m, v]) => { t[m] = (t[m] || 0) + v; }));
+  return t;
+});
+const trendExpenseMonthTotals = computed(() => {
+  const t = {};
+  trendExpenseData.value.forEach(r => Object.entries(r.months).forEach(([m, v]) => { t[m] = (t[m] || 0) + v; }));
+  return t;
+});
+const trendIncomeMonthMax = computed(() => {
+  const mx = {};
+  trendIncomeData.value.forEach(r => Object.entries(r.months).forEach(([m, v]) => { if (v > (mx[m] || 0)) mx[m] = v; }));
+  return mx;
+});
+const trendExpenseMonthMax = computed(() => {
+  const mx = {};
+  trendExpenseData.value.forEach(r => Object.entries(r.months).forEach(([m, v]) => { if (v > (mx[m] || 0)) mx[m] = v; }));
+  return mx;
+});
+const trendIncomeTotal = computed(() => trendIncomeData.value.reduce((s, r) => s + r.total, 0));
+const trendExpenseTotal = computed(() => trendExpenseData.value.reduce((s, r) => s + r.total, 0));
+
 // ── Format ────────────────────────────────────────────────────────────────────
 function fmtMnt(v) {
   return Math.round(v).toLocaleString('mn-MN');
@@ -1027,6 +1258,33 @@ function exportExcel() {
   white-space: nowrap;
 }
 .transfer-toggle input { cursor: pointer; }
+/* Trend tab */
+.trend-tab { display:flex; flex-direction:column; gap:20px; padding:12px; overflow-y:auto; }
+.trend-controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; background:#f8fafc; border-radius:8px; }
+.trend-info { font-size:12px; color:#6b7280; margin-left:8px; }
+.trend-section { background:#fff; border-radius:8px; border:1px solid #e5e7eb; overflow:hidden; }
+.trend-section-title { padding:10px 14px; font-size:13px; font-weight:700; }
+.trend-table-wrap { overflow-x:auto; }
+.trend-table { border-collapse:collapse; font-size:12px; width:100%; }
+.trend-table th { background:#1e3a5f; color:#fff; padding:7px 10px; text-align:right; white-space:nowrap; font-weight:500; }
+.trend-cat-col { text-align:left !important; min-width:160px; position:sticky; left:0; background:#1e3a5f; z-index:2; }
+.trend-month-col { min-width:88px; }
+.trend-total-col { min-width:96px; background:#374151 !important; }
+.trend-table td { padding:6px 10px; border-bottom:1px solid #f1f5f9; vertical-align:middle; text-align:right; white-space:nowrap; }
+.trend-cat-cell { text-align:left !important; font-weight:500; position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #e5e7eb; }
+.trend-val-cell { font-variant-numeric:tabular-nums; }
+.trend-empty { color:#e5e7eb; }
+.trend-inc { color:#166534; }
+.trend-exp { color:#991b1b; }
+.trend-inc-bold { color:#166534; font-weight:600; }
+.trend-exp-bold { color:#991b1b; font-weight:600; }
+.trend-total-cell { background:#f8fafc; border-left:1px solid #e5e7eb; font-weight:600; }
+.trend-foot-row td { background:#f1f5f9; border-top:2px solid #cbd5e1; padding:7px 10px; }
+.trend-foot-row .trend-cat-cell { background:#f1f5f9; }
+.trend-cat-row { cursor:pointer; }
+.trend-cat-row:hover td { background:#f0f4ff !important; }
+.trend-sub-row { background:#fafbfc; }
+.trend-sub-cell { padding-left:28px !important; font-weight:400 !important; font-size:11px; color:#374151; }
 .loading-msg {
   padding: 40px;
   text-align: center;

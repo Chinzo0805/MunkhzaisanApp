@@ -272,8 +272,8 @@ function resolveAccountName(rawName) {
 // ── Header aliases (case-insensitive, partial match) ──────────────────────────
 const HEADER_ALIASES = {
   date: [
-    "огноо", "гүйлгээний огноо", "transaction date", "date", "дата",
-    "value date", "гүйлгээ огноо",
+    "огноо", "гүйлгээний огноо", "transaction date", "trans date", "txn date",
+    "date", "дата", "value date", "posting date", "гүйлгээ огноо",
   ],
   documentDate: [
     "гүйлгээний огноо", "огноо", "баримтын огноо", "document date",
@@ -282,10 +282,14 @@ const HEADER_ALIASES = {
   debit: [
     "зарлага", "дебит гүйлгээ", "debit", "дебит", "зардал", "гарсан",
     "гарлага", "зарцуулсан", "expense",
+    // Additional English bank statement variants
+    "withdraw", "debit amount", "debit (dr)", "paid out", " dr",
   ],
   credit: [
     "орлого", "кредит гүйлгээ", "credit", "кредит", "ирсэн", "оруулсан",
     "income", "нэмэгдсэн",
+    // Additional English bank statement variants
+    "deposit", "credit amount", "credit (cr)", "paid in", " cr",
   ],
   amount: [
     "үнийн дүн", "дүн", "amount", "нийт дүн", "гүйлгээний дүн",
@@ -295,10 +299,15 @@ const HEADER_ALIASES = {
     "эзэмшигч", "харьцсан дансны нэр", "харилцагч", "харилцагчийн нэр", "related account",
     "хамааралтай данс", "дансны нэр", "counterpart", "нэр", "account name",
     "bank account", "илгээгч", "хүлээн авагч", "accountname",
+    // Additional English variants
+    "payee", "payer", "beneficiary", "sender", "recipient", "counterparty name",
+    "counterparty", "party name",
   ],
   relatedAccount: [
     "карт", "харьцсан данс", "accountnumber", "accountnubmer", "дансны дугаар",
-    "account number", "данс дугаар", "counterpart account",
+    "account number", "данс дугаар", "counterpart account", "counterparty account",
+    // Additional English variants
+    "payee account", "account no", "acc no", "account no.", "acc. no",
   ],
   txnType: [
     "=гүйлгээний төрөл",  // exact — the Petrovis Excel transaction type column
@@ -309,9 +318,13 @@ const HEADER_ALIASES = {
   description: [
     "гүйлгээний утга", "тайлбар", "description", "утга", "note",
     "дэлгэрэнгүй", "memo", "details", "details/note",
+    // Additional English bank statement variants
+    "narration", "particulars", "transaction description", "transaction details",
+    "transaction narrative", "reference", "remarks",
   ],
   balance: [
     "үлдэгдэл", "balance", "баланс", "дансны үлдэгдэл",
+    "closing balance", "running balance",
   ],
 };
 
@@ -611,30 +624,36 @@ exports.syncBankTransactionsFromExcel = functions
           // Load ALL existing records for this accountName (not just this sourceFile)
           // so that re-uploading a renamed or overlapping file doesn't create duplicates.
           const MANUAL_FIELDS = ['type','subtype','requesterID','requesterName','projectID','projectName','ebarimt','NOAT','reconciliationStatus','reconciledAmount'];
+          // Exact fingerprint: date + income + expense + description + relatedAccount
           const rowFingerprint = r =>
             [r.date, r.income, r.expense, String(r.description||'').slice(0,80), r.relatedAccount].join('|');
+          // Loose fingerprint: date + income + expense only — catches same transaction
+          // imported twice in different languages (Mongolian vs English headers) where
+          // description/relatedAccount may differ between downloads.
+          const looseFingerprint = r => [r.date, r.income, r.expense].join('|');
 
           const existingSnap = await db.collection("bankTransactions")
             .where("accountName", "==", accountName).get();
 
           // Map: fingerprint → { ref, manualFields, uploadedAt, sourceFile }
           const existingMap = new Map();
+          const looseMap    = new Map(); // date|income|expense → first doc seen
           existingSnap.docs.forEach(doc => {
             const d = doc.data();
             // Support both new records (d.date string) and old records (d.documentDate string)
             const dateStr = d.date ||
               (typeof d.documentDate === 'string' ? d.documentDate.slice(0, 10) : null) ||
               (d.documentDate && d.documentDate.toDate ? d.documentDate.toDate().toISOString().slice(0, 10) : null);
-            const fp = [dateStr, d.income, d.expense, String(d.description||'').slice(0,80), d.relatedAccount].join('|');
-            // Keep first match if duplicates exist
-            if (!existingMap.has(fp)) {
-              existingMap.set(fp, {
-                ref: doc.ref,
-                manual: Object.fromEntries(MANUAL_FIELDS.map(f => [f, d[f] ?? null])),
-                uploadedAt: d.uploadedAt || null,
-                sourceFile: d.sourceFile || null,
-              });
-            }
+            const fp  = [dateStr, d.income, d.expense, String(d.description||'').slice(0,80), d.relatedAccount].join('|');
+            const lfp = [dateStr, d.income, d.expense].join('|');
+            const entry = {
+              ref: doc.ref,
+              manual: Object.fromEntries(MANUAL_FIELDS.map(f => [f, d[f] ?? null])),
+              uploadedAt: d.uploadedAt || null,
+              sourceFile: d.sourceFile || null,
+            };
+            if (!existingMap.has(fp))  existingMap.set(fp, entry);
+            if (!looseMap.has(lfp))    looseMap.set(lfp, entry);
           });
 
           // ── Write new records (merge manual fields where matched) ─────────
@@ -657,8 +676,11 @@ exports.syncBankTransactionsFromExcel = functions
               : _documentDateStr + "T00:00:00+08:00";
             const documentDate = admin.firestore.Timestamp.fromDate(new Date(_dtStr));
 
-            const fp = rowFingerprint(mapped);
-            const existing = existingMap.get(fp);
+            const fp  = rowFingerprint(mapped);
+            const lfp = looseFingerprint(mapped);
+            // Skip if exact OR loose match found — prevents duplicates when re-importing
+            // the same period in a different language (description/relatedAccount may vary).
+            const existing = existingMap.get(fp) || looseMap.get(lfp);
 
             // Already in Firestore — bank transactions never change, so skip entirely.
             if (existing) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +13,9 @@ class AppState extends ChangeNotifier {
   bool loading = true;
   String? error;
 
+  // Real-time listener for the linked employee doc
+  StreamSubscription? _employeeSubscription;
+
   AppState() {
     _authService.authStateChanges.listen(_onAuthChange);
   }
@@ -24,10 +28,49 @@ class AppState extends ChangeNotifier {
       try {
         final doc = await _db.collection('users').doc(u.uid).get();
         userData = doc.exists ? doc.data() : null;
+
+        // Block departed employees (State == 'Гарсан')
+        if (userData != null && userData!['employeeId'] != null) {
+          final empId = userData!['employeeId'];
+          final empSnap = await _db
+              .collection('employees')
+              .where('Id', isEqualTo: int.tryParse(empId.toString()) ?? empId)
+              .limit(1)
+              .get();
+          if (empSnap.docs.isNotEmpty &&
+              empSnap.docs.first.data()['State'] == 'Гарсан') {
+            error = 'Таны эрх хаагдсан байна. Та компанийг орхисон тул системд нэвтрэх боломжгүй.';
+            userData = null;
+            loading = false;
+            notifyListeners();
+            await _authService.signOut();
+            return;
+          }
+
+          // Employee is active — watch in real time so they are kicked out
+          // immediately if their state is changed to 'Гарсан' while logged in
+          _employeeSubscription?.cancel();
+          _employeeSubscription = _db
+              .collection('employees')
+              .where('Id', isEqualTo: int.tryParse(empId.toString()) ?? empId)
+              .limit(1)
+              .snapshots()
+              .listen((snap) async {
+            if (snap.docs.isNotEmpty &&
+                snap.docs.first.data()['State'] == 'Гарсан') {
+              error = 'Таны эрх хаагдсан байна. Та компанийг орхисон тул системд нэвтрэх боломжгүй.';
+              userData = null;
+              notifyListeners();
+              await _authService.signOut();
+            }
+          });
+        }
       } catch (e) {
         error = e.toString();
       }
     } else {
+      _employeeSubscription?.cancel();
+      _employeeSubscription = null;
       userData = null;
     }
     loading = false;
@@ -54,6 +97,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    _employeeSubscription?.cancel();
+    _employeeSubscription = null;
     await _authService.signOut();
   }
 
