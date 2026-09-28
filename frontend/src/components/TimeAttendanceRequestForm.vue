@@ -298,6 +298,33 @@ const messageType = ref('');
 const myPendingRequests = ref([]);
 const statusFilter = ref('');
 
+function normalizeEmployeeId(value) {
+  return value == null ? '' : String(value).trim();
+}
+
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function getCurrentEmployeeEmail() {
+  if (currentEmployee.value?.Email) return currentEmployee.value.Email;
+  if (authStore.isViewingAs) return '';
+  return auth.currentUser?.email || authStore.userData?.email || '';
+}
+
+function isSameEmployee(record, target = currentEmployee.value) {
+  if (!record || !target) return false;
+
+  const targetId = normalizeEmployeeId(target.EmployeeID ?? target.employeeId ?? target.Id ?? target.NumID);
+  const recordId = normalizeEmployeeId(record.EmployeeID ?? record.employeeId ?? record.employeeID);
+  if (targetId && recordId && targetId === recordId) return true;
+
+  const targetEmail = normalizeEmail(target.Email ?? target.EmployeeEmail ?? target.email) ||
+    (target === currentEmployee.value ? normalizeEmail(getCurrentEmployeeEmail()) : '');
+  const recordEmail = normalizeEmail(record.Email ?? record.EmployeeEmail ?? record.email);
+  return Boolean(targetEmail && recordEmail && targetEmail === recordEmail);
+}
+
 const isMobile = ref(window.innerWidth < 640);
 function handleResize() { isMobile.value = window.innerWidth < 640; }
 
@@ -394,6 +421,7 @@ function addRow() {
     Day: today,
     WeekDay: weekDaysMongolian[todayDate.getDay()],
     EmployeeID: currentEmployee.value?.Id || currentEmployee.value?.NumID || null,
+    Email: getCurrentEmployeeEmail(),
     FirstName: currentEmployee.value?.FirstName || '',
     LastName: currentEmployee.value?.LastName || '',
     EmployeeFirstName: currentEmployee.value?.FirstName || '',
@@ -417,7 +445,7 @@ function addRow() {
 async function loadMyPendingRequests() {
   await requestsStore.fetchRequests();
   myPendingRequests.value = requestsStore.requests.filter(
-    r => r.status === 'pending' && r.EmployeeLastName === currentEmployee.value?.LastName
+    r => r.status === 'pending' && isSameEmployee(r)
   );
 }
 
@@ -614,6 +642,7 @@ async function submitAllRequests() {
     // Patch all rows that are missing employee data
     requests.value.forEach(r => {
       if (!r.EmployeeID) r.EmployeeID = currentEmployee.value.Id || currentEmployee.value.NumID || null;
+      if (!r.Email) r.Email = getCurrentEmployeeEmail();
       if (!r.EmployeeLastName) r.EmployeeLastName = currentEmployee.value.LastName || '';
       if (!r.EmployeeFirstName) r.EmployeeFirstName = currentEmployee.value.FirstName || '';
       if (!r.FirstName) r.FirstName = currentEmployee.value.FirstName || '';
@@ -665,6 +694,7 @@ async function submitAllRequests() {
     // Patch missing employee fields from currentEmployee (in case row was added while employee was null)
     if (currentEmployee.value) {
       if (!request.EmployeeID) request.EmployeeID = currentEmployee.value.Id || currentEmployee.value.NumID || null;
+      if (!request.Email) request.Email = getCurrentEmployeeEmail();
       if (!request.EmployeeLastName) request.EmployeeLastName = currentEmployee.value.LastName || '';
       if (!request.EmployeeFirstName) request.EmployeeFirstName = currentEmployee.value.FirstName || '';
       if (!request.FirstName) request.FirstName = currentEmployee.value.FirstName || '';
@@ -676,7 +706,7 @@ async function submitAllRequests() {
       return;
     }
     // Ensure employee identity is set
-    if (!request.EmployeeID || !request.EmployeeLastName) {
+    if (!request.EmployeeID) {
       showMessage('Таны ажилтны мэдээлэл олдсонгүй. Хуудсыг шинэчлэн дахин оролдоно уу.', 'error');
       return;
     }
@@ -738,7 +768,7 @@ async function submitAllRequests() {
         existing => 
           existing.Day === request.Day && 
           existing.ProjectID === request.ProjectID &&
-          existing.EmployeeLastName === request.EmployeeLastName
+          isSameEmployee(existing, request)
       );
       
       if (duplicate) {
@@ -751,7 +781,7 @@ async function submitAllRequests() {
         existing => 
           existing.Day === request.Day && 
           existing.ProjectID === request.ProjectID &&
-          (existing.EmployeeLastName === request.EmployeeLastName || existing.LastName === request.EmployeeLastName)
+          isSameEmployee(existing, request)
       );
       
       if (approvedDuplicate) {
@@ -760,10 +790,9 @@ async function submitAllRequests() {
       }
 
       // Check if there's a тасалсан or Чөлөөтэй/Амралт approved record on the same day
-      const sameEmployee = emp => emp.EmployeeLastName === request.EmployeeLastName || emp.LastName === request.EmployeeLastName;
       const approvedBlocker = approvedRecords.find(existing =>
         existing.Day === request.Day &&
-        sameEmployee(existing) &&
+        isSameEmployee(existing, request) &&
         (existing.Status === 'тасалсан' || existing.Status === 'Чөлөөтэй/Амралт')
       );
       if (approvedBlocker && request.Status !== 'тасалсан' && request.Status !== 'Чөлөөтэй/Амралт') {
@@ -774,7 +803,7 @@ async function submitAllRequests() {
       // Check if there's a тасалсан or Чөлөөтэй/Амралт pending request on the same day
       const pendingBlocker = existingRequests.find(existing =>
         existing.Day === request.Day &&
-        existing.EmployeeLastName === request.EmployeeLastName &&
+        isSameEmployee(existing, request) &&
         (existing.Status === 'тасалсан' || existing.Status === 'Чөлөөтэй/Амралт')
       );
       if (pendingBlocker && request.Status !== 'тасалсан' && request.Status !== 'Чөлөөтэй/Амралт') {
@@ -786,7 +815,7 @@ async function submitAllRequests() {
       if (request.Status === 'тасалсан' || request.Status === 'Чөлөөтэй/Амралт') {
         const workApproved = approvedRecords.find(existing =>
           existing.Day === request.Day &&
-          sameEmployee(existing) &&
+          isSameEmployee(existing, request) &&
           existing.Status !== 'тасалсан' && existing.Status !== 'Чөлөөтэй/Амралт'
         );
         if (workApproved) {
@@ -795,7 +824,7 @@ async function submitAllRequests() {
         }
         const workPending = existingRequests.find(existing =>
           existing.Day === request.Day &&
-          existing.EmployeeLastName === request.EmployeeLastName &&
+          isSameEmployee(existing, request) &&
           existing.Status !== 'тасалсан' && existing.Status !== 'Чөлөөтэй/Амралт'
         );
         if (workPending) {
@@ -809,12 +838,11 @@ async function submitAllRequests() {
         // Skip if already checked in duplicate above
         if (existing.Day === request.Day && 
             existing.ProjectID === request.ProjectID &&
-            (existing.EmployeeLastName === request.EmployeeLastName || existing.LastName === request.EmployeeLastName)) {
+          isSameEmployee(existing, request)) {
           return false;
         }
         
-        if (existing.Day !== request.Day || 
-            (existing.EmployeeLastName !== request.EmployeeLastName && existing.LastName !== request.EmployeeLastName)) {
+        if (existing.Day !== request.Day || !isSameEmployee(existing, request)) {
           return false;
         }
         
@@ -843,7 +871,7 @@ async function submitAllRequests() {
       
       // Check for time overlaps with existing PENDING requests on same day for same employee
       const timeOverlap = existingRequests.find(existing => {
-        if (existing.Day !== request.Day || existing.EmployeeLastName !== request.EmployeeLastName) {
+        if (existing.Day !== request.Day || !isSameEmployee(existing, request)) {
           return false;
         }
         

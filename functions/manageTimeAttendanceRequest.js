@@ -25,6 +25,21 @@ function overlapsWorkingHours(startTime, endTime) {
   const endAdj = end < start ? end + 24 : end;
   return start < 18 && endAdj > 9;
 }
+function normalizeEmployeeId(value) {
+  return value == null ? '' : String(value).trim();
+}
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+function isSameEmployee(record, target) {
+  const targetId = normalizeEmployeeId(target.EmployeeID ?? target.employeeId ?? target.employeeID);
+  const recordId = normalizeEmployeeId(record.EmployeeID ?? record.employeeId ?? record.employeeID);
+  if (targetId && recordId && targetId === recordId) return true;
+
+  const targetEmail = normalizeEmail(target.Email ?? target.EmployeeEmail ?? target.email);
+  const recordEmail = normalizeEmail(record.Email ?? record.EmployeeEmail ?? record.email);
+  return Boolean(targetEmail && recordEmail && targetEmail === recordEmail);
+}
 
 exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onRequest(async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -48,45 +63,41 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
     
     if (action === 'add') {
       // Validate required fields
-      if (!requestData.Day || !requestData.EmployeeID || !requestData.EmployeeLastName) {
+      if (!requestData.Day || !requestData.EmployeeID) {
         const missing = [];
         if (!requestData.Day) missing.push('Day');
         if (!requestData.EmployeeID) missing.push('EmployeeID');
-        if (!requestData.EmployeeLastName) missing.push('EmployeeLastName');
         
         console.error('Validation failed:', { 
           requestData, 
           missing,
           EmployeeID: requestData.EmployeeID,
-          Day: requestData.Day,
-          EmployeeLastName: requestData.EmployeeLastName 
+          Day: requestData.Day
         });
         
         return res.status(400).send({ 
           error: `Missing required fields: ${missing.join(', ')}`,
-          details: `Please ensure employee record has LastName field. Missing: ${missing.join(', ')}`
+          details: `Please ensure the request includes a date and employee ID. Missing: ${missing.join(', ')}`
         });
       }
       
-      // First, check for ANY existing record on this day (both pending AND approved)
-      const allPendingQuery = await db.collection('timeAttendanceRequests')
-        .where('Day', '==', requestData.Day)
-        .where('EmployeeID', '==', requestData.EmployeeID)
-        .where('status', '==', 'pending')
-        .get();
-      
-      const allApprovedQuery = await db.collection('timeAttendance')
-        .where('Day', '==', requestData.Day)
-        .where('EmployeeID', '==', requestData.EmployeeID)
-        .get();
-      
-      const hasPendingRecords = !allPendingQuery.empty;
-      const hasApprovedRecords = !allApprovedQuery.empty;
+      // Read only this date, then match by stable employee identifiers, never names.
+      const [pendingDayQuery, approvedDayQuery] = await Promise.all([
+        db.collection('timeAttendanceRequests').where('Day', '==', requestData.Day).get(),
+        db.collection('timeAttendance').where('Day', '==', requestData.Day).get(),
+      ]);
+      const pendingRecords = pendingDayQuery.docs.filter(doc => {
+        const record = doc.data();
+        return record.status === 'pending' && isSameEmployee(record, requestData);
+      });
+      const approvedRecords = approvedDayQuery.docs.filter(doc => isSameEmployee(doc.data(), requestData));
+      const hasPendingRecords = pendingRecords.length > 0;
+      const hasApprovedRecords = approvedRecords.length > 0;
       
       // For "Чөлөөтэй/Амралт" status - NO other requests allowed on same day (including тасалсан)
       if (requestData.Status === 'Чөлөөтэй/Амралт') {
         if (hasPendingRecords) {
-          const existing = allPendingQuery.docs[0].data();
+          const existing = pendingRecords[0].data();
           return res.status(409).send({ 
             error: 'Conflict with pending request',
             message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" хүсэлт илгээсэн байна. Чөлөөтэй/Амралт илгээх боломжгүй`
@@ -94,7 +105,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         if (hasApprovedRecords) {
-          const existing = allApprovedQuery.docs[0].data();
+          const existing = approvedRecords[0].data();
           return res.status(409).send({ 
             error: 'Conflict with approved record',
             message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" зөвшөөрөгдсөн ирц байна. Чөлөөтэй/Амралт илгээх боломжгүй`
@@ -105,7 +116,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
       // For "тасалсан" status - NO other requests allowed on same day (including leave)
       if (requestData.Status === 'тасалсан') {
         if (hasPendingRecords) {
-          const existing = allPendingQuery.docs[0].data();
+          const existing = pendingRecords[0].data();
           return res.status(409).send({ 
             error: 'Conflict with pending request',
             message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" хүсэлт илгээсэн байна. "тасалсан" илгээх боломжгүй`
@@ -113,7 +124,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         if (hasApprovedRecords) {
-          const existing = allApprovedQuery.docs[0].data();
+          const existing = approvedRecords[0].data();
           return res.status(409).send({ 
             error: 'Conflict with approved record',
             message: `${requestData.Day} өдөр аль хэдийн "${existing.Status}" зөвшөөрөгдсөн ирц байна. "тасалсан" илгээх боломжгүй`
@@ -124,7 +135,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
       // If trying to work/assignment but there's already a leave or тасалсан request (pending or approved)
       if (requestData.Status !== 'Чөлөөтэй/Амралт' && requestData.Status !== 'тасалсан') {
         // Check pending leave requests
-        const pendingLeave = allPendingQuery.docs.find(doc => 
+        const pendingLeave = pendingRecords.find(doc =>
           doc.data().Status === 'Чөлөөтэй/Амралт'
         );
         if (pendingLeave) {
@@ -135,7 +146,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Check approved leave records
-        const approvedLeave = allApprovedQuery.docs.find(doc => 
+        const approvedLeave = approvedRecords.find(doc =>
           doc.data().Status === 'Чөлөөтэй/Амралт'
         );
         if (approvedLeave) {
@@ -146,7 +157,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Check pending тасалсан requests
-        const pendingMissed = allPendingQuery.docs.find(doc => 
+        const pendingMissed = pendingRecords.find(doc =>
           doc.data().Status === 'тасалсан'
         );
         if (pendingMissed) {
@@ -157,7 +168,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Check approved тасалсан records
-        const approvedMissed = allApprovedQuery.docs.find(doc => 
+        const approvedMissed = approvedRecords.find(doc =>
           doc.data().Status === 'тасалсан'
         );
         if (approvedMissed) {
@@ -168,7 +179,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Check for exact project duplicate (pending)
-        const exactDuplicate = allPendingQuery.docs.find(doc => 
+        const exactDuplicate = pendingRecords.find(doc =>
           doc.data().ProjectID === requestData.ProjectID && requestData.ProjectID
         );
         if (exactDuplicate) {
@@ -179,7 +190,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Check for exact project duplicate (approved)
-        const exactApprovedDuplicate = allApprovedQuery.docs.find(doc => 
+        const exactApprovedDuplicate = approvedRecords.find(doc =>
           doc.data().ProjectID === requestData.ProjectID && requestData.ProjectID
         );
         if (exactApprovedDuplicate) {
@@ -192,12 +203,6 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
       
       // Check for time overlap on same day for same employee (across all projects)
       if (requestData.startTime && requestData.endTime) {
-        const sameDayQueryAll = await db.collection('timeAttendanceRequests')
-          .where('Day', '==', requestData.Day)
-          .where('EmployeeID', '==', requestData.EmployeeID)
-          .where('status', '==', 'pending')
-          .get();
-        
         const parseTime = (timeStr) => {
           const [hours, minutes] = timeStr.split(':').map(Number);
           return hours + minutes / 60;
@@ -207,7 +212,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         const newEnd = parseTime(requestData.endTime);
         const newEndAdjusted = newEnd < newStart ? newEnd + 24 : newEnd;
         
-        for (const doc of sameDayQueryAll.docs) {
+        for (const doc of pendingRecords) {
           const existing = doc.data();
           if (!existing.startTime || !existing.endTime) continue;
           
@@ -225,12 +230,7 @@ exports.manageTimeAttendanceRequest = functions.region('asia-east2').https.onReq
         }
         
         // Also check against approved records in timeAttendance collection
-        const approvedQuery = await db.collection('timeAttendance')
-          .where('Day', '==', requestData.Day)
-          .where('EmployeeID', '==', requestData.EmployeeID)
-          .get();
-        
-        for (const doc of approvedQuery.docs) {
+        for (const doc of approvedRecords) {
           const existing = doc.data();
           if (!existing.startTime || !existing.endTime) continue;
           
